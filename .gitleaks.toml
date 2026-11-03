@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# Defaults already cover anthropic, openai, gcp and telegram [verified: gitleaks config/gitleaks.toml].
+# These two have no default rule. Shapes are my inference; check against a real key without pasting it.
+[[rules]]
+id = "elevenlabs-api-key"
+regex = '''\bsk_[a-f0-9]{48}\b'''
+[[rules]]
+id = "tailscale-key"
+regex = '''\btskey-[a-z]+-[A-Za-z0-9-]{10,}\b'''

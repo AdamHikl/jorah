@@ -1,0 +1,68 @@
+// Jorah's memory stack. Applied by scripts/configure.sh with `config patch`.
+// Dreaming and self-learning are on by default in OpenClaw, so they aren't set here.
+{
+  memory: {
+    search: {
+      // Local EmbeddingGemma via the llama-cpp plugin: no API key, memories stay on this machine.
+      provider: "local",
+    },
+  },
+  plugins: {
+    entries: {
+      "active-memory": {
+        enabled: true,
+        config: {
+          enabled: true,
+          // Deep recall only when a message asks about the past and a plain lookup found nothing strong.
+          mode: "escalate",
+          agents: ["main"],
+          allowedChatTypes: ["direct"],
+          queryMode: "recent",
+          promptStyle: "balanced",
+          timeoutMs: 15000,
+          maxSummaryChars: 220,
+          persistTranscripts: false,
+          logging: true,
+        },
+      },
+      "memory-wiki": {
+        enabled: true,
+        config: {
+          // Compiles what memory-core already holds; vault stays in the state dir (<state-dir>/wiki/main).
+          vaultMode: "bridge",
+          vault: {
+            scope: "global",
+            renderMode: "obsidian",
+          },
+          // Pages can be opened as an Obsidian vault by hand; no Obsidian CLI dependency.
+          obsidian: {
+            enabled: false,
+          },
+          bridge: {
+            enabled: true,
+            readMemoryArtifacts: true,
+            indexDreamReports: true,
+            indexDailyNotes: true,
+            indexMemoryRoot: true,
+            followMemoryEvents: true,
+          },
+          ingest: {
+            autoCompile: true,
+            maxConcurrentJobs: 1,
+            // Web pages must not become durable beliefs without Adam asking.
+            allowUrlIngest: false,
+          },
+          search: {
+            backend: "shared",
+            corpus: "wiki",
+          },
+          render: {
+            preserveHumanBlocks: true,
+            createBacklinks: true,
+            createDashboards: true,
+          },
+        },
+      },
+    },
+  },
+}

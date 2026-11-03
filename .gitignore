@@ -1,0 +1,49 @@
+# Jorah's private memory and runtime state stay out of git
+workspace/memory/
+workspace/MEMORY.md
+workspace/USER.md
+workspace/DREAMS.md
+workspace/.openclaw/
+workspace/state/
+
+# Claude Code scratch area for delegated tasks
+sandbox/
+
+.DS_Store
+.env
+*.local.json
+
+# Build output
+node_modules/
+.venv/
+dist/
+build/
+*.tgz
+__pycache__/
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Secrets and state
+.env.*
+*.pem
+*.key
+*.p12
+*.mobileprovision
+**/*.sqlite
+**/*.sqlite-*
+**/credentials/
+
+# Generated digest of private memory. The existing rules cover workspace/ only
+workspace-voice/USER.md
+workspace-voice/memory/
+
+# Private answers, which belong in ~/.jorah-private. A second guard, not the first
+docs/evidence/**/answers.md
+docs/evidence/**/mango-*.md
+
+# Personal media
+fixtures/private/
+*.wav
+*.m4a
+!fixtures/synthetic/**/*.wav

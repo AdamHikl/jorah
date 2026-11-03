@@ -1,0 +1,82 @@
+# Roadmap section 2 read-only block. Run 2026-11-03 by session M0-A. Scanned for token shapes before saving: none.
+OpenClaw 2026.10.9 (8b18b55)
+2.1.300 (Claude Code)
+COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    73927 adam   54u  IPv4 0x4ca90804d198f9ab      0t0  TCP 127.0.0.1:43181 (LISTEN)
+node    73927 adam   56u  IPv6 0x1363618d88022eda      0t0  TCP [::1]:43181 (LISTEN)
+no service
+== tools.exec
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "message": "Config path is valid but unset: tools.exec. The runtime default applies until you set an authored value with openclaw --profile jorah config set tools.exec <value>."
+  }
+}
+unset
+== agents.entries.main.model
+{
+  "primary": "anthropic/claude-opus-5-5",
+  "fallbacks": [
+    "anthropic/claude-haiku-5-5",
+    "anthropic/claude-opus-5",
+    "anthropic/claude-sonnet-5-5",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-fable-5-1",
+    "anthropic/claude-fable-5",
+    "anthropic/claude-opus-4-7",
+    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-opus-4-6",
+    "anthropic/*"
+  ]
+}
+== talk.agentId
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "message": "Config path is valid but unset: talk.agentId. The runtime default applies until you set an authored value with openclaw --profile jorah config set talk.agentId <value>."
+  }
+}
+unset
+== logging.file
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "message": "Config path is valid but unset: logging.file. The runtime default applies until you set an authored value with openclaw --profile jorah config set logging.file <value>."
+  }
+}
+unset
+== gateway.port
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "message": "Config path is valid but unset: gateway.port. The runtime default applies until you set an authored value with openclaw --profile jorah config set gateway.port <value>."
+  }
+}
+unset
+ID                                   Declaration              Name                     Schedule                         Next       Last       Status              Target    Delivery                                                         Agent ID   Owner                    Model               
+3850013d-b727-4e24-9e44-b38f84f22ee9 heartbeat:main           Heartbeat (main)         every 1h                         in 59m     1m ago     ok                  main      not requested (not requested)                                    main       -                        -
+75e2bd79-d6c1-43ab-bcbc-fd56c53a0b05 memory-core:memory-dr... Memory Dreaming Promo... cron 0 3 * * * (exact)           in 17h     7h ago     ok                  isolated  not requested (not requested)                                    main       -                        -
+/opt/homebrew/bin/gh
+gitleaks absent
+just absent
+mise absent
+lefthook absent
+uv absent
+restic absent
+sbx absent
+ffmpeg absent
+29.2.0
+NeedsLogin
+Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk3s1s1   926Gi    13Gi   177Gi     7%    484k  1.9G    0%   /
+?? .gitignore
+?? README.md
+?? config/
+?? docs/
+?? scripts/
+?? workspace/
+fatal: your current branch 'main' does not have any commits yet

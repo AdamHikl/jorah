@@ -329,16 +329,18 @@ All [inference]; no accuracy figure exists for this model, so MOTION-T1 decides.
 
 ### 5.1 Stages
 
-| Stage | Gateway | Mac | PC | Reach |
-|---|---|---|---|---|
-| Today | `adam`, foreground, `127.0.0.1:43181` | CLI only | n/a | Telegram, loopback |
-| M0 | Same, with stage 0 config | Same | n/a | Same |
-| M1 to M8 | Mac user `jorah`, LaunchAgent, on Adam's yes | `adam` runs OpenClaw.app and Serve, plus `jorah-talk` from M2b over loopback | Staging only from M7 | Tailnet through Serve run by `adam` |
-| M7 | Stays on the Mac | Same | Staging profile, fresh test bot, 7-day soak | Same |
-| M9 | PC, `jorah-gw` | Node, rescue bot, iMessage. `jorah-talk` re-pointed at the Serve URL | Real Gateway, `jorah-desk` node | `wss://pc.<tailnet>.ts.net` |
-| M10 | PC | Second ear | `jorah-talk` as room ear | Same |
-| M15 to M17 | PC | Same | Same | Pi as tagged node |
-| M19 | PC | `jorah-build` iOS node, Fusion option | Fusion on leased console | Same |
+**PC first since 2026-11-03: `10-roadmap.md` section 2a wins over the rest of this section.** No Mac `jorah` user, and no Windows Pro or BitLocker unless a P1 or P5 check forces it. The room ear and rescue bot live on a Pi 5.
+
+| Stage | Gateway | Mac | PC | Pi 5 | Reach |
+|---|---|---|---|---|---|
+| Today | `adam`, foreground, `127.0.0.1:43181` | CLI only | n/a | n/a | Telegram, loopback |
+| P0 (M0) | Same, with stage 0 config | Same | n/a | n/a | Same |
+| P1 (M7) | Stays on the Mac | Same | Staging profile, fresh test bot, 7-day soak | n/a | Tailnet for setup |
+| P2 (M9) | PC, `jorah-gw` | Adam's own Claude Code. Old state stopped | Real Gateway | Rescue bot | `wss://pc.<tailnet>.ts.net` |
+| P3 (M20) | PC | Optional client when open | Local voice stack | Same | iPhone through the relay |
+| P4 (M10) | PC | Same | Same | Room ear | Same |
+| M15 to M17 | PC | Same | Same | Arm's Pi decided at M15 | Pi as tagged node |
+| M19 | PC | `jorah-build` iOS node, only while open | Fusion if Home allows it | Same | Same |
 
 ### 5.2 Accounts and boundaries
 

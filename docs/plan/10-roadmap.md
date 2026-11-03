@@ -2,6 +2,8 @@
 
 The order in which Jorah gets built, written 2026-11-03 against OpenClaw 2026.10.9. It merges the earlier draft roadmap with the corrections in plan documents `01` to `09` and the five gap studies. **When this file and another plan document disagree on order, dates, hours or purchases, this file wins. When they disagree on how a step is done, that document wins, and section 13 lists what still needs correcting there.**
 
+**The order changed on 2026-11-03: PC first. Read section 2a before any milestone.** It wins over the milestone text it names. Dates and hours in this file are old estimates, not commitments.
+
 **Evidence today: source, docs and read-only checks only.** Nothing in this plan has been installed, launched or tried on a device, except what section 2 says already exists.
 
 **Labels:**
@@ -33,22 +35,23 @@ The order in which Jorah gets built, written 2026-11-03 against OpenClaw 2026.10
 
 ## 1. Bottom line
 
-| Moment | Done about, at 12.5 h a week | Milestone |
-|---|---|---|
-| Jorah can no longer run a shell as Adam | 20 Nov 2026 | M0 |
-| "Jorah", chime, question, slow answer, on the Mac | 13 Dec 2026 | M1 |
-| Real-time voice bench, phone, first sight, a real bill | 5 Jan 2027 | M2a |
-| **Daily real-time talk that closes itself when idle** | 6 Feb 2027 | M2b |
-| Safe to connect, web answers, one-command freeze | 19 Mar 2027 | M3 |
-| **Morning brief from real accounts** | 16 Apr 2027 | M4 |
-| **Always on, on the PC** | 15 Jul 2027 | M9 |
-| **"Hey Jorah" across the room with the Mac asleep** | 7 Aug 2027 | M10 |
-| First learned job: it gets its own tools and reuses them | 29 Aug 2027 | M11 |
-| First YouTube edit | 12 Oct 2027 | M12 |
-| **Arm picks by voice, stops on a spoken word** | 4 Feb 2028 | M17 |
-| **"Jorah, go to the desk" on a tracked base** | 4 Jul 2028 | M25 |
+| Moment | Stage |
+|---|---|
+| Jorah can no longer run a shell as Adam | P0 (M0) |
+| A verdict on whether the PC can carry Jorah | P1 (M7, trimmed) |
+| **Telegram Jorah with the Mac closed** | P2 (M9, reduced) |
+| **Talking to Jorah without the Mac,** through iPhone and AirPods | P3 (M20 forward) |
+| **"Hey Jorah" in the room,** on the Pi | P4 (M10) |
+| Safe to connect, web answers, one-command freeze | P5 (M3) |
+| **Morning brief from real accounts** | M4 |
+| First learned job: it gets its own tools and reuses them | M11 |
+| First YouTube edit | M12 |
+| **Arm picks by voice, stops on a spoken word** | M17 |
+| **"Jorah, go to the desk" on a tracked base** | M25 |
 
 **Size:** about 715 hours through M25, after adding the security and setup work a review found missing. Fingers, robot senses, Wear OS, glasses, an own app and drone logs are M26 and later (section 7), about 120-250 h more plus 5-8 weeks for an own app, and are **not** in this figure. Formula: hours x 1.4 for slippage, divided by 11.5 effective hours a week, from 3 Nov 2026 [track: `09-engineering-and-ops.md` 12.1]. Adam's real pace is unknown, so **rescale every date after M2a from real hours.**
+
+These are the pre-PC-first estimates, kept for scale. Adam has said hours don't matter.
 
 | Hours a week | Finish M25 |
 |---|---|
@@ -58,9 +61,9 @@ The order in which Jorah gets built, written 2026-11-03 against OpenClaw 2026.10
 
 **Money:** about €2,050 to €5,820 of new money through M25, plus unknown PC parts, a lawyer consultation and any API lane for `main`, on top of Max. About €890 one-off in the frugal case to an arm that works by voice, plus voice and power [inference, section 11].
 
-**The first decision is Adam's.** My pick is assistant first, as written. If the physical dream matters more than always-on, move M13 and M15 to M17 ahead of M9 to M12, using stock camera mounts. Arm by voice then lands about 19 weeks earlier, and always-on about 12 weeks later, with `jorah-talk` running on the Pi in place of the PC room ear. The real dependencies are M2a, M2b or a Pi fork of `jorah-talk` (M17-D), M3, M5 and M8. M8 needs B2 from M5, M16 builds on M5's bridge and skill API, and M17 needs `jorah-talk` and its E0. The 19 weeks are 161.5 h moved plus the fork's 4-8 h, at the section 1 formula [inference].
+**Adam chose assistant first.** The alternative, kept for reference: If the physical dream matters more than always-on, move M13 and M15 to M17 ahead of M9 to M12, using stock camera mounts. Arm by voice then lands about 19 weeks earlier, and always-on about 12 weeks later, with `jorah-talk` running on the Pi in place of the PC room ear. The real dependencies are M2a, M2b or a Pi fork of `jorah-talk` (M17-D), M3, M5 and M8. M8 needs B2 from M5, M16 builds on M5's bridge and skill API, and M17 needs `jorah-talk` and its E0. The 19 weeks are 161.5 h moved plus the fork's 4-8 h, at the section 1 formula [inference].
 
-**Why this order:** security stage 1 comes before any private data, the Lab gets built once on its final host, and every purchase is unlocked by a passed test. The costs are that self-growth and video wait until mid 2027.
+**Why this order:** Adam wants Jorah working without the Mac as soon as possible (section 2a). Security stage 1 still comes before any private data, the Lab gets built once on its final host, and every purchase is unlocked by a passed test. The costs are that self-growth and video wait until mid 2027.
 
 **Adam can stop after any milestone and still have something that works.** Section 3 lists the stop points.
 
@@ -72,7 +75,7 @@ Checked with read-only commands on 2026-11-03. **A session starting M0 re-runs t
 
 | Item | State | How checked |
 |---|---|---|
-| Repo | No commits, everything untracked, including `docs/plan/` | `git status`, `git log` [measured] |
+| Repo | First commit `4c08ccb` on private `AdamHikl/jorah`, pushed. Bundle not made yet | `git log`, `git ls-remote` [measured] |
 | OpenClaw | 2026.10.9, profile `jorah`, state in `~/.openclaw-jorah` | `openclaw --version` [measured] |
 | Gateway | Foreground process in a terminal tab, on `127.0.0.1:43181` and `[::1]:43181`. **No service.** Nothing survives a reboot | `lsof`, `launchctl list` [measured] |
 | Jorah's own `exec` | `tools.exec` is unset, so the default applies and it runs as Adam's macOS user. **Largest known gap** | `config get tools.exec` [measured] |
@@ -84,12 +87,13 @@ Checked with read-only commands on 2026-11-03. **A session starting M0 re-runs t
 | **MANGO-42 Telegram check** | **Not run as far as I can see.** No trace in Jorah's transcripts. SQLite state was not searched, so Adam should say if it was done | `grep` of `~/.claude-jorah/projects` and text files in `~/.openclaw-jorah` [measured] |
 | Telegram | Bot works, DM pairing. Token lived in plaintext, so it must be rotated | [track: `03-security-and-privacy.md` 5.1] |
 | Device nodes | None paired. No OpenClaw.app installed | [track] |
-| Build tools | `gh` present. `gitleaks`, `just`, `mise`, `lefthook`, `uv`, `restic`, `sbx`, `ffmpeg` absent | `command -v` [measured] |
+| Build tools | `gh` and `gitleaks` 8.30.1 present. `just`, `mise`, `lefthook`, `uv`, `restic`, `sbx`, `ffmpeg` absent | `command -v` [measured] |
 | Claude Code | 2.1.300 | `claude --version` [measured] |
 | Docker Desktop | 4.60.1, predates listed security fixes [track: `05-growth-and-skills.md` GROW-G0] | Track |
 | Tailscale | Installed, signed out (`NeedsLogin`) | [track: `research/gap-post-cutover-workload-and-file-flow.md`] |
 | Disk | About 180 GiB free | `df` [measured] |
-| PC | **Specs unknown** | Adam |
+| PC | As Adam stated, not measured: 32 GB RAM, RTX 5070, i7-14700K, 1 TB, Windows 11 Home. Old Merlin setup may remain | Adam |
+| Pi 5 | Available for the room ear and rescue bot. RAM unknown | Adam |
 
 **Copy-paste block, read-only. Later `scripts/state-check.sh`.** Save the output to `docs/evidence/m0/state-YYYY-MM-DD.txt` after checking it holds no secret, then compare with the table above. `config get` exits with an error on an unset path [measured], which is a valid outcome here. `cron list` goes through the Gateway, so a failure there means the terminal Gateway is down.
 
@@ -112,7 +116,172 @@ git -C ~/Documents/jorah log --oneline | head -5
 
 ---
 
+## 2a. PC-first path
+
+**Adam approved this order on 2026-11-03. It wins over any milestone text it names.** Adam wants Jorah on the PC as soon as possible, working without the MacBook, which travels daily, and wants local voice first. Hours and dates don't matter to Adam, so they are old estimates, not commitments. Nothing here has been tried on the PC. Results are plan or docs claims, or `[inference]`, until a step measures them.
+
+**No hard gate gets weaker, and nothing private connects before M3's gate passes.** What changes is the order, and which machine each test runs on. Milestone numbers stay, so references in other documents still work.
+
+| Stage | What happens | Taken from | Adam gets |
+|---|---|---|---|
+| **P0** | Stage 0, tooling, API test and backup on the Mac | M0, amended | Jorah can't run a shell as Adam |
+| **P1** | PC inventory, set up and tested with a throwaway bot, 7-day soak | M7, trimmed | A verdict on whether the PC can carry Jorah |
+| **P2** | Jorah moves to the PC. `voice` and `background` agents added. Rescue bot on the Pi | M9 reduced, M1-C, 1.26 | **Telegram Jorah with the Mac closed** |
+| **P3** | Local speech on the RTX 5070, reached from iPhone and AirPods | M20, parts of M2a and M2b | **Talking to Jorah without the Mac** |
+| **P4** | Pi as room ear, trained wake word | M10, on the Pi | **"Hey Jorah" in the room** |
+| **P5** | Bridge and guard, then M3's hard gate on the PC | M2b-C, M2b-D, M3 | Voice-started jobs, web answers, ready for private data |
+| **Then** | M4 onward, in the existing order | Table below | Mail, calendar and the rest |
+
+**The honest catch:** voice before M3 has no private memory and starts no real jobs. It is a real conversation with the thin `voice` agent, not yet the full assistant.
+
+### P0. Safe on the Mac (M0, amended)
+
+Run M0-B, M0-C1, M0-C2, M0-D and M0-E. Jorah keeps running on the Mac with stage 0 until P2. Changes from Adam's decisions:
+
+- **Step 0.13 is skipped.** The heartbeat keeps running on Max until `background` exists at P2. This is a recorded exception to decision 4.
+- **Step 0.17 has no Max link.** Jorah has its own new key in Adam's existing, shared Console org, so no monthly plan credits. The key's named `jorah` workspace has a limit of $80 a month, because the default workspace can't be capped. Adam checks that limit, and that auto-reload is what Adam expects. The key goes in only after stage 0, at the masked prompt.
+- **Step 0.18b still removes the key from `main`** after SEC-T21. It returns in `background` at P2.
+- **Stage 0 web:** off until M3, as written.
+- **Step 0.10's Tailscale sign-in is now required,** because P1 needs the tailnet.
+- **Step 0.14's Keychain work stays** because the Mac runs Jorah until P2. It doesn't carry over to the PC.
+- **MANGO-42 no longer has a deadline,** but should run while the heartbeat does.
+
+### P1. PC base (M7, trimmed)
+
+**PC, as Adam stated, not measured:** 32 GB RAM, RTX 5070, i7-14700K, 1 TB, Windows 11 **Home,** rarely used otherwise, able to run 24/7, in another room on Wi-Fi.
+
+- [ ] **P1.0 Adam runs, Claude prints. Read-only inventory, before anything else.** Old `AdamHikl/merlin` setup may remain on this PC. List names and versions only, never file contents: WSL distros, Docker, NVIDIA driver and VRAM, Python and Node, any OpenClaw install, services, scheduled tasks, listening ports, Windows edition, TPM, free disk, and any `certs/` or `.key` files by path. Anything still running gets stopped only on Adam's yes. Nothing is reused blindly: `jorah-gw` is a new distro, and no old bot or Gateway may run alongside Jorah. `[S]`
+- [ ] **P1.1 Adam. Disk encryption on Home.** BitLocker isn't on Home. Check whether Device Encryption is available, **Settings, Privacy & security** [from memory, unverified]. Adam's secrets choice needs disk encryption, because `openclaw secrets store` values aren't encrypted at rest [docs: `gateway/secrets/secret-store-and-egress.md`]. **If it isn't available, stop:** Adam chooses between Pro, Ubuntu, or a recorded waiver. Recovery key offline. `[S]`
+- [ ] **P1.2 Adam says yes, Claude prepares. Setup access.** Key-only SSH over the tailnet from this Mac to Windows `adam`, on only while Adam is present, off afterwards, with a tailnet rule. Previewed. Verify: password login refused, and port closed when off. `[L]`
+
+**Keep from M7, with changes:**
+
+- **7.0a:** B1 without Windows Pro, so about €20-60 [inference].
+- **7.1:** no Pro and no BitLocker, as above. Users, updates, Tailscale tag, `tailscale set --unattended=true`, `.wslconfig`. `jorah-lab` waits for K10b. `jorah-talk` and `jorah-desk` wait until needed.
+- **7.2, 7.4, 7.5, 7.6, 7.10, 7.11.** WSL2 and the no-login boot chain on Home are `[unverified]`, so 7.2 and the soak settle them. S2b also measures delay on Wi-Fi. If Wi-Fi fails the soak or the delay test, run a cable.
+
+**Dropped:** 7.3 (EAR-E1), because the ear lives on the Pi.
+**Move to when they're needed:** 7.0 (FLOW Stage A), 7.7 (desktop node), 7.8 (media, M12), 7.9 (K10b, before M3 at P5).
+**Bring forward:** step 1.15, so the PC's OpenClaw and Node are pinned and upgrades go through the canary.
+
+**New in this stage:**
+
+- **`.wslconfig` memory:** `02` 5.5's `memory=24GB` leaves 8 GB for Windows on a 32 GB PC. Start at 16 GB and measure [inference].
+- **P1.3 GPU spike, untested:** can a speech model use the RTX 5070 from inside WSL through `/dev/dxg`, with nobody signed in? Record measured VRAM and first-audio time. If it fails, try a Windows-side process under its own user. `[L]`
+
+**Gate:** SEC-T17 in full, T34, worker `~/.ssh` and outbound blocked, `failIfUnavailable` refuses without `bwrap`, S2 including loopback pairing behaviour, no exposure beyond the tailnet, fresh test bot with no restored state, disk encryption on. K10a and K10b move to P5.
+
+**If it fails:** a small Linux box for the Gateway with the PC as GPU node, or Ubuntu on the PC, which wipes Windows and needs Adam's yes. A Mac mini is not wanted soon. Otherwise the Mac stays Gateway, and "always on" isn't claimed.
+
+### P2. Cutover (M9 reduced, plus M1-C)
+
+1. **Secrets store on the PC (9.1), by Adam's choice:** `openclaw secrets store`, `kind: "secret"` only, never `env`. The rehearsal must show the Gateway and Telegram tokens load from it. If they don't, 1Password gets asked again. Backups contain these values, so they stay encrypted.
+2. **Rehearse on staging with a second bot (9.2).** Write `docs/runbooks/cutover.md`.
+3. **The window (9.3):** stop on the Mac, confirm it stopped, back up, verify, restore in WSL at the same versions, previewed path patch, Adam logs Claude in. **Never two Gateways.**
+4. **Agents, on `jorah-dev` first, then one yes:** 1.11, 1.13, 1.12a, 1.12, 1.14, using the PC's path rather than `oj`. Step 1.13's persona is two modes: witty and warm for everyday things and starting the day, dry and brief for work, issues and anything serious. Pronoun "he". Style only, never imitating the film voice.
+5. **Heartbeat on `background` on the API lane (1.26),** with Dreaming if a scratch run shows the API lane. This ends the exception in P0. The daily learning review also lands here, on `background`, previewed first. `scripts/setup-learning.sh` targets `main` today and has never run, so it needs changing and testing. Corrections keep saving in the same turn from today.
+6. **Backups (9.6),** each schedule on a yes. A copy to a travelling Mac won't be reliable, so decision 41 (offsite) comes forward. Tailnet Lock is decided here.
+7. **Rescue bot on the Pi 5 (9.7),** its own tailnet tag, Linux user and new bot from BotFather. It says the PC is down and can't act. The Pi's RAM is unknown, so measure it. Until it works, Telegram going silent is the signal.
+
+**Gate:** SEC-T1 to T4, T9 with PC targets, T17, T18 (`/stop`), T24, T33, T34, T36. `status --probe` on the API lane for `background`, and on the login for `main`. Voice workspace has no third-party names. Restore verified. Secrets moved. Passphrase off the machine. Rescue bot says the PC is down and cannot act.
+
+**What this removes from M9's gate, and why:** M3's and M4's gates, because no guard, connector or reader exists yet. They run in full on the PC at P5 and later, before anything private connects. T25, T37 and T38 move to P5 with the bridge they test. T15 and the `jorah-desk` denial wait until a node or that user exists. **This is a real reduction for the cutover, and it holds only while nothing private is connected.**
+
+**Acceptance:** close the MacBook, reboot the PC with nobody signed in. Within 3 minutes Telegram replies with no re-pairing and recalls a saved fact. Repeat MANGO with a new codeword. Keep the Mac's old state stopped for two weeks.
+
+### P3. Local voice on the PC (M20, parts of M2a and M2b)
+
+**Stack:** M20.1 on the PC. Pipecat, Silero, Smart Turn, Parakeet v3, Kokoro. The PC candidates are `sherpa-onnx` with CUDA, `faster-whisper` or NeMo in WSL2, because `parakeet-mlx` is Mac only. M20.2: Haiku 5.5 on the API for the thinking, with first-token P90 under 500 ms.
+
+**Without the Mac, the iPhone and AirPods are the first microphone.** M20.3's one-day spike registers the stack as a realtime provider, so the official iPhone app's Talk should reach it through the Gateway relay. **This is the riskiest step on this path, since nobody has run it.** Before pairing: lost-phone runbook (2.14), then pairing Full (2.15), in a Terminal attached to no agent.
+
+**Also pulled in:** the hook test (2.1, stop-the-line), the idle state machine (2.31), the annoyance diary (1.25), the two-week A7 log (2.17).
+
+**Gate:** SEC-T7 on this path (daily wake stays off until it passes), T8, T24, T27 (packet capture: no audio leaves the PC), T26 on this stack (**hard gate 4 still applies**), weights format checked, tracing fields on the allowlist. **M2a's phone gate moves here unchanged where it applies:** T15 on the paired iPhone, T16, T20 recorded, T32, APP-T19, the consult cannot send or exec, and the indicator names the recipient. First audio P50 at most 800 ms or a recorded reason, barge-in target 150 ms.
+
+**The phone's gate 4 problem may be smaller, not gone.** Without a cloud voice provider, a forgotten session sends audio to Adam's PC, not to a company, but it's still an open mic for up to the relay's 30 minutes. README decision 23 is answered here, on these facts.
+
+| Failure | Next step |
+|---|---|
+| Provider spike fails | Native Talk on the iPhone against the PC Gateway, which should need no new code [inference] |
+| Latency misses and can't be fixed | Adam decides from these numbers: hosted realtime through M2a's bench at $25 prepaid, or native Talk |
+| Hook test fails | Voice-started jobs and writes stay off, as in M2a |
+| Voice unreliable when the PC is busy | Lighter models or a schedule, or accept it |
+
+**Acceptance:** MacBook closed. iPhone, Action Button, ask through AirPods. A spoken answer, a truthful status, "stop" stops it, and a packet capture on the PC shows no audio leaving.
+
+**Wearable:** Adam wants something to always wear, not to be stuck in one room. AirPods and iPhone are the first answer, at €0. iOS limits background listening, so this path takes a press, not a wake word. The A7 log then decides whether a BLE button or pendant is worth a spike. That needs its own iOS app (M31's gate), takes months, and gets its own yes. Anything always listening records bystanders, so hard gates 3 and 4 and "nothing overheard ever triggers speech" still apply.
+
+### P4. Room ear on the Pi (M10)
+
+As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to 10.10, with 10.2's client on the Pi under its own Linux user. **Adam buys the mic and speaker,** with M10's USB switch or another physical mute still required by APP-T21. `jorah-talk` from M2b isn't forked first. `jorah-voice` plays that role, so 2.30 and 2.32 are checked against M20 before anything gets built [inference]. The Pi sits in the room where Adam talks and reaches the PC over Wi-Fi, so 10.8 measures that delay.
+
+**Hold:** before M3 this ear answers public questions only, and M10's gate and bystander check stay as written. Row 2a of M10's acceptance test waits for M4. The arm's own dedicated Pi is decided at M15, separately.
+
+### P5. Bridge and the hard gate (M2b-C, M2b-D, M3)
+
+BR-S1 to S7, `jorah-guard` v0, `ask_main` and jobs on the API lane (2.38 to 2.45), with SEC-T25, T37, T38. **Then M3 in full, on the PC.** Step 3.2's question about `sbx` on macOS becomes K10b on Windows Home, where `sbx` is `[unverified]` and Hyper-V doesn't exist. **If it fails, Adam decides:** Pro, Ubuntu, or no Lab yet. Step 3.3's table is re-read for WSL. Step 3.0 changes: `main` stays on Max.
+
+### Decisions recorded for this path
+
+| Topic | Decision |
+|---|---|
+| Max on an always-on PC | **Adam's accepted risk,** with typed chat on Max and machine-started work on the API. Anthropic isn't being asked in writing. SEC-T21's tested switch is the exit. Delegated coding jobs are tested on the API on `jorah-dev`, and stay on Max until that works |
+| Hosted voice | None unless P3's numbers lead Adam to it |
+| Keys | One new Jorah-only key, never shared with Mizyun or Cognio |
+
+### Two collaborators, one repo
+
+Claude Code on the Mac is Adam's. Claude Code on the PC is Jorah's. They work like two people on a repo: one `jorah/<task>` branch per work package, a PR, Adam merges on the Mac, then both sides pull. Never the same branch at once, and whoever merges second rebases.
+
+- **Before M3:** Jorah holds no GitHub credential. Delegated runs commit locally, because workers have no network. Adam pulls their branches from the PC over the tailnet. The exact read path is designed at P2.
+- **From M3:** a separate `jorah` GitHub account, limited to named repos. A small helper outside the sandbox pushes only `jorah/*` branches and opens PRs, with a tap per push, per `03` row 26. **`main` must be protected first,** through `09` 4.3's ruleset test or GitHub Pro. This changes `09` 4.2's "runtime accounts have none", on Adam's decision.
+- **Repos:** `AdamHikl/jorah` now. Cognio once its owner agrees, local-only until then. Mizyun is not included. Each addition gets its own yes.
+
+### What moves or is lost
+
+| Milestone | Change |
+|---|---|
+| M1 | **Replaced.** `chmod 700`, `jorah` macOS user, LaunchAgent, SEC-T13 and Mac Voice Wake are dropped, which replaces decision 14's yes. PC users do this job and SEC-T17 replaces T13. OpenClaw.app is optional later as a client, with T15 and T15b first. `voice`, `background` and persona move to P2 |
+| M2a | **Bench dropped unless a fallback needs it.** First sight (2.18) waits for a Google key, or comes back with M18 |
+| M2b | Mac client not built. Bridge and guard move to P5 |
+| M3, M4, M6 | Same content, on the PC, after P5 |
+| M5, M8, M11 onward | Unchanged. M11's Lab depends on K10b at P5 |
+| M18, sight | **Still needs the phone or Mac awake.** A PC with nobody signed in has no camera path |
+| M19, iOS builds | Only while the MacBook is open and reachable. Jorah says "waiting for the Mac". Fusion on Windows Home is checked then |
+| M20 | Local voice comes forward. Slovak and offline mode (M20.5, M20.6) stay behind a trigger |
+| M22, iMessage | Only while the Mac is awake. **Without a Mac mini, this goal stays partly unmet** |
+
+**Lost, unless a later decision brings them back:**
+
+- Real numbers and a bill comparing OpenAI and Gemini. Local voice is chosen with no hosted baseline, so "is it good enough?" gets answered by ear.
+- A tested Mac-side OS boundary. It isn't needed once the Gateway leaves, but if the PC fails P1, that work comes back.
+
+### Money on this path
+
+| Item | About | When |
+|---|---|---|
+| B1 without Windows Pro: plug meter, cables | €20-60 [inference] | P1 |
+| Secrets store | €0 | P2 |
+| PC power | €12-22 a month | P2 on |
+| Anthropic API for `background`, Haiku voice and API jobs | Unmeasured, limit $80 a month | P2 on |
+| Hosted voice | $0, unless Adam chooses the fallback ($25 prepaid) | |
+| Pi mic and speaker, Adam's own choice, plus a physical mute | XVF3800 about $55, or speakerphone about €143, as reference prices | P4 |
+| GPU, RAM | €0. Buy nothing unless a required tier fails | |
+
+### Rule changes until P2 finishes
+
+- **Live commands:** section 4's `oj` helper is Mac only. On the PC, each session names the exact WSL command, and Adam runs the secret and admin steps.
+- **Hard gate 2:** the narrow node exception moves with the pairing. Before M3, the iPhone at P3 is the only node, paired by 1.16's order: approvals deny first, then pairing. Any other node waits for M3, or gets its own recorded exception.
+- **Main checkout:** "never `git checkout` until M1" now means until P2, because the repo and live workspace share a directory until the cutover.
+- **Hours:** section 8's budgets and section 14's "real weekly hours" no longer drive anything. Rescaling isn't needed.
+- **Rewrites still owed:** `oj`, `jorah` paths and Keychain steps are written for macOS in `02`, `03`, `04` and `09`. Section 13 lists them, and each session reads section 2a first.
+
+---
+
 ## 3. Timeline
+
+**This table keeps each milestone's hours and money. Its order and dates are from before PC first, so read the order from section 2a.**
 
 | # | Milestone | Type | Hours | Mid | One-off € | Done about |
 |---|---|---|---|---|---|---|
@@ -261,6 +430,8 @@ Each milestone lists its sessions. **Parallel** names what may run at the same t
 
 ### M0. Safe base (about 20 Nov 2026)
 
+**PC first (section 2a):** This is stage P0. Section 2a amends steps 0.10, 0.13, 0.14, 0.17 and 0.18b. M1 below is replaced, so read "M1" here as P1 and P2.
+
 **Outcome:** the same Telegram Jorah, except it cannot run a shell as Adam, silently change models or browse the web, the repo has history, and the brain can switch to an API key and back.
 
 **Prerequisites, with who supplies each.** Answers alone are not enough.
@@ -398,6 +569,8 @@ Each milestone lists its sessions. **Parallel** names what may run at the same t
 
 ### M1. Own account, "Hey Jorah" on the Mac (about 13 Dec 2026)
 
+**PC first (section 2a):** **Replaced.** Only 1.11 to 1.15, 1.25 and 1.26 survive, moved to P1, P2 and P3 in section 2a. The rest is kept for reference, in case the PC fails P1.
+
 **Outcome:** say "Jorah", wait for the chime, ask, and hear a slow answer through a headset, with Jorah's Gateway running under its own macOS user as a service.
 
 **Prerequisites:** M0 passed. Adam's yes on `chmod 700`, the `jorah` user, the LaunchAgent, the app permissions and the node exception. Answers: pronunciation, who lives at or visits this home, persona, iPhone and headset, in `~/.jorah-private/answers.md`.
@@ -485,6 +658,8 @@ Save as `docs/evidence/ux1-YYYY-MM-DD.md`. Installer success is not launch, and 
 
 ### M2a. Bench, phone, first sight (about 5 Jan 2027)
 
+**PC first (section 2a):** Not run as a milestone. Steps 2.1, 2.14, 2.15 and 2.17 move to P3 in section 2a. The bench is only a fallback.
+
 **Outcome:** real numbers and a real bill for two realtime providers, voice from the iPhone by Action Button, and an object named by camera. **Not daily use on the Mac, because this path has no idle close.** The phone can become a daily path from here only under the waiver in step 2.16.
 
 **Prerequisites:** M1. Age confirmed. Adam has read OpenAI's contract pages. iOS 26.2 or later. Budget: prepaid $25.
@@ -551,6 +726,8 @@ Save as `docs/evidence/ux1-YYYY-MM-DD.md`. Installer success is not launch, and 
 
 ### M2b. Own client, idle close, bridge (about 6 Feb 2027). Only on a yes to README decision 21 (D1)
 
+**PC first (section 2a):** The Mac client isn't built. 2.31 moves to P3, and 2.38 to 2.45 move to P5 in section 2a. Decision 21 is no longer asked in this form.
+
 **Outcome:** daily real-time talk on the Mac that closes itself after silence, with status, steer and cancel on jobs, and no audio leaving before wake.
 
 **Prerequisites:** M2a, D1 yes, GROW-S13 passed. Which Apple team signs the wrapper (`07` question 13). **Before daily use:** a recorded yes from each regular household member, a parent's decision for children, and lawyer questions 1 and 2 answered if anyone else lives there or visits (`03` 14.1).
@@ -612,6 +789,8 @@ Save as `docs/evidence/ux1-YYYY-MM-DD.md`. Installer success is not launch, and 
 ---
 
 ### M3. Safe to connect, web answers (about 19 Mar 2027)
+
+**PC first (section 2a):** This runs at P5, on the PC, in full. Section 2a changes steps 3.0 and 3.2.
 
 **Outcome:** a sourced spoken answer about the public web, hostile pages treated as data, a risky step approved on the phone, and everything frozen by one command.
 
@@ -817,6 +996,8 @@ Save as `docs/evidence/ux1-YYYY-MM-DD.md`. Installer success is not launch, and 
 
 ### M7. PC staging, soak, Lab placement (about 6 Jun 2027)
 
+**PC first (section 2a):** This is stage P1, trimmed. Section 2a replaces the Windows Pro and BitLocker steps, drops E1 and defers 7.0, 7.7, 7.8 and 7.9.
+
 **Outcome:** a staging Jorah on the PC with a test bot survives reboots with nobody signed in, and a written decision says whether the PC carries the plan before anything is bought.
 
 **Prerequisites:** the PC check in `research/topology.md` section 15 and `02-architecture.md` 5.5. Is the PC a daily or gaming machine, and where does it sit? BitLocker choice (my pick: TPM-only, so a power cut recovers). **Windows 11 Pro in place, B1, about €0-145** [unverified], because step 7.1 needs it. 6 cores passes this table unless M20 triggers, which wants 8 (`04` 12.2).
@@ -924,6 +1105,8 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 
 ### M9. Always on (about 15 Jul 2027)
 
+**PC first (section 2a):** This is stage P2, reduced. Section 2a sets its gate. M3's and M4's gates run later, before anything private connects.
+
 **Outcome:** close the MacBook and walk away while Telegram, the phone and the brief keep working, surviving reboots, with a rescue bot that says so when the PC is down.
 
 **Honest limit:** hands-free wake still needs the Mac or phone until M10. **Sight needs the Mac or phone awake,** at M9 and at M10, because a PC with no signed-in user has no camera path (`02` 5.7). Jorah hears but cannot see with the Mac asleep. Section 7 row M34 is the trigger.
@@ -969,6 +1152,8 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 ---
 
 ### M10. Room ear, trained "Jorah" (about 7 Aug 2027). The core promise
+
+**PC first (section 2a):** This is stage P4, on the Pi with the local stack. Section 2a has the changes.
 
 **Outcome:** say "Hey Jorah, what's on today?" in the room with the Mac asleep, with a physical mute, and get a spoken count and a card on the phone. **Fork:** a read-and-talk token loses `private_show` and `ask_main`, so if Adam declines widening under ruling 20, the room ear answers public questions only, and this outcome line changes to say so. **Honest limit:** Jorah hears but cannot see with the Mac asleep.
 
@@ -1333,6 +1518,8 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 
 ### M20. Own voice stack, Slovak, offline (about 8 Apr 2028). Only if a trigger fires
 
+**PC first (section 2a):** M20.1 to M20.3 and M20.8 move to P3, on the PC, because Adam chose local voice first. Slovak and offline stay behind these triggers.
+
 **Triggers:** Slovak conversation wanted, hosted bill over budget, or offline required. **No trigger: skip it.**
 
 **Outcome:** talk with Wi-Fi off and be told truthfully that it is offline, have a Slovak conversation if tests support it, and pick Jorah's voice by ear.
@@ -1483,6 +1670,8 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 
 ## 9. Purchases, in order
 
+**PC first (section 2a):** B1 has no Windows Pro. B5 is replaced by a mic, speaker and physical mute of Adam's choice for the Pi, at P4. B7's arm Pi is decided at M15.
+
 Each is unlocked by a passed test. **Adam places every order.** Show it first, check Slovak delivery and price, and recheck at checkout. If Adam is under 18, a responsible adult is involved first.
 
 | # | Item | € | Unlocked by | Order at | Note |
@@ -1508,7 +1697,9 @@ Each is unlocked by a passed test. **Adam places every order.** Show it first, c
 | Finding | Change |
 |---|---|
 | Adam prefers the arm over always-on | M13, M15 to M17 ahead of M9 to M12 |
-| MacBook travels daily | Keep PC first. Price a Mac mini for iMessage and builds |
+| MacBook travels daily | **True, and PC first is now the plan.** A Mac mini is a far-future idea, so iMessage and builds work only while the Mac is awake |
+| Windows Home fails disk encryption, or `sbx` at K10b | Adam decides: Pro, Ubuntu on the PC, a recorded waiver, or no Lab yet |
+| A7 log says one press isn't enough away from home | Spike a BLE button or pendant, with M31's gate |
 | Apple's hit rate on "Jorah" under 80% at 1 m, or under 70% at 3 m (M1) | Wake training right after M2a, about 12-20 h |
 | SEC-T7 lands on `main` (M1) | Own wake client moves up. M4 cannot start until it exists |
 | Cross-user app link fails (M1) | Adam decides: VM, or PC before M3 |
@@ -1583,6 +1774,8 @@ Session M0-F applies these. Until then, this table wins over the row it names.
 | `09-engineering-and-ops.md` | 12.1 dates after M10, 12.2 totals, 12.5 stop points. 15.2 ear token. 15.2 hooks test at M3. Tree and `02`'s table with `jorah-robot-guard` first at M17. Tree with `jorah-presence` only at M20 and no `mcp-edupage-feed`, `jorah-iphone-read`, `jorah-adam-data` | Sections 3 and 11 here. `03` ruling 20. M2a. First at M16 (step 16.1). M10, and add those |
 | `04-voice-and-vision.md` | Glasses "off the roadmap" and the VIS-V6 gate | M30's "or Adam accepts the risk" |
 | All | MOT-T3 and MOTION-T3 are the same test | MOTION-T3 |
+| `02`, `03`, `04`, `07`, `09` | Everything built on M1's `jorah` macOS user, `oj`, Keychain on the Mac, Windows Pro, BitLocker, EAR-E1, a Mac rescue bot and `jorah-talk` on the Mac | Section 2a. Rewrite each when the session that uses it starts |
+| `09-engineering-and-ops.md` | 4.2: Keychain until M8, 1Password on the PC, "Runtime accounts have none" | `openclaw secrets store` on the PC. Bot account from M3, per section 2a |
 | `research/topology.md` line 401 | Implies Mac node Calendar and Reminders access | The macOS app declares neither. Research files are records, so note it rather than rewrite it |
 
 ---
@@ -1615,8 +1808,12 @@ Session M0-F applies these. Until then, this table wins over the row it names.
 | Metal, VideoToolbox and NVENC in a real delegated run. Whether a 1-hour edit fits Max limits | M12 |
 | Fusion MCP on a personal licence. Is Fusion on the PC | M7, M19 |
 | Slovak delivery and stock for robot parts. Current prices. Lithium shipping | Before each order |
-| Anthropic's position on an always-on gateway on a Max login | Adam. Not settled by this plan |
-| Adam's real weekly hours. VAT on Max | Rescale after M2a, invoice |
+| Anthropic's position on an always-on gateway on a Max login | Not being asked. Adam's accepted risk, section 2a |
+| What remains on the PC. Device Encryption on Home. WSL2 and the boot chain on Home. Speech on the GPU through `/dev/dxg`. Delay on Wi-Fi | P1 |
+| Gateway and Telegram tokens loading from `openclaw secrets store`. Rescue bot on the Pi, and the Pi's RAM | P2 |
+| iPhone Talk reaching the local stack through the relay. Local voice quality with no hosted baseline. A hard session cap for phone Talk | P3 |
+| `sbx` on Windows Home | P5 |
+| VAT on Max | Invoice |
 
 **Law:** Slovak and EU items carry the labels in `03-security-and-privacy.md` section 14, and some rest on law-firm summaries. A lawyer is needed before anything leaves the household.
 
@@ -1626,8 +1823,8 @@ Session M0-F applies these. Until then, this table wins over the row it names.
 
 ## 15. Next five actions
 
-1. **Adam, today:** answer the age question, step 0.0. Then run step 0.1, MANGO-42, before anything pauses the heartbeat.
-2. **Adam:** answer decisions 2 to 10 in `README.md`, then run the PC check (decision 12), because it is cheap and sets the plan's size, without blocking M0.
-3. **Claude, M0-A:** review `.gitignore`, install gitleaks after a yes, make the first commit.
-4. **Claude and Adam, M0-C:** C1 is the reviewed PR. C2 previews the fallback-chain fix and stage 0 together, applies them in the foreground terminal after a yes, and runs SEC-T1 to T4, T9, T18, T33.
-5. **Adam and Claude, M0-D:** link the Console org, run SEC-T21, the first real-key test. Then start M1 with the cross-user spike, because it can change the most.
+1. **Adam:** run MANGO-42 (step 0.1), make the bundle (step 0.6), and check the `jorah` workspace's $80 limit in the Console.
+2. **Claude, M0-B and M0-C1:** repo tooling, script hardening and the stage 0 files, not live.
+3. **Claude and Adam, M0-C2 and M0-D:** stage 0 applied on the Mac after a yes, and the gate. Then the key, SEC-T21 and its logout.
+4. **Adam and Claude, P1.0:** the read-only PC inventory, with disk encryption next, because it can change the most.
+5. **Adam and Claude, P1:** install, 7-day soak and GPU spike, ending in the written PC verdict.

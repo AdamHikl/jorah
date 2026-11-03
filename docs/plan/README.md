@@ -2,26 +2,26 @@
 
 **Jorah** is Adam's personal real-time assistant: it hears "Jorah" or "Hey Jorah", talks back like Jarvis, sees through a camera, reads mail and calendar with permission, does long jobs on its own and remembers how, and eventually moves a robot arm and a tracked base. It runs on OpenClaw, on this Mac first and always-on on the PC later. It is also a learning project and a possible business.
 
-**Status, 2026-11-03: planning only.** OpenClaw 2026.10.9 runs in a terminal with Telegram working. Nothing in this plan has been built, installed or tried on a device. Every claim here is a source, docs or read-only check unless it says otherwise, and every hour, date and euro total is my judgment.
+**Status, 2026-11-03: planning, with the order changed to PC first** (`10-roadmap.md` section 2a). Only M0-A is done: the first commit and gitleaks. OpenClaw 2026.10.9 runs in a terminal with Telegram working. Nothing in this plan has been built, installed or tried on a device. Every claim here is a source, docs or read-only check unless it says otherwise, and every hour, date and euro total is my judgment.
 
 ## The plan on one page
 
 **Keep OpenClaw** as brain, memory and control plane, use its official Mac and iPhone apps, and add only thin pieces where it has gaps [track: `02-architecture.md`, `07-apps-and-devices.md`].
 
-**The order:**
+**The order, PC first, so Jorah works without the MacBook:**
 
-| Stage | Milestones | What Adam gets | Done about, at 12.5 h a week |
-|---|---|---|---|
-| Lock the door | M0, M1 | No shell as Adam, own macOS user, a service, "Jorah" on the Mac | Dec 2026 |
-| Talk | M2a, M2b | Real-time conversation that closes itself, phone by Action Button | Feb 2027 |
-| Connect safely | M3, M4, M6 | Web answers, then read-only mail and calendar, a morning brief, then writes with a tap | Mar to May 2027 |
-| Always on | M7, M9, M10 | PC runs Jorah through reboots, "Hey Jorah" across the room. Sight still needs the Mac or phone awake | Jun to Aug 2027 |
-| Grow | M11, M12, M14 | Gets its own tools, edits a YouTube video, designs a part, remembers and improves | Aug to Nov 2027 |
-| Body | M5, M8, M13, M15 to M17 | Sim, safety bench, arm by hand, then pick by voice with a spoken stop. The stock gripper is not fingers | Feb 2028 |
-| Beyond | M18 to M25 | Watch mode, iOS builds and Fusion, learned skills, messages, tracked base | Jul 2028 |
-| Extras, each with a trigger | M26+ | **Fingers (M26),** robot senses, Wear OS, glasses, own app, drone logs, always-on sight, logged-in browsing. About 120-250 h plus 5-8 weeks for an own app, about €75-1,255 plus about $280 and $99 a year. **Not in the 715 hours or the money below** | Open |
+| Stage | Milestones | What Adam gets |
+|---|---|---|
+| Lock the door | P0 (M0) | No shell as Adam, API exit tested |
+| Move out | P1 (M7), P2 (M9) | **Telegram Jorah with the Mac closed,** surviving reboots, rescue bot on the Pi |
+| Talk | P3 (M20), P4 (M10) | **Local voice through iPhone and AirPods,** then "Hey Jorah" in the room on the Pi. No private data yet |
+| Connect safely | P5 (M3), M4, M6 | Bridge and hard gate, web answers, read-only mail and calendar, a morning brief, then writes with a tap |
+| Grow | M11, M12, M14 | Gets its own tools, edits a YouTube video, designs a part, remembers and improves |
+| Body | M5, M8, M13, M15 to M17 | Sim, safety bench, arm by hand, then pick by voice with a spoken stop. The stock gripper is not fingers |
+| Beyond | M18 to M25 | Watch mode, iOS builds and Fusion, learned skills, messages, tracked base. Mac-only parts work only while the Mac is awake |
+| Extras, each with a trigger | M26+ | **Fingers (M26),** robot senses, Wear OS, glasses, own app, drone logs, always-on sight, logged-in browsing. **Not in the hours or money below** |
 
-**Size:** about 715 hours through M25, 20 months at 12.5 h a week. **Money:** about €2,050 to €5,820 of new money, plus unknown PC parts, a lawyer consultation and any API lane for `main`, on top of Max. About €890 one-off in the frugal case to an arm that works by voice. **You can stop after any milestone** and keep something that works.
+**Size, estimated before PC first, and hours aren't a constraint for Adam:** about 715 hours through M25. **Money:** about €2,050 to €5,820 of new money, plus unknown PC parts, a lawyer consultation and any API lane for `main`, on top of Max. About €890 one-off in the frugal case to an arm that works by voice. **You can stop after any milestone** and keep something that works.
 
 **Three rules run through everything:** a failed security gate stops what is behind it. Every install, config change, schedule, service, account and purchase is previewed and needs Adam's yes. Evidence tiers stay separate: source, install, launch, signed-in device acceptance.
 
@@ -47,6 +47,8 @@ If two documents disagree on order, dates, hours or purchases, `10-roadmap.md` w
 ## Decisions only Adam can make
 
 One answer per question, deduplicated across all documents, ordered by what blocks most. **My recommendation is a recommendation.** Nothing here is legal advice. Write answers to `~/.jorah-private/answers.md`, outside the repo, so age, household and school answers never reach git, and for later rows, in the issue that needs them.
+
+**Decisions 1 to 19 are answered, privately.** The ones that change the plan's path are recorded in `10-roadmap.md` section 2a. Where an answer differs from the recommendations below, section 2a wins. Decisions 20 onward are still open, and 21 and 23 are reshaped by section 2a.
 
 **These numbers are canonical.** Other files keep their own labels: `04` and roadmap D1 is 21 here, `07` D18 and question 16 are also 21, `06` D1 is 30 here, `07` D1 is the app choice covered by 14, `08` Q3 is in 38. When recording an answer, use the number here.
 

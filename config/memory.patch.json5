@@ -31,7 +31,8 @@
           // Compiles what memory-core already holds; vault stays in the state dir (<state-dir>/wiki/main).
           vaultMode: "bridge",
           vault: {
-            scope: "global",
+            // Per agent, so voice can't read main's compiled memory. The live value changes at step 1.11.
+            scope: "agent",
             renderMode: "obsidian",
           },
           // Pages can be opened as an Obsidian vault by hand; no Obsidian CLI dependency.

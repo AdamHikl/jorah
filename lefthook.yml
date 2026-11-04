@@ -1,0 +1,12 @@
+pre-commit:
+  commands:
+    guard:
+      run: scripts/guard-staged.sh
+    secrets:
+      run: gitleaks git . --staged --config .gitleaks.toml --redact --no-banner --log-level warn
+
+pre-push:
+  commands:
+    guard-main:
+      run: scripts/guard-push.sh
+      use_stdin: true

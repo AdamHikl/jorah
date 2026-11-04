@@ -4,7 +4,9 @@
 #
 # - File tools: reads stop at the working directory; writes stay in sandbox/ and ~/work.
 # - Bash: runs in the macOS sandbox with writes confined to sandbox/, ~/work and Claude Code's
-#   temp folder, no home directory reads, no network. Fails closed if it can't start.
+#   temp folder, no home directory reads except sandbox/ and ~/work, no network. Fails closed
+#   if it can't start.
+# - WebFetch and WebSearch run outside the sandbox, so they are denied by rule.
 # - Text deny rules are only a second line. The sandbox is what holds.
 #
 # JORAH_PACKAGE_NETWORK=1 also opens the npm and PyPI registries to sandboxed commands.
@@ -76,6 +78,8 @@ cat > "$SETTINGS" <<EOF
     "deny": [
       "Read(/$WORKSPACE/**)",
       "Edit(/$WORKSPACE/**)",
+      "WebFetch",
+      "WebSearch",
 $read_denies      "Bash(git push *)",
       "Bash(rm -rf *)",
       "Bash(rm -fr *)",
@@ -104,6 +108,7 @@ $read_denies      "Bash(git push *)",
     "allowUnsandboxedCommands": false,
     "filesystem": {
       "denyRead": [
+        "$HOME",
         "/tmp/claude-$USER_ID/-*",
         "/private/tmp/claude-$USER_ID/-*",
         "/var/folders",

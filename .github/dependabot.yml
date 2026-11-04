@@ -1,0 +1,9 @@
+# Actions only. OpenClaw is upgraded through its own procedure, never here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

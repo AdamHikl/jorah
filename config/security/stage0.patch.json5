@@ -1,0 +1,49 @@
+// Stage 0, step 0.15 (docs/plan/03-security-and-privacy.md W0.6). Not applied by any script.
+// Fill <Adam's numeric id> in a temporary copy outside the repo, from commands.ownerAllowFrom.
+// Build plugins.allow's final list from `plugins list` at preview. The resolver must be installed first.
+// Paths are for the Mac. The secrets provider and these paths change at the P2 cutover.
+{
+  secrets: { providers: {
+    macos_keychain: { source: "exec", command: "/Users/adam/.jorah/bin/jorah-keychain-resolver",
+                      passEnv: ["HOME"], jsonOnly: true },
+  } },
+  gateway: {
+    bind: "loopback",
+    port: 43181,                              // the actual listener, set explicitly before any move
+    auth: { mode: "token", token: { source: "exec", provider: "macos_keychain", id: "gateway-token" } },
+    nodes: {
+      pluginTools: { enabled: false },        // ruling 11
+      pairing: { sshVerify: false },          // every device approved by a human
+      browser: { mode: "off" },
+      // Lifted one at a time at the milestone that needs them. Default iOS and macOS allowlists include the read commands.
+      commands: { deny: ["camera.snap", "camera.clip", "screen.record", "computer.act", "system.run",
+                         "contacts.search", "calendar.events", "reminders.list", "photos.latest", "location.get",
+                         "device.apps", "motion.activity", "motion.pedometer"] },
+    },
+  },
+  discovery: { mdns: { mode: "off" } },
+  session: { dmScope: "per-channel-peer" },   // may start a new Telegram session. Memory stays, thread context may not
+  commands: { restart: false,                 // agents cannot trigger /restart or SIGUSR2
+              bash: false, config: false, plugins: false, mcp: false, debug: false }, // false by default today; pinned so drift shows
+  logging: { file: "/Users/adam/.openclaw-jorah/logs/openclaw.log" },  // /tmp is not evidence
+  plugins: { allow: ["anthropic", "telegram", "acpx", "llama-cpp", "memory-core", "active-memory",
+                     "memory-wiki", "device-pair", "talk-voice"] },
+  channels: { telegram: {
+    configWrites: false,
+    linkPreview: false,                       // on by default
+    dmPolicy: "allowlist", allowFrom: ["<Adam's numeric id>"],
+    botToken: { source: "exec", provider: "macos_keychain", id: "telegram-bot-token" },
+  } },
+  tools: {
+    elevated: { enabled: false },
+    fs: { workspaceOnly: true },
+    exec: { mode: "deny", strictInlineEval: true },
+    sessions: { visibility: "tree" },
+    // Global denies cannot be granted back per agent. Nothing a later agent needs may stay here.
+    deny: ["nodes", "computer", "browser", "gateway", "cron"],
+  },
+  // No shell, and no web until M3, by Adam's decision 3. Media tools are denied because cross-provider
+  // fallback is their fixed default (silent path 10), and Jorah has no use for them yet.
+  agents: { entries: { main: { tools: { deny: ["group:runtime", "web_search", "web_fetch",
+                                               "image_generate", "video_generate", "music_generate"] } } } },
+}

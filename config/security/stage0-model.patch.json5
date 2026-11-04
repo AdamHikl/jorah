@@ -1,0 +1,15 @@
+// Stage 0, step 0.11: clears silent model paths, before any API key exists.
+// Not applied by any script. Previewed with --dry-run, then applied on Adam's yes.
+// The utility model's runtime is claude-cli until a key exists.
+{
+  agents: {
+    defaults: {
+      model: { fallbacks: [] },
+      utilityModel: "anthropic/claude-haiku-5-5",
+      embeddedAgent: { cyberFailover: { mode: "off" } },
+    },
+    entries: {
+      main: { model: { fallbacks: [] } },
+    },
+  },
+}

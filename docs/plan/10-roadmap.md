@@ -92,7 +92,7 @@ Checked with read-only commands on 2026-11-03. **A session starting M0 re-runs t
 | Docker Desktop | 4.60.1, predates listed security fixes [track: `05-growth-and-skills.md` GROW-G0] | Track |
 | Tailscale | Installed, signed out (`NeedsLogin`) | [track: `research/gap-post-cutover-workload-and-file-flow.md`] |
 | Disk | About 180 GiB free | `df` [measured] |
-| PC | As Adam stated, not measured: 32 GB RAM, RTX 5070, i7-14700K, 1 TB, Windows 11 Home. Old Merlin setup may remain | Adam |
+| PC | As Adam stated, not measured: 32 GB RAM, RTX 5070, i7-14700K, 1 TB, Windows 11 Home. Old OpenClaw setup from `AdamHikl/merlin-test-project` may remain | Adam |
 | Pi 5 | Available for the room ear and rescue bot. RAM unknown | Adam |
 
 **Copy-paste block, read-only. Later `scripts/state-check.sh`.** Save the output to `docs/evidence/m0/state-YYYY-MM-DD.txt` after checking it holds no secret, then compare with the table above. `config get` exits with an error on an unset path [measured], which is a valid outcome here. `cron list` goes through the Gateway, so a failure there means the terminal Gateway is down.
@@ -142,6 +142,8 @@ Run M0-B, M0-C1, M0-C2, M0-D and M0-E. Jorah keeps running on the Mac with stage
 - **Step 0.17 has no Max link.** Jorah has its own new key in Adam's existing, shared Console org, so no monthly plan credits. The key's named `jorah` workspace has a limit of $80 a month, because the default workspace can't be capped. Adam checks that limit, and that auto-reload is what Adam expects. The key goes in only after stage 0, at the masked prompt.
 - **Step 0.18b still removes the key from `main`** after SEC-T21. It returns in `background` at P2.
 - **Stage 0 web:** off until M3, as written.
+- **Silent path 10:** step 0.15's patch denies `image_generate`, `video_generate` and `music_generate` on `main`, instead of setting `mediaModels`, because no such key exists yet. Set `mediaModels` before any agent gets those tools.
+- **Step 0.16 also confirms Skill Workshop survives `plugins.allow`.** `docs/evidence/m0/m0-c1-2026-11-04.md` could not show it.
 - **Step 0.10's Tailscale sign-in is now required,** because P1 needs the tailnet.
 - **Step 0.14's Keychain work stays** because the Mac runs Jorah until P2. It doesn't carry over to the PC.
 - **MANGO-42 no longer has a deadline,** but should run while the heartbeat does.
@@ -150,7 +152,7 @@ Run M0-B, M0-C1, M0-C2, M0-D and M0-E. Jorah keeps running on the Mac with stage
 
 **PC, as Adam stated, not measured:** 32 GB RAM, RTX 5070, i7-14700K, 1 TB, Windows 11 **Home,** rarely used otherwise, able to run 24/7, in another room on Wi-Fi.
 
-- [ ] **P1.0 Adam runs, Claude prints. Read-only inventory, before anything else.** Old `AdamHikl/merlin` setup may remain on this PC. List names and versions only, never file contents: WSL distros, Docker, NVIDIA driver and VRAM, Python and Node, any OpenClaw install, services, scheduled tasks, listening ports, Windows edition, TPM, free disk, and any `certs/` or `.key` files by path. Anything still running gets stopped only on Adam's yes. Nothing is reused blindly: `jorah-gw` is a new distro, and no old bot or Gateway may run alongside Jorah. `[S]`
+- [ ] **P1.0 Adam runs, Claude prints. Read-only inventory, before anything else.** Old OpenClaw setup from `AdamHikl/merlin-test-project` may remain on this PC. List names and versions only, never file contents: WSL distros, Docker, NVIDIA driver and VRAM, Python and Node, any OpenClaw install, services, scheduled tasks, listening ports, Windows edition, TPM, free disk, and any `certs/`, `.key` or `.env` files by path. That repo has held an API key, so treat old config as sensitive. Anything still running gets stopped only on Adam's yes. Nothing is reused blindly: `jorah-gw` is a new distro, and no old bot or Gateway may run alongside Jorah. `[S]`
 - [ ] **P1.1 Adam. Disk encryption on Home.** BitLocker isn't on Home. Check whether Device Encryption is available, **Settings, Privacy & security** [from memory, unverified]. Adam's secrets choice needs disk encryption, because `openclaw secrets store` values aren't encrypted at rest [docs: `gateway/secrets/secret-store-and-egress.md`]. **If it isn't available, stop:** Adam chooses between Pro, Ubuntu, or a recorded waiver. Recovery key offline. `[S]`
 - [ ] **P1.2 Adam says yes, Claude prepares. Setup access.** Key-only SSH over the tailnet from this Mac to Windows `adam`, on only while Adam is present, off afterwards, with a tailnet rule. Previewed. Verify: password login refused, and port closed when off. `[L]`
 

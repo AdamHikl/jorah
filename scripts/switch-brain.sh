@@ -23,7 +23,7 @@ API_RUNTIME="openclaw"
 STATE_DIR="$HOME/.openclaw-$PROFILE"
 BACKUP_DIR="$STATE_DIR/backups/switch-brain"
 # OpenClaw doubles the hyphens of a profile name in its log file name.
-LOG_GLOB="${JORAH_LOG_GLOB:-/tmp/openclaw/openclaw-${PROFILE//-/--}-*.log}"
+DEFAULT_LOG_GLOB="/tmp/openclaw/openclaw-${PROFILE//-/--}-*.log"
 
 oc() { openclaw --profile "$PROFILE" "$@"; }
 say() { printf '%s\n' "$*"; }
@@ -73,12 +73,110 @@ env_credential_names() {
   printf '%s' "$names" | xargs
 }
 
+# One PROBLEM line per silent path still open: paths 1, 3, 7, 8, 10 and 12 in
+# docs/plan/research/brain.md, plus settings stage 0 pins. Path 2 and path 4's config side are
+# the key and env checks in cmd_status. Reads config and profile types only, prints no value.
+silent_path_lines() {
+  AGENTS="$(config_json agents)" FAST="$(config_json talk.consultFastMode)" \
+  MANAGED="$(config_json plugins.entries.anthropic.config.managedNativeTools)" \
+  COMMANDS="$(config_json commands)" ALL_PROFILES="$(json_or_null oc models auth list --agent "$AGENT" --json)" \
+  AGENT="$AGENT" node -e '
+    const read = (name) => JSON.parse(process.env[name]);
+    const agents = read("AGENTS") ?? {}, d = agents.defaults ?? {};
+    const problem = (line) => console.log(`  PROBLEM: ${line}`);
+    const chain = (where, model) => {
+      const n = (typeof model === "object" && model?.fallbacks?.length) || 0;
+      if (n) problem(`${where}.model has ${n} fallback(s), so work can move models silently. Set fallbacks: [] on it.`);
+    };
+    chain("agents.defaults", d.model);
+    for (const [id, entry] of Object.entries(agents.entries ?? {})) chain(`agents.entries.${id}`, entry?.model);
+
+    const utility = typeof d.utilityModel === "string" ? d.utilityModel : d.utilityModel?.primary;
+    if (!utility) problem("agents.defaults.utilityModel is unset, so utility calls can jump to HTTP once a key exists.");
+    else if (!d.models?.[utility]?.agentRuntime?.id) problem(`utility model ${utility} has no explicit runtime.`);
+
+    if (d.embeddedAgent?.cyberFailover?.mode !== "off") problem("agents.defaults.embeddedAgent.cyberFailover.mode is not off.");
+
+    const deny = agents.entries?.[process.env.AGENT]?.tools?.deny ?? [];
+    const mediaDenied = ["image_generate", "video_generate", "music_generate"].every((t) => deny.includes(t));
+    if (!d.mediaModels && !mediaDenied) problem("mediaModels is unset and media tools are allowed, so media generation can fall back across providers.");
+
+    if (read("FAST") !== null) problem("talk.consultFastMode is set. Fast mode bills usage credits.");
+    if (read("MANAGED") !== null) problem("plugins.entries.anthropic.config.managedNativeTools is set.");
+    const commands = read("COMMANDS") ?? {};
+    for (const key of ["bash", "config", "plugins", "mcp", "debug"]) {
+      if (commands[key] !== false) problem(`commands.${key} is not false.`);
+    }
+
+    const openai = (read("ALL_PROFILES")?.profiles ?? []).filter((p) => String(p.provider).startsWith("openai"));
+    if (openai.some((p) => p.type === "oauth") && openai.some((p) => p.type === "api_key")) {
+      problem("OpenAI has both OAuth and a Platform key, so OAuth failures can fall back to the key.");
+    }
+  '
+}
+
+# Cron jobs can carry their own fallbacks. Needs the Gateway, so a failure reads as unknown.
+cron_fallback_lines() {
+  CRON="$(json_or_null oc cron list --all --json --timeout 5000)" node -e '
+    const cron = JSON.parse(process.env.CRON);
+    const jobs = Array.isArray(cron) ? cron : cron?.jobs;
+    if (!Array.isArray(jobs)) { console.log("  cron payloads:    unknown, Gateway not reachable"); process.exit(0); }
+    for (const job of jobs) {
+      const n = job?.payload?.fallbacks?.length ?? 0;
+      if (n) console.log(`  PROBLEM: cron job ${job.name ?? job.id} has ${n} fallback(s) in its payload.`);
+    }
+  '
+}
+
+# Names, never values, of credentials in the running Gateway's own environment (path 4).
+# Prints "unknown" when it can't be read, because an unread environment isn't a clean one.
+gateway_env_names() {
+  local port pid
+  port="$(config_json gateway.port | tr -d ' \n')"
+  if [ "$port" = "null" ]; then
+    port="$(GW="$(json_or_null oc gateway status --json)" node -e 'console.log(JSON.parse(process.env.GW)?.gateway?.port ?? "")')"
+  fi
+  pid="$([ -n "$port" ] && lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+  [ -n "$pid" ] || { echo "not running"; return; }
+  process_env_names "$pid"
+}
+
+# `ps eww` can't see this process's environment, because it renames itself. The start-up
+# environment is still readable: /proc on Linux, the kern.procargs2 sysctl on macOS.
+# Prints only names that match, or "unknown" if it couldn't read the environment.
+process_env_names() {
+  command -v python3 >/dev/null || { echo "unknown"; return; }
+  python3 -I - "$1" <<'PY_END' 2>/dev/null || echo "unknown"
+import ctypes, os, re, sys
+
+pid = int(sys.argv[1])
+if os.path.exists(f"/proc/{pid}/environ"):
+    raw = open(f"/proc/{pid}/environ", "rb").read()
+else:
+    libc = ctypes.CDLL(None)
+    mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2
+    size = ctypes.c_size_t(0)
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0:
+        sys.exit(1)
+    buf = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) != 0:
+        sys.exit(1)
+    raw = buf.raw[: size.value]
+items = raw.split(b"\0")
+if not any(item.startswith(b"PATH=") for item in items):
+    sys.exit(1)
+pattern = re.compile(rb"^((?:ANTHROPIC_(?:API_KEY|AUTH_TOKEN|OAUTH_TOKEN)|CLAUDE_CODE_OAUTH_TOKEN)[A-Z_]*)=")
+names = {m.group(1).decode() for m in map(pattern.match, items) if m}
+print(" ".join(sorted(names)))
+PY_END
+}
+
 # Builds the minimal patch for a route, plus its inverse for rollback.
 build_plan() {
   local runtime="$1" order="$2" drop_key_ref="$3" key_id="$4"
   DROP_KEY_REF="$drop_key_ref" KEY_REF_STATE="$(provider_key_ref)" KEY_ID="$key_id" \
   AGENTS="$(config_json agents)" PROVIDER_RUNTIME="$(config_json models.providers.anthropic.agentRuntime)" \
-  CURRENT_ORDER="$(config_json auth.order.anthropic)" RUNTIME="$runtime" ORDER="$order" node -e '
+  CURRENT_ORDER="$(config_json auth.order.anthropic)" RUNTIME="$runtime" ORDER="$order" AGENT="$AGENT" node -e '
     const agents = JSON.parse(process.env.AGENTS) ?? {};
     const runtime = process.env.RUNTIME;
     const order = JSON.parse(process.env.ORDER);
@@ -100,7 +198,8 @@ build_plan() {
       }
     };
     setRuntime(["agents", "defaults", "models"], agents.defaults?.models);
-    for (const [id, entry] of Object.entries(agents.entries ?? {})) setRuntime(["agents", "entries", id, "models"], entry?.models);
+    // Lane-aware: voice and background keep their own runtime, so only this agent moves.
+    setRuntime(["agents", "entries", process.env.AGENT, "models"], agents.entries?.[process.env.AGENT]?.models);
     if (providerRuntime && providerRuntime.id !== runtime) {
       const path = ["models", "providers", "anthropic", "agentRuntime", "id"];
       put(patch, path, runtime);
@@ -244,11 +343,19 @@ verify_switch() {
   return 1
 }
 
+# JORAH_LOG_GLOB wins, then logging.file once stage 0 sets it, then OpenClaw's default.
+log_glob() {
+  local file
+  [ -z "${JORAH_LOG_GLOB:-}" ] || { printf '%s' "$JORAH_LOG_GLOB"; return; }
+  file="$(oc config get logging.file 2>/dev/null || true)"
+  printf '%s' "${file:-$DEFAULT_LOG_GLOB}"
+}
+
 last_cli_turn() {
   local log
   # The glob has to expand here, and the log names are ours.
-  # shellcheck disable=SC2012,SC2086
-  log="$(ls -t $LOG_GLOB 2>/dev/null | head -1)"
+  # shellcheck disable=SC2012,SC2046
+  log="$(ls -t $(log_glob) 2>/dev/null | head -1)"
   [ -n "$log" ] || { echo "no log"; return; }
   LOG="$log" node -e '
     const lines = require("fs").readFileSync(process.env.LOG, "utf8").split("\n");
@@ -292,7 +399,7 @@ run_probe() {
 }
 
 cmd_status() {
-  local probe="$1" primary key_id file_view gw="unknown" problems=0 credentials stored order key_ref
+  local probe="$1" primary key_id file_view gw="unknown" problems=0 credentials stored order key_ref gateway_env silent cron
   primary="$(primary_model)"
   key_id="$(api_key_profile)"
   credentials="$(env_credential_names)"
@@ -302,7 +409,8 @@ cmd_status() {
   file_view="$(AGENTS="$(config_json agents)" PRIMARY="$primary" AGENT="$AGENT" CLI="$CLI_RUNTIME" API="$API_RUNTIME" node -e '
     const a = JSON.parse(process.env.AGENTS) ?? {};
     const entries = Object.entries(a.defaults?.models ?? {}).filter(([k]) => k.startsWith("anthropic/"));
-    for (const e of Object.values(a.entries ?? {})) entries.push(...Object.entries(e?.models ?? {}).filter(([k]) => k.startsWith("anthropic/")));
+    // Lane-aware: other agents may sit on another runtime on purpose, so they do not make this mixed.
+    entries.push(...Object.entries(a.entries?.[process.env.AGENT]?.models ?? {}).filter(([k]) => k.startsWith("anthropic/")));
     const count = (id) => entries.filter(([, v]) => v?.agentRuntime?.id === id).length;
     const cli = count(process.env.CLI), api = count(process.env.API), total = entries.length;
     const route = total && cli === total ? "cli" : total && api === total ? "api" : "mixed";
@@ -330,6 +438,16 @@ cmd_status() {
   say "  provider key ref: ${key_ref}"
   say "  API key saved:    ${key_id:-no}"
   say "  env credentials:  ${credentials:-none}"
+  gateway_env="$(gateway_env_names)"
+  case "$gateway_env" in
+    "not running" | unknown) say "  gateway env:      $gateway_env" ;;
+    "") say "  gateway env:      no credentials" ;;
+    *)
+      say "  gateway env:      $gateway_env"
+      say "  PROBLEM: the running Gateway's environment holds $gateway_env, which delegated Claude Code prefers over the plan."
+      problems=1
+      ;;
+  esac
   say "  last CLI turn:    $(last_cli_turn)"
 
   local active="$file_route"
@@ -357,6 +475,17 @@ cmd_status() {
     say "  PROBLEM: a stored auth order overrides config. Run '$0 cli' to clear it."
     problems=1
   fi
+  silent="$(silent_path_lines)"
+  if [ -n "$silent" ]; then
+    say "$silent"
+    problems=1
+  fi
+  cron="$(cron_fallback_lines)"
+  if [ -n "$cron" ]; then
+    say "$cron"
+    case "$cron" in *PROBLEM*) problems=1 ;; esac
+  fi
+  say "  not visible here: plan usage credits, Console auto-reload. Check those in their own settings."
   case "$active" in
     cli) say "ACTIVE ROUTE: cli (Claude Code login, subscription limits)" ;;
     api) say "ACTIVE ROUTE: api (saved API key, Console credits or pay-as-you-go)" ;;

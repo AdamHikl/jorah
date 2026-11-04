@@ -1,0 +1,17 @@
+#!/opt/homebrew/bin/node
+// Reads {ids:[...]} on stdin, returns {protocolVersion:1, values, errors}. Prints no secret anywhere else.
+// Install per docs/plan/03-security-and-privacy.md W0.5. Owned by the user running the Gateway, never root.
+const { spawnSync } = require("node:child_process");
+let s = ""; process.stdin.setEncoding("utf8");
+process.stdin.on("data", c => (s += c));
+process.stdin.on("end", () => {
+  const values = {}, errors = {};
+  for (const id of JSON.parse(s || "{}").ids ?? []) {
+    if (!/^[a-z0-9-]+$/.test(id)) { errors[id] = { message: "bad id" }; continue; }
+    const r = spawnSync("/usr/bin/security",
+      ["find-generic-password", "-a", "jorah", "-s", `jorah-${id}`, "-w"], { encoding: "utf8" });
+    if (r.status === 0) values[id] = r.stdout.replace(/\n$/, "");
+    else errors[id] = { message: "not found" };
+  }
+  process.stdout.write(JSON.stringify({ protocolVersion: 1, values, errors }));
+});

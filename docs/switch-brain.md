@@ -17,11 +17,11 @@ Expected on the normal route:
 ACTIVE ROUTE: cli (Claude Code login, subscription limits)
 ```
 
-Any line starting `PROBLEM:` says what to run, and the exit code is 2. Add `--probe` to prove the route with one real test turn. It uses a little quota or credit and deletes its test session afterwards. A CLI probe shows `runner: cli`, an API probe shows `runner: embedded`, `harness: openclaw`, `credential: profile`.
+`status` also checks the silent paths: fallback chains on defaults, every agent and cron payloads, the utility model, `cyberFailover`, media fallback, fast mode, `managedNativeTools`, the `commands.*` settings stage 0 pins, OpenAI OAuth beside a Platform key, and credentials in the running Gateway's environment. It says `unknown` for anything it can't read. Only `main` and the defaults move between routes, so `voice` and `background` keep their own. It reads the log from `JORAH_LOG_GLOB`, then `logging.file`. Any line starting `PROBLEM:` says what to run, and the exit code is 2. Add `--probe` to prove the route with one real test turn. It uses a little quota or credit and deletes its test session afterwards. A CLI probe shows `runner: cli`, an API probe shows `runner: embedded`, `harness: openclaw`, `credential: profile`.
 
 ## Save a key (once)
 
-1. To use the monthly Max credits, link a Console organization: on claude.ai, go to **Settings > Billing > API credits**, select the organization and accept the terms. You can't change the link yourself afterwards, so choose carefully. The credits appear under **Promotional credits** on the [Console billing page](https://platform.claude.com/settings/billing).
+1. **Jorah doesn't use this step (decision 5).** Its key lives in a named `jorah` workspace with its own limit, with no Max link. To use the monthly Max credits instead, link a Console organization: on claude.ai, go to **Settings > Billing > API credits**, select the organization and accept the terms. You can't change the link yourself afterwards, so choose carefully. The credits appear under **Promotional credits** on the [Console billing page](https://platform.claude.com/settings/billing).
 2. In the [Console](https://platform.claude.com/), create an API key in that organization.
 3. In your own terminal, run the command below and paste the key at its prompt. Never paste it into a chat, a file or an environment variable.
 

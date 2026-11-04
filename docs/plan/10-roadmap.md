@@ -130,6 +130,7 @@ git -C ~/Documents/jorah log --oneline | head -5
 | **P3** | Local speech on the RTX 5070, reached from iPhone and AirPods | M20, parts of M2a and M2b | **Talking to Jorah without the Mac** |
 | **P4** | Pi as room ear, trained wake word | M10, on the Pi | **"Hey Jorah" in the room** |
 | **P5** | Bridge and guard, then M3's hard gate on the PC | M2b-C, M2b-D, M3 | Voice-started jobs, web answers, ready for private data |
+| **P5a** | Typed Haiku pilot on Telegram, two weeks, then Adam decides | New, on P5's bridge | A measured answer on whether everyday typed chat can run on Haiku |
 | **Then** | M4 onward, in the existing order | Table below | Mail, calendar and the rest |
 
 **The honest catch:** voice before M3 has no private memory and starts no real jobs. It is a real conversation with the thin `voice` agent, not yet the full assistant.
@@ -223,6 +224,22 @@ As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to
 ### P5. Bridge and the hard gate (M2b-C, M2b-D, M3)
 
 BR-S1 to S7, `jorah-guard` v0, `ask_main` and jobs on the API lane (2.38 to 2.45), with SEC-T25, T37, T38. **Then M3 in full, on the PC.** Step 3.2's question about `sbx` on macOS becomes K10b on Windows Home, where `sbx` is `[unverified]` and Hyper-V doesn't exist. **If it fails, Adam decides:** Pro, Ubuntu, or no Lab yet. Step 3.3's table is re-read for WSL. Step 3.0 changes: `main` stays on Max.
+
+### P5a. Typed Haiku pilot (new, Adam approved adding it on 2026-11-04)
+
+**The idea:** everyday typed chat runs on Haiku 5.5 for speed and lower use, and Haiku hands harder questions to Opus 5.5 and reports back. Voice already works this way through `ask_main`. This tests it for Telegram, without replacing `main`. It starts after P5 because that link needs `jorah-guard` and SEC-T25, T37 and T38, and it doesn't hold up M4. **Untested, and `research/brain.md` chose against a classifier,** so this is a pilot, not a decision.
+
+- [ ] **P5a.1 Adam decides, before anything is built.** Does a Haiku-to-Opus escalation count as typed, so on Max, or machine-started, so on the API? It affects the terms risk Adam accepted, and `front` and `ask_main` may need different routes. My pick is typed, since Adam started the turn. `[S]`
+- [ ] **P5a.2 Claude, on `jorah-dev` first, then Adam's yes.** A `front` agent on Haiku 5.5 with a small profile of who Adam is, a prefix under 8K tokens, and no shell, web or outward tools. It escalates through the P5 bridge by written rules, and on a typed override such as "ask Opus". Every reply names the model that answered, because Jorah never changes model silently. A previewed Telegram binding sends the chat to `front`, and removing it restores `main`. `[L]`
+- [ ] **P5a.3 Claude.** Before the pilot, record a baseline of a week on `main`: plan use from `/usage`, and reply time. `[S]`
+- [ ] **P5a.4 Adam, two weeks.** Daily use, logging every answer that should have gone to Opus and didn't. `[D]`
+- [ ] **P5a.5 Adam decides, from the numbers:** keep `front`, keep `main`, or change the rules. `[S]`
+
+**Gate:** everything at P5, plus SEC-T24 on `front`, with a canary in `MEMORY.md` it must not read. Any escalation names its model. `front` can't write memory or skills: corrections go to `main`, so learning stays in one place.
+
+**What it can't do by design:** know everything `main` knows. Haiku judging its own limits is the main risk, because a confident wrong answer never escalates. Opus also sees only what Haiku passes on, so long threads may lose context. The log in P5a.4 is what measures this.
+
+**Separate from this:** trimming `main`'s 67K prefix helps every model, and is worth doing whichever way the pilot goes.
 
 ### Decisions recorded for this path
 
@@ -1815,6 +1832,7 @@ Session M0-F applies these. Until then, this table wins over the row it names.
 | Gateway and Telegram tokens loading from `openclaw secrets store`. Rescue bot on the Pi, and the Pi's RAM | P2 |
 | iPhone Talk reaching the local stack through the relay. Local voice quality with no hosted baseline. A hard session cap for phone Talk | P3 |
 | `sbx` on Windows Home | P5 |
+| Whether Haiku can judge when to escalate, how much plan use `front` saves, and whether escalations count as typed | P5a |
 | VAT on Max | Invoice |
 
 **Law:** Slovak and EU items carry the labels in `03-security-and-privacy.md` section 14, and some rest on law-firm summaries. A lawyer is needed before anything leaves the household.

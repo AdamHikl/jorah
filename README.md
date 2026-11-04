@@ -17,7 +17,7 @@ A personal "Jarvis": one central agent you talk to, which sees, listens, speaks 
 | `sandbox/` | Scratch folder for delegated Claude Code tasks (git-ignored) |
 | `~/work/<repo>` | Jorah's own clones of real projects, separate from `~/Documents` (see Working on projects) |
 | `config/memory.patch.json5` | Memory stack config |
-| `scripts/configure.sh` | Re-applies the non-secret OpenClaw config (use on the always-on device) |
+| `scripts/configure.sh` | Sets up the non-secret OpenClaw config on a new profile. Refuses an existing one, and `--diff` previews without writing |
 | `scripts/setup-permissions.sh` | Writes `~/.claude-jorah/settings.json`: what delegated Claude Code may do |
 | `scripts/setup-continuity.sh` | Links transcripts so chats survive, sets the hourly Haiku heartbeat |
 | `scripts/setup-learning.sh` | Checks learning setup; creates the daily review only with `--create-review-job` |
@@ -70,10 +70,10 @@ Check Claude Code delegation from chat with `/acp doctor`, then `/acp spawn clau
 
 ## Conversation continuity
 
-`scripts/setup-continuity.sh` (safe to re-run; `configure.sh` calls it) does two things:
+`scripts/setup-continuity.sh` (`configure.sh` calls it on a new profile) does two things:
 
 - Links `~/.claude/projects/<workspace key>` to `~/.claude-jorah/projects/<workspace key>`. OpenClaw 2026.10.9 only looks for Claude transcripts under `~/.claude`, so without the link Jorah loses the conversation when its Claude process exits.
-- Sets `agents.defaults.heartbeat` to hourly, `anthropic/claude-haiku-5-5`, `isolatedSession: true`, so heartbeats run in `agent:main:main:heartbeat` and leave the main chat alone.
+- On a new profile, or with `--set-heartbeat`, sets `agents.defaults.heartbeat` to hourly, `anthropic/claude-haiku-5-5`, `isolatedSession: true`, so heartbeats run in `agent:main:main:heartbeat` and leave the main chat alone.
 
 Side effect of the link: `claude --resume` run from `workspace/` under your own `~/.claude` lists Jorah's transcripts.
 

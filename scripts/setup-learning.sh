@@ -15,7 +15,7 @@ JOB_CRON="30 8 * * *" # After Dreaming (03:00) and outside quiet hours (23:00-08
 JOB_MODEL="anthropic/claude-sonnet-5-5"
 JOB_TOOLS="sessions_list,sessions_history,sessions_search,memory_search,memory_get,skill_workshop"
 
-oc() { openclaw --profile jorah "$@"; }
+oc() { openclaw --profile "${JORAH_PROFILE:-jorah}" "$@"; }
 
 case "${1:-}" in
   "") create_job=0 ;;

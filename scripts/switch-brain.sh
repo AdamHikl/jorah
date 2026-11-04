@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Single quotes around the embedded node programs are deliberate.
+# shellcheck disable=SC2016
 # Manually switches Jorah's brain between the Claude CLI login and an Anthropic API key.
 #
 #   switch-brain.sh status [--probe]   Which route is really active. --probe runs one test turn.
@@ -21,7 +23,7 @@ API_RUNTIME="openclaw"
 STATE_DIR="$HOME/.openclaw-$PROFILE"
 BACKUP_DIR="$STATE_DIR/backups/switch-brain"
 # OpenClaw doubles the hyphens of a profile name in its log file name.
-LOG_GLOB="/tmp/openclaw/openclaw-${PROFILE//-/--}-*.log"
+LOG_GLOB="${JORAH_LOG_GLOB:-/tmp/openclaw/openclaw-${PROFILE//-/--}-*.log}"
 
 oc() { openclaw --profile "$PROFILE" "$@"; }
 say() { printf '%s\n' "$*"; }
@@ -244,6 +246,8 @@ verify_switch() {
 
 last_cli_turn() {
   local log
+  # The glob has to expand here, and the log names are ours.
+  # shellcheck disable=SC2012,SC2086
   log="$(ls -t $LOG_GLOB 2>/dev/null | head -1)"
   [ -n "$log" ] || { echo "no log"; return; }
   LOG="$log" node -e '

@@ -1,0 +1,7 @@
+# M0 only. node matches this Mac.
+[tools]
+gitleaks = "8.30.1"
+node = "26.13.0"
+just = "1.59.0"
+lefthook = "2.2.2"
+shellcheck = "0.11.0"

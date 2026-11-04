@@ -313,8 +313,8 @@ No allowlisted paths, so docs get scanned too. Add a gateway token rule if its s
 | `lefthook` pre-push | Refuses a push to `main` unless `JORAH_ALLOW_MAIN=1` is set by Adam | Mistakes, not `--no-verify` | M0 |
 | `.claude/settings.json` deny | `git push origin main`, force pushes. Check rule syntax at setup | Sessions, mostly | M0 |
 | PRs from worktree branches, merged by Adam | Review | Unreviewed merges | M0 |
-| Ruleset test | Create one ruleset on the private repo and see if it enforces. GitHub's pricing page and features page disagree [verified: both, `research/engineering.md` 4.4] | Settles the question | After ENG-2 |
-| GitHub Pro | Protected branches on private repos | Anything with a credential | **Before any unattended or `claude -p` session can push.** Adam buys |
+| Ruleset test | **Enforced on this free private repo, 2026-11-03** [measured: `docs/evidence/m0/m0-b-2026-11-03.md`], though GitHub's pricing page and features page disagree, so re-check if the plan changes | Settled | Done |
+| A `main` ruleset, or GitHub Pro only if rulesets stop working | Protected branches on private repos | Anything with a credential | **Before any unattended or `claude -p` session can push** |
 
 Real isolation stays the same on any plan: Jorah's runtime account has no credential for this repo.
 

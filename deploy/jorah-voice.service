@@ -1,0 +1,34 @@
+[Unit]
+Description=Jorah voice: speech and thinking, reached only through Tailscale Serve
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jorah-voice
+WorkingDirectory=/opt/jorah-voice/services/jorah-voice
+ExecStart=/home/jorah-voice/.venv/bin/python -m jorah_voice.server
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/jorah-voice/.local/bin:/usr/bin:/bin
+# The code is read-only to it, and the rest of the system is out of reach.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/jorah-voice/.cache/jorah-voice /home/jorah-voice/.claude-jorah
+BindReadOnlyPaths=/home/jorah-voice/.venv /home/jorah-voice/.local /home/jorah-voice/.config/jorah-voice
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=10G
+
+[Install]
+WantedBy=multi-user.target

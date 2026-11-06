@@ -1,0 +1,21 @@
+// Sandbox tool policy for the PC, 2026-11-06. OpenClaw's default sandbox allow list
+// (exec, fs, sessions) blocks everything else once a session is sandboxed (mode "all"), which
+// left Jorah without memory search, web, the browser, reminders, skills and heartbeat_respond.
+// These are the capabilities Adam's waived gate of 2026-11-06 turned on (web, browser, cron).
+// Still denied: gateway, nodes, computer (global tools.deny), media generation (main's deny),
+// canvas, and every channel plugin except the conversation's own via `message`.
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+        ] } } },
+      },
+      background: {
+        tools: { sandbox: { tools: { alsoAllow: ["group:web"] } } },
+      },
+    },
+  },
+}

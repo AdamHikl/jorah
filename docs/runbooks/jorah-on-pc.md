@@ -30,6 +30,8 @@ Built on Adam's go-ahead to build first and test at the end. Nothing here is tes
 
 - **Persona (P2.4):** `workspace/SOUL.md` and `IDENTITY.md`, copied to `/home/jorah/workspace`: witty and warm day to day, dry and brief for work and anything serious, pronoun "he". The old files are `*.pre-persona` next to them.
 - **Shell:** agent `background`, added with `openclaw agents add`, then `config/pc/background.patch.json5` (dry run 7 updates, applied, no restart). It runs on the embedded runtime, so `agents.defaults.sandbox` applies (`sandbox explain --agent background`: sandboxed, `all`, `podman`). Its workspace is `/home/jorah/workspace-background`, rules from `workspace-background/`, OpenClaw's seed files moved to `.seed-templates/`. Main may spawn it (`subagents.allowAgents`), and main's `AGENTS.md` says when. The restored llama.cpp plugin was disabled (`plugins disable llama-cpp`), because its failed load made `agents add` refuse.
+- **Tools under the sandbox:** OpenClaw's default sandbox allow list (exec, files, sessions) blocks every other tool once a session is sandboxed, so Jorah had no memory search, web, browser, reminders, skills or `heartbeat_respond` (the garbled 15:05 heartbeat). `config/pc/tools.patch.json5` adds them for `main`, and web for `background`, per the waived gate (applied, no restart, audit still 0 critical). `sandbox explain --agent main` lists them.
+- **Heartbeat rules:** main's `AGENTS.md` now says what's connected (no email, calendar or social yet), to reply `NO_REPLY` unless something needs Adam, and to use the `automations` tool for reminders.
 - **Adam's step, a Terminal attached to no agent:** Jorah's Console key (the `jorah` workspace, $80 a month cap) for `background` only:
 
   ```bash

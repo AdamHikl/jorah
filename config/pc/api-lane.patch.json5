@@ -1,0 +1,29 @@
+// Every agent on the API key, by Adam's request of 2026-11-06 ("change everything to use the API
+// key for now, until I tell you to switch back to the Max plan"). Switch back with max-lane.patch.json5.
+// Applied by scripts/pc/use-api-key.sh, after Adam pastes the key, on his y at the dry run.
+//
+// What it changes: every Claude model on main (chat, heartbeat, Dreaming, the utility model) runs on
+// OpenClaw's embedded runtime instead of claude-cli, so it uses the Anthropic API key, not the Max
+// login. Side effect: main is now inside the Podman sandbox too, so its own exec works.
+// The key's profile is anthropic:jorah in main's store. auth.order.anthropic was [] so no key could
+// be used silently; it now names that profile, for every agent, background included.
+{
+  auth: { order: { anthropic: ["anthropic:jorah"] } },
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-haiku-5-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-opus-5-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-opus-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-sonnet-5-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-sonnet-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-fable-5-1": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-fable-5": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-opus-4-7": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-sonnet-4-6": { agentRuntime: { id: "openclaw" } },
+        "anthropic/claude-opus-4-6": { agentRuntime: { id: "openclaw" } },
+        "anthropic/*": { agentRuntime: { id: "openclaw" } },
+      },
+    },
+  },
+}

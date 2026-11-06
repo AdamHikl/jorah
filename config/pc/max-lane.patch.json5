@@ -1,0 +1,24 @@
+// Back to the Max plan: undoes api-lane.patch.json5. Apply only when Adam says to switch back.
+// Preview with --dry-run, apply on Adam's yes. No secret involved; the key stays stored but unused
+// by main, because auth.order.anthropic goes back to []. `background` keeps its own embedded runtime
+// (background.patch.json5) and so needs its own profile and order again (runbook, Persona and shell).
+{
+  auth: { order: { anthropic: [] } },
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-haiku-5-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-opus-5-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-opus-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-sonnet-5-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-sonnet-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-fable-5-1": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-fable-5": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-opus-4-7": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-sonnet-4-6": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/claude-opus-4-6": { agentRuntime: { id: "claude-cli" } },
+        "anthropic/*": { agentRuntime: { id: "claude-cli" } },
+      },
+    },
+  },
+}

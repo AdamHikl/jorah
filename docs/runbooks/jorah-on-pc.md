@@ -46,6 +46,32 @@ Built on Adam's go-ahead to build first and test at the end. Nothing here is tes
   Expected: the key prompt doesn't echo, the order is set, and the audit stays `clean`. If the audit reports the key as plaintext, tell Claude. The order matters because `auth.order.anthropic` is `[]` globally, which would exclude the key.
 - **Test at the end:** ask Jorah in Telegram to run `id; ls /home`. Expected: it hands the job to `background`, and the answer shows `uid=1000` and no `/home/jorah`.
 
+## On the API key, not the Max plan, 2026-11-06
+
+Adam asked for every agent on the API key "until I tell you to switch back to the Max plan". `config/pc/api-lane.patch.json5` moves every Claude model to the embedded runtime and sets `auth.order.anthropic` to `anthropic:jorah`, the key's profile in main's store (dry run: 12 updates validated, nothing applied by Claude). That covers chat, heartbeat, Dreaming, the utility model and `background`, so the separate `background` key step above isn't needed while this holds. Main is then inside the Podman sandbox too, so its own exec works. The key's Console workspace has an $80 a month cap: Opus for every message spends it faster than Sonnet would.
+
+- **Adam's step, a Terminal attached to no agent:**
+
+  ```bash
+  ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash -l /opt/jorah/scripts/pc/use-api-key.sh
+  ```
+
+  Expected: a key prompt that doesn't echo, two order lines, `Dry run successful: 12 update(s)`, then `y` applies it, `validate` passes, and the audit stays clean.
+- **Test at the end:** send a Telegram message. Expected: a reply, Console usage for the `jorah` workspace goes up and Claude's Max usage doesn't. If the old session keeps the Max route, tell Claude.
+- **Switching back:** on Adam's word, `config patch --file /opt/jorah/config/pc/max-lane.patch.json5`, dry run first.
+
+## Case fans
+
+The PC is an ASRock B760M Steel Legend WiFi with an i7-14700K, which idles at about 3% load under Jorah (measured 2026-11-06), so the fans spin from the board's default curve, not from work. The fix is a fan curve in the BIOS. It works with nobody signed in to Windows and needs no driver or app, unlike Windows fan tools. The PC needs a monitor and keyboard for it, and Jorah is offline until Windows is back.
+
+1. Restart the PC and press **Del** at the ASRock logo. Press **F6** for Advanced Mode if it opens in Easy Mode.
+2. Open **H/W Monitor**. Each header has its own setting: `CPU Fan 1`, `Chassis Fan 1`, `Chassis Fan 2` and so on. The current RPM shows above them, so you can see which headers have fans.
+3. For each **Chassis Fan**, set the mode to **Customize** (or **Silent** if you'd rather not set points), with the CPU as the temperature source. Suggested points: up to 50 °C at the lowest speed it allows (0% stops the fan, if the board offers it), 60 °C at 40%, 70 °C at 70%, 80 °C at 100%.
+4. For **CPU Fan 1**, choose **Silent**. Don't let it stop: the CPU cooler is what keeps the 14700K safe under a sudden load.
+5. **F10** saves and restarts.
+
+Expected: quiet or stopped case fans at idle, and they speed up during a heavy job. The GPU's own fans already stop at idle on most RTX cards. Menu names can differ slightly by BIOS version (this PC has 6.07); if one isn't there, tell Claude what you see.
+
 ## iPhone app and the Mac's browser
 
 `config/pc/remote.patch.json5` is applied (no restart): `gateway.publicOrigin` is `https://rocket.tail1574a5.ts.net` and `gateway.trustedProxies` holds `127.0.0.1` and `::1`, so traffic from Windows' Serve proxy is attributed to the real tailnet client and still needs the token. The audit's `trusted_proxies_missing` warning is gone. Port 443 for the Gateway, 43210 for voice. Unverified: that Windows' proxy reaches the distro from loopback.

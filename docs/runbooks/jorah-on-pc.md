@@ -13,8 +13,8 @@ Steps marked [measured] ran on the PC on 2026-11-05 or 2026-11-06. The rest have
 | 3 | Stage 0 settings for the PC, secrets store, new Telegram token | **Applied to Jorah 2026-11-06** [measured]: token rotated, both tokens in the store, `config/pc/stage0.patch.json5` applied with Dreaming back on, 0 Mac paths, secrets audit clean. Memory search is keyword-only, by Adam's choice |
 | 4 | Move: stop the Mac Gateway, back up, restore here, sign in. **Never two Gateways** | **Done 2026-11-06** [measured]: Mac Gateway down, Claude signed in as Jorah (Max), Gateway on 127.0.0.1/[::1]:43181, health ok, 0 critical, `Heartbeat (main)` hourly on Haiku and `Memory Dreaming` at 03:00. Telegram answered `Hello` at 15:10 on Opus in `agent:main:main`. Recall of a Mac fact and the sandboxed shell through Telegram: see `docs/evidence/p2-cutover/` |
 | 5 | Proof: Mac closed, PC rebooted, Telegram answers and recalls a saved fact | Not run |
-| 6 | Speech feeds Jorah's main session through the Gateway's Chat Completions endpoint | Code done. End to end on the PC with a stand-in Gateway and the service's sandbox settings [measured]: heard correctly, reply streamed and spoken, recognition on the CPU (Parakeet v3) and speech on the GPU (Kokoro fp32). Not run against the real Gateway. End of turn shortened and steadied (`docs/evidence/voice-endpointing/`): 0.65 s after a finished sentence, 1.2 s after an open word, tested on synthetic speech only. `jorah-voice.service` installed, `disabled`, until the window gives it the Gateway token |
-| 7 | Pair the iPhone and the Mac as clients | Not run |
+| 6 | Speech feeds Jorah's main session through the Gateway's Chat Completions endpoint | **Running since 2026-11-06 15:56** [measured]: files in `/opt/jorah` match `main` (lockfile unchanged, so no `uv sync`), `jorah-voice.service` **enabled** and active, models loaded in 13 s, listening on `127.0.0.1:43210` only, and Windows reaches that port. Earlier, end to end with a stand-in Gateway and the service's sandbox settings [measured]: heard correctly, reply streamed and spoken, recognition on the CPU (Parakeet v3), speech on the GPU (Kokoro fp32). End of turn: 0.65 s after a finished sentence, 1.2 s after an open word, synthetic speech only (`docs/evidence/voice-endpointing/`). Not run against the real Gateway: Adam's test, see "Voice from the Mac". Undo: `systemctl disable --now jorah-voice` as root |
+| 7 | Pair the iPhone and the Mac as clients | **Mac voice:** `mac-ear` built [measured, stand-in tests pass]. Windows Tailscale Serve route `https://rocket.tail1574a5.ts.net:43210` → `http://127.0.0.1:43210` **not up yet**: Serve isn't enabled on the tailnet, which needs Adam's admin consent. Steps in "Voice from the Mac". iPhone and Gateway route: not run |
 
 ## Waived gate, 2026-11-06
 
@@ -113,6 +113,45 @@ Mirrored networking in `.wslconfig` sends all loopback TCP through `loopback0`, 
 - **Web search:** DuckDuckGo 2026.10.9, no account, returned 5 results, wrapped as untrusted content.
 - **Linger:** `loginctl enable-linger jorah` is on, so rootless Podman under a system unit uses systemd cgroups.
 
+## Voice from the Mac
+
+```
+Mac: build/mac-ear ──wss, tailnet only──> Windows tailscale serve :43210 ──> WSL jorah 127.0.0.1:43210
+```
+
+Windows' own Tailscale serves it, because the distro has no `tailscale`. Under mirrored networking Windows reaches the distro's loopback listener [measured: `Test-NetConnection 127.0.0.1 -Port 43210` true]. Serve terminates HTTPS on the tailnet, so `mac-ear` connects with `wss://`, and nothing is exposed past the tailnet: Funnel stays off. Port 43210 rather than 443, so 443 stays free for the Gateway's own route for remote clients. The token travels inside the WebSocket and is checked by `jorah-voice`, and the Gateway token never leaves the PC.
+
+**Adam's steps,** in order. Steps 1 and 3 involve a sign-in and a secret, so run them in a Terminal attached to no agent.
+
+1. **Enable Serve on the tailnet** (one time). From the Mac:
+   ```bash
+   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve --bg --yes --https=43210 http://127.0.0.1:43210"
+   ```
+   The first time it prints `Serve is not enabled on your tailnet` and a `login.tailscale.com/f/serve?node=...` link, then waits. Open the link, sign in as the tailnet admin, and enable Serve. Turn on HTTPS certificates too if the page asks. The waiting command then finishes and prints `Available within your tailnet: https://rocket.tail1574a5.ts.net:43210/` with `|-- proxy http://127.0.0.1:43210`. If it doesn't, press Ctrl-C and run the same command again.
+2. **Check the route** (no secret):
+   ```bash
+   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve status & tailscale funnel status"
+   ```
+   Expected: one entry, `https://rocket.tail1574a5.ts.net:43210 (tailnet only)` proxying to `http://127.0.0.1:43210`, and nothing that says Funnel is on.
+3. **Put the client token in the Mac's Keychain.** `mac-ear` reads Keychain service `jorah-voice`, account `adam`. This copies it from the PC without showing it:
+   ```bash
+   security add-generic-password -U -s jorah-voice -a adam -w "$(ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "wsl -d jorah -u jorah -- cat /home/jorah/.config/jorah-voice/token")"
+   ```
+   Expected: no output. `security find-generic-password -s jorah-voice -a adam` then shows the item without the password. The token sits briefly in that `security` command's arguments on the Mac.
+4. **Talk to Jorah.** From the repo (`~/Documents/jorah` after the push and `git pull --ff-only`, or the worktree):
+   ```bash
+   just mac-ear
+   ```
+   ```bash
+   build/mac-ear --url wss://rocket.tail1574a5.ts.net:43210
+   ```
+   macOS asks whether Terminal may use the microphone the first time: allow it. The first connection can take up to half a minute while Tailscale gets the certificate. Expected: `● MIC OPEN`. Say "Hello Jorah, what did we last talk about on Telegram?": `You:` shows your words, `Jorah:` the reply as it is spoken. Say "goodbye": `○ MIC CLOSED` and the session's timings. On the PC, `journalctl -u jorah-voice` shows `session open` and `session closed` with timings, never the words.
+5. **Same session as Telegram:** send Jorah a message on Telegram that mentions what you just said by voice. Jorah should know it, since both use `agent:main:main`. This is the unverified part of step 6.
+
+If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `connection lost` at once means the Serve route is down (step 2) or `jorah-voice` isn't running (`systemctl status jorah-voice` in the distro). "I can't reach my brain right now" means the Gateway refused or is down.
+
+**Undo:** `tailscale serve --https=43210 off` on Windows removes only this route (`tailscale serve reset` removes all Serve config, which is only this route today). `systemctl disable --now jorah-voice` as root in the distro stops the service. `security delete-generic-password -s jorah-voice -a adam` on the Mac removes the token.
+
 ## Still open
 
 - Boot with nobody signed in is untested on Windows Home. The Windows task "Jorah WSL" keeps the distro running (step 2), but the Gateway has no boot service yet, and a reboot test is still owed.
@@ -121,7 +160,7 @@ Mirrored networking in `.wslconfig` sends all loopback TCP through `loopback0`, 
 - `/run/WSL/2_interop` stays world-writable. Adam approved the hardening: step 11's unit has it, and step 2's service must carry it too.
 - `socat` isn't installed, so Claude Code's sandbox can't start. `scripts/pc/wsl-jorah-setup.sh` doesn't install it.
 - `scripts/setup-permissions.sh` writes macOS paths, so it needs a Linux version before delegated coding.
-- Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried.
+- Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried for the Gateway. Voice has its own route on port 43210, waiting on Adam's Serve consent.
 - `/usr/lib/wsl/drivers` is a read-only mount from Windows, kept for the GPU. It also puts Windows `.exe` files inside the distro.
 - Public internet is open to the agent.
 - SEC-T17, the packet capture from P3's gate, the GPU spike (P1.3) and the 7-day soak.

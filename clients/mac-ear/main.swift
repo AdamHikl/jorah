@@ -66,7 +66,7 @@ func readToken(_ options: Options) -> String {
     do { try process.run() } catch { fail("Can't run the security tool") }
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
-    guard process.terminationStatus == 0 else { fail("No jorah-voice token in the Keychain. See docs/runbooks/voice-on-pc.md") }
+    guard process.terminationStatus == 0 else { fail("No jorah-voice token in the Keychain. See Voice from the Mac in docs/runbooks/jorah-on-pc.md") }
     return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 }
 

@@ -36,11 +36,16 @@ Everything else is prepared, and B4, B7, B8, B9 and B10 are done. These need Ada
 2. ~~Before the window: say yes to the two plugin installs in step 8.~~ Done 2026-11-06, on Adam's yes.
 2b. ~~Before the window: say yes to step 8b.~~ Done 2026-11-06, on Adam's yes. Its key removal now runs at the end of step 9.
 3. **Window, step 2: rotate the Telegram token** at BotFather (`/revoke`, then pick Jorah's bot). Expected: BotFather replies with a new token. Keep it in the password manager, never in a chat or file.
-4. **Window, step 8: store the two secrets** in the `jorah` shell. Expected: `Stored OPENCLAW_GATEWAY_TOKEN (secret).` and `Stored TELEGRAM_BOT_TOKEN (secret).`, then `secrets store list` shows both as `[secret] (write-only)`, with no token on screen.
-5. **Window, step 9: say yes to the patch** after its dry run. Expected: `Dry run successful: N update(s) validated`, N around 70, then `Config valid` and `0` Mac paths.
-6. **Window, step 10: sign in to Claude** in the same shell. Expected: both logins finish without an error. If any setup prompt offers a llama.cpp chat model, answer **No**.
-7. **Window, step 11, after the start: write the voice token file,** `/home/jorah/.config/jorah-voice/gateway-token`, mode 600. Expected: `ls -l` shows `-rw-------` owned by `jorah`, and the file isn't empty.
-8. **Window, step 11: in Telegram, send `Hello`,** then ask for a fact saved on the Mac. Expected: a reply within a minute, and the fact. Recall is keyword-only on the PC, so ask with words the fact contains.
+4. **Window, steps 8, 9 and 10 in one run:** `scripts/pc/cutover-window.sh`, in a Terminal attached to no agent:
+
+   ```bash
+   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash -l /opt/jorah/scripts/pc/cutover-window.sh
+   ```
+
+   It makes the new Gateway token and writes the same value to the voice token file, so step 11's `--show` isn't needed. It asks for the new Telegram token at a hidden prompt, dry-runs the patch Claude filled in at `/home/jorah/cutover/pc.json5`, and applies it only when Adam types `y`. Then the llama.cpp key goes and Adam signs in to Claude. Expected, in order: `Stored OPENCLAW_GATEWAY_TOKEN (secret).`, `Stored TELEGRAM_BOT_TOKEN (secret).`, both `[secret] (write-only)`, the voice token file `-rw-------`, `Dry run successful: N update(s) validated` with N around 71, `Config valid`, `Mac paths left in the config: 0`, `Secrets audit: clean. plaintext=0`, then both logins without an error. If a setup prompt offers a llama.cpp chat model, answer **No**. Run again, it skips what's done.
+5. **Window, step 11: in Telegram, send `Hello`** once Claude has started the Gateway, then ask for a fact saved on the Mac. Expected: a reply within a minute, and the fact. Recall is keyword-only on the PC, so ask with words the fact contains.
+
+Dreaming is back on in the patch, by Adam's yes of 2026-11-06. It was paused at roadmap 0.13a over the Max lane. It runs nightly at 03:00 on the default model through Jorah's own Claude login, an exception to decision 4 like the heartbeat, until 1.26 moves both to the API lane. Active Memory, Memory Wiki and Skill Workshop were already on in the restored config.
 
 ## Before the window
 

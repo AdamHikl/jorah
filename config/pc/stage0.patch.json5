@@ -58,7 +58,14 @@
   plugins: {
     allow: ["anthropic", "telegram", "acpx", "memory-core", "active-memory",
             "memory-wiki", "device-pair", "talk-voice", "browser", "duckduckgo"],
-    entries: { acpx: { config: { cwd: "/home/jorah/work" } } },
+    entries: {
+      acpx: { config: { cwd: "/home/jorah/work" } },
+      // Dreaming back on, by Adam's yes of 2026-11-06 ("turn on dreaming, memory, and everything
+      // else"). It was paused at roadmap 0.13a over the Max lane. dreaming.model stays unset, so it
+      // runs nightly at 03:00 on the default model through Jorah's own Claude login: an exception
+      // to decision 4, like the heartbeat, until 1.26 moves both to the API lane on `background`.
+      "memory-core": { config: { dreaming: { enabled: true } } },
+    },
   },
   // Keyword-only memory search (FTS), by Adam's choice of 2026-11-06. llama.cpp starts each model's
   // server on a random loopback port, which the firewall refuses. The later fix is NAT networking

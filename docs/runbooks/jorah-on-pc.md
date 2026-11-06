@@ -68,6 +68,10 @@ Built on Adam's go-ahead to build first and test at the end. Nothing here is tes
    In the app: **Settings → Gateway**, scan the QR, connect. Expected: Jorah's chat with the Telegram history, because it's the same `agent:main:main` session. If the app shows **Pending approval**, approve it in the same Terminal with `openclaw --profile jorah devices list` and `devices approve <requestId>`, after checking it's your phone. Device commands (camera, location, screen and the rest) stay denied by `gateway.nodes.commands.deny`.
 3. **Mac browser:** open `https://rocket.tail1574a5.ts.net/` and connect with the Gateway token. Get it in the same Terminal with `openclaw --profile jorah gateway auth-token --show`, paste it into the page, and don't save it anywhere else. Expected: the Control UI, with Chat, Dreams and Skill workshop.
 
+## Daily learning review: blocked by the sandbox
+
+`scripts/setup-learning.sh` and its prompt are in `/opt/jorah`, but don't schedule it yet. `openclaw doctor` warns that with `agents.defaults.sandbox.mode: "all"`, `skill_workshop` is unavailable in a sandboxed run without library-authoring authority, so a cron review could read sessions but never save a skill. Adam's own turns may still save skills in the moment, if they carry the host's authority (unverified, test at the end: correct Jorah on how to do something, expect `💾 Learned: ...`). Fixing the review means a non-sandboxed run for it, which weakens the sandbox, so it's a decision for later.
+
 ## Daily backup, written, not installed
 
 `deploy/jorah-backup.service` and `.timer`: `openclaw backup create --verify` at 04:30 into `/home/jorah/backups` (mode 700), keeping 14 daily, 8 weekly and 6 monthly archives with OpenClaw's own retention. Local only: it protects against a broken state, not a dead disk. Offsite is README decision 41 (restic to Hetzner, passphrase offline), Adam's choice. Installing a schedule needs Adam's yes. On that yes:

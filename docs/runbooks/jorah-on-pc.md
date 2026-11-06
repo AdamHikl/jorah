@@ -45,6 +45,28 @@ Built on Adam's go-ahead to build first and test at the end. Nothing here is tes
   Expected: the key prompt doesn't echo, the order is set, and the audit stays `clean`. If the audit reports the key as plaintext, tell Claude. The order matters because `auth.order.anthropic` is `[]` globally, which would exclude the key.
 - **Test at the end:** ask Jorah in Telegram to run `id; ls /home`. Expected: it hands the job to `background`, and the answer shows `uid=1000` and no `/home/jorah`.
 
+## iPhone app and the Mac's browser
+
+`config/pc/remote.patch.json5` is applied (no restart): `gateway.publicOrigin` is `https://rocket.tail1574a5.ts.net` and `gateway.trustedProxies` holds `127.0.0.1` and `::1`, so traffic from Windows' Serve proxy is attributed to the real tailnet client and still needs the token. The audit's `trusted_proxies_missing` warning is gone. Port 443 for the Gateway, 43210 for voice. Unverified: that Windows' proxy reaches the distro from loopback.
+
+**Adam's steps**, after "Voice from the Mac" step 1 enabled Serve on the tailnet:
+
+1. **Route, from the Mac** (no secret):
+
+   ```bash
+   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve --bg --yes --https=443 http://127.0.0.1:43181"
+   ```
+
+   Expected: `Available within your tailnet: https://rocket.tail1574a5.ts.net/` proxying to `http://127.0.0.1:43181`, and `tailscale funnel status` showing nothing public. Undo: the same command with `off` at the end.
+2. **iPhone:** install the OpenClaw app. In a Terminal attached to no agent, make a setup code (it holds a pairing secret):
+
+   ```bash
+   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash -l -c "openclaw --profile jorah qr --public-url https://rocket.tail1574a5.ts.net"
+   ```
+
+   In the app: **Settings → Gateway**, scan the QR, connect. Expected: Jorah's chat with the Telegram history, because it's the same `agent:main:main` session. If the app shows **Pending approval**, approve it in the same Terminal with `openclaw --profile jorah devices list` and `devices approve <requestId>`, after checking it's your phone. Device commands (camera, location, screen and the rest) stay denied by `gateway.nodes.commands.deny`.
+3. **Mac browser:** open `https://rocket.tail1574a5.ts.net/` and connect with the Gateway token. Get it in the same Terminal with `openclaw --profile jorah gateway auth-token --show`, paste it into the page, and don't save it anywhere else. Expected: the Control UI, with Chat, Dreams and Skill workshop.
+
 ## Daily backup, written, not installed
 
 `deploy/jorah-backup.service` and `.timer`: `openclaw backup create --verify` at 04:30 into `/home/jorah/backups` (mode 700), keeping 14 daily, 8 weekly and 6 monthly archives with OpenClaw's own retention. Local only: it protects against a broken state, not a dead disk. Offsite is README decision 41 (restic to Hetzner, passphrase offline), Adam's choice. Installing a schedule needs Adam's yes. On that yes:

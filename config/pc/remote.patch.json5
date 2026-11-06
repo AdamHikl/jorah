@@ -1,0 +1,12 @@
+// Remote clients (iPhone app, the Mac's browser) through a Tailscale Serve route that Windows
+// owns, https://rocket.tail1574a5.ts.net -> http://127.0.0.1:43181. OpenClaw's own Serve can't
+// run in the distro (no tailscale CLI). Per OpenClaw's "externally managed Serve" rules, the
+// proxy's source must be in trustedProxies, or the Gateway rejects that traffic as unattributable
+// and it can't pass as a local client. Token auth stays on; tailnet only, never Funnel.
+// Unverified: that Windows' proxy reaches the distro from 127.0.0.1 or ::1 (mirrored networking).
+{
+  gateway: {
+    publicOrigin: "https://rocket.tail1574a5.ts.net",
+    trustedProxies: ["127.0.0.1", "::1"],
+  },
+}

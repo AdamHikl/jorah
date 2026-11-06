@@ -8,6 +8,14 @@ A personal "Jarvis": one central agent you talk to, which sees, listens, speaks 
 - **First channel:** Telegram.
 - **Later:** phone/Mac device nodes, smart glasses, robots as nodes or MCP servers.
 
+**Who it's for:** one person, its owner. Jorah runs on the owner's own Mac and PC for the owner alone; it is not a hosted service.
+
+**Built with:** OpenClaw configuration and skills, shell scripts (`just` targets), a Python voice service (`services/jorah-voice`) and a Swift Mac audio client (`clients/mac-ear`).
+
+**Roadmap:** [`docs/plan/10-roadmap.md`](docs/plan/10-roadmap.md) is the build order; [`docs/plan/`](docs/plan/README.md) holds the full plan.
+
+**Data:** the repository holds code, config and plans only. Jorah's memory, the owner's personal details and anything read from mail, messages or contacts stay on the owner's machines and are git-ignored.
+
 ## Layout
 
 | Path | What |
@@ -100,3 +108,7 @@ Jorah works in its own clones under `~/work`, never in `~/Documents`. The two co
 - `nonInteractivePermissions=deny`: Claude Code actions that would need a permission prompt are denied rather than auto-approved. Raising `permissionMode` to `approve-all` lets it write and run commands unattended; that is a deliberate choice, not a default.
 - No community (ClawHub) skills unless read first.
 - Upgrade OpenClaw deliberately: bump `PINNED_VERSION` in `scripts/configure.sh`, back up with `openclaw --profile jorah backup`, then `openclaw --profile jorah doctor --fix`.
+
+## License
+
+Copyright (c) 2026 Adam Hikl. Licensed under the GNU Affero General Public License v3.0; see [`LICENSE`](LICENSE). Third-party components keep their own licences; see [`docs/adr/0001-voice-licences.md`](docs/adr/0001-voice-licences.md).

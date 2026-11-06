@@ -29,9 +29,37 @@ CONF
 
 apt-get update -q
 apt-get install -y -q bubblewrap ca-certificates curl libatomic1 nftables xz-utils
+# Tools for Jorah's shell, and rootless Podman for OpenClaw's sandbox (OpenClaw has no bubblewrap backend).
+apt-get install -y -q build-essential ripgrep jq unzip zip ffmpeg sqlite3 just htop \
+  podman catatonit uidmap passt slirp4netns
+
+# Google Chrome for the browser tool. A written exception to the 7-day rule: a browser takes security fixes
+# as they ship (docs/runbooks/jorah-on-pc.md). Its package replaces this source with its own
+# google-chrome.sources, signed by /usr/share/keyrings/google-chrome.gpg, and adds /etc/cron.daily/google-chrome.
+if ! command -v google-chrome-stable >/dev/null; then
+  install -d -m 755 /etc/apt/keyrings
+  curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /etc/apt/keyrings/google-chrome.gpg
+  # Google Inc. (Linux Packages Signing Authority), measured 2026-11-06.
+  gpg --show-keys --with-colons /etc/apt/keyrings/google-chrome.gpg | grep -q '^fpr:::::::::EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796:' \
+    || { echo "Unexpected Google signing key" >&2; exit 1; }
+  echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list
+  apt-get update -q
+  apt-get install -y -q google-chrome-stable
+fi
 
 id "$USER_NAME" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$USER_NAME"
 gpasswd -d "$USER_NAME" sudo >/dev/null 2>&1 || true
+# Rootless Podman needs subordinate IDs. The first build named the user jorah-voice, which no longer exists.
+for f in /etc/subuid /etc/subgid; do
+  if ! grep -q "^$USER_NAME:" "$f"; then
+    if grep -q '^jorah-voice:' "$f" && ! id jorah-voice >/dev/null 2>&1; then
+      sed -i "s/^jorah-voice:/$USER_NAME:/" "$f"
+    else
+      echo "$USER_NAME:100000:65536" >> "$f"
+    fi
+  fi
+done
 
 as_user() { runuser -u "$USER_NAME" -- env HOME="$HOME_DIR" PATH="$HOME_DIR/.local/bin:/usr/local/bin:/usr/bin:/bin" "$@"; }
 as_user mkdir -p "$HOME_DIR/.local/bin" "$HOME_DIR/.cache/jorah-voice" "$HOME_DIR/.claude-jorah" "$HOME_DIR/.config/jorah-voice"

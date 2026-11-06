@@ -144,7 +144,7 @@ Run M0-B, M0-C1, M0-C2, M0-D and M0-E. Jorah keeps running on the Mac with stage
 - **Step 0.13 is skipped.** The heartbeat keeps running on Max until `background` exists at P2. This is a recorded exception to decision 4.
 - **Step 0.17 has no Max link.** Jorah has its own new key in Adam's existing, shared Console org, so no monthly plan credits. The key's named `jorah` workspace has a limit of $80 a month, because the default workspace can't be capped. Adam checks that limit, and that auto-reload is what Adam expects. The key goes in only after stage 0, at the masked prompt.
 - **Step 0.18b still removes the key from `main`** after SEC-T21. It returns in `background` at P2.
-- **Stage 0 web:** off until M3, as written.
+- **Stage 0 web:** off until M3, as written. **Waived gate, 2026-11-06, PC only:** Adam waived decision 3 (no shell, web, browser or cron until M3) for Jorah on the PC. Shell runs only in OpenClaw's rootless Podman sandbox and fails closed without it, and web, a headless browser and cron are on. Private connectors, device nodes, account credentials, binding beyond loopback and media generation stay off, and nothing private connects before M3's gate. The Mac keeps stage 0 as written. Settings are in `config/pc/stage0.patch.json5`, and the open choices are in `docs/runbooks/cutover.md`.
 - **Silent path 10:** step 0.15's patch denies `image_generate`, `video_generate` and `music_generate` on `main`, instead of setting `mediaModels`, because no such key exists yet. Set `mediaModels` before any agent gets those tools.
 - **Step 0.16 also confirms Skill Workshop survives `plugins.allow`.** `docs/evidence/m0/m0-c1-2026-11-04.md` could not show it.
 - **Step 0.10's Tailscale sign-in is now required,** because P1 needs the tailnet.

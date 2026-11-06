@@ -1,0 +1,132 @@
+// Stage 0 for the PC: shell and web on, inside the sandbox. Waived gate, 2026-11-06: Adam turned
+// decision 3 (no shell, web, browser or cron until M3) off for the PC only. Still off: private
+// connectors, device nodes, account credentials, binding beyond loopback, media generation.
+// Applied once at the cutover (docs/runbooks/cutover.md step 9), to the restored Mac config.
+// Not applied by any script. Preview with --dry-run, apply on Adam's yes.
+//
+// Before the dry run, in a copy outside the repo:
+//   - fill <Adam's numeric id> from the Mac's commands.ownerAllowFrom,
+//   - check plugins.allow against `plugins list` on the PC.
+// These store entries must exist, kind "secret". Adam enters them:
+//   OPENCLAW_GATEWAY_TOKEN, a new random token, never the Mac's
+//   TELEGRAM_BOT_TOKEN, the token BotFather issued at the rotation
+// Also needed on the PC: rootless Podman and the image openclaw-sandbox:bookworm-slim
+// (deploy/openclaw-sandbox.Containerfile), and Google Chrome at /usr/bin/google-chrome-stable.
+//
+// Plugins to install on the PC first, pinned, after the 7-day rule: @openclaw/acpx@2026.10.9 and
+// @openclaw/duckduckgo-plugin@2026.10.9.
+//
+// Ports, all inside the firewall's 43181-43199: Gateway 43181, its sandbox host 43182 and
+// browser control 43183 (derived), Chrome's CDP 43190.
+{
+  // Mac only. Its resolver doesn't exist on the PC. null deletes the path, and is a no-op if absent.
+  secrets: { providers: { macos_keychain: null } },
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    port: 43181,
+    // OpenClaw's own Serve needs the tailscale CLI in this distro, which it doesn't have,
+    // and the Gateway refuses to start without it. Remote clients come later, through a
+    // Serve route that Windows owns, on its own yes.
+    tailscale: { mode: "off" },
+    auth: {
+      mode: "token",
+      token: { source: "store", provider: "default", id: "OPENCLAW_GATEWAY_TOKEN" },
+      allowTailscale: false,                  // untrusted code may run on this host
+    },
+    // For jorah-voice, which runs as jorah on this host. Loopback only, because of bind.
+    // Adam puts the Gateway token in /home/jorah/.config/jorah-voice/gateway-token, mode 600.
+    http: { endpoints: { chatCompletions: { enabled: true } } },
+    nodes: {
+      pluginTools: { enabled: false },        // ruling 11
+      pairing: { sshVerify: false },          // every device approved by a human
+      browser: { mode: "off" },               // no browser on Adam's devices
+      // No device node is paired before M3. These stay denied when one is.
+      commands: { deny: ["camera.snap", "camera.clip", "screen.record", "computer.act", "system.run",
+                         "contacts.search", "calendar.events", "reminders.list", "photos.latest", "location.get",
+                         "device.apps", "motion.activity", "motion.pedometer"] },
+    },
+  },
+  discovery: { mdns: { mode: "off" } },
+  session: { dmScope: "per-channel-peer" },   // may start a new Telegram session. Memory stays, thread context may not
+  commands: { restart: false,                 // agents cannot trigger /restart or SIGUSR2
+              bash: false, config: false, plugins: false, mcp: false, debug: false },
+  logging: { file: "/home/jorah/.openclaw-jorah/logs/openclaw.log" },
+  plugins: {
+    allow: ["anthropic", "telegram", "acpx", "memory-core", "active-memory",
+            "memory-wiki", "device-pair", "talk-voice", "browser", "duckduckgo"],
+    entries: { acpx: { config: { cwd: "/home/jorah/work" } } },
+  },
+  // Keyword-only memory search (FTS), by Adam's choice of 2026-11-06. llama.cpp starts each model's
+  // server on a random loopback port, which the firewall refuses. The later fix is NAT networking
+  // with Tailscale inside the distro, so loopback is the distro's own. The Mac's managed llama.cpp
+  // entry points at a macOS build, so it goes.
+  memory: { search: { provider: "none" } },
+  models: { providers: { "llama-cpp": null } },
+  // Jorah's own Claude Code login and settings, made by scripts/pc/wsl-jorah-setup.sh.
+  env: { vars: { CLAUDE_CONFIG_DIR: "/home/jorah/.claude-jorah" } },
+  channels: { telegram: {
+    configWrites: false,
+    linkPreview: false,                       // on by default
+    dmPolicy: "allowlist", allowFrom: ["<Adam's numeric id>"],
+    botToken: { source: "store", provider: "default", id: "TELEGRAM_BOT_TOKEN" },
+  } },
+  // Headless Chrome on the Gateway host, as jorah. Podman can't sandbox a browser, so Chrome's
+  // own sandbox stays on (user namespaces work in this distro). The strict SSRF policy refuses
+  // every hostname here, so private-network mode is on, by Adam's choice of 2026-11-06. The firewall
+  // still refuses the LAN, the tailnet and Windows. Pages can reach Jorah's own loopback ports,
+  // 43181-43199 and 43210, which need a token.
+  browser: {
+    enabled: true,
+    headless: true,
+    noSandbox: false,
+    executablePath: "/usr/bin/google-chrome-stable",
+    defaultProfile: "openclaw",
+    profiles: { openclaw: { cdpPort: 43190 } },
+    ssrfPolicy: { dangerouslyAllowPrivateNetwork: true },
+  },
+  cron: { enabled: true },
+  tools: {
+    elevated: { enabled: false },             // nothing escapes the sandbox
+    fs: { workspaceOnly: true },
+    // Shell runs only in the sandbox. host "sandbox" fails closed: no Podman, no shell,
+    // never a fallback to the Gateway host. No approvals inside it, because the box is the limit.
+    exec: { host: "sandbox", mode: "full", strictInlineEval: true },
+    // DuckDuckGo needs no account. It's unofficial and scrapes HTML, so it can break.
+    web: { search: { enabled: true, provider: "duckduckgo" }, fetch: { enabled: true } },
+    sessions: { visibility: "tree" },
+    // Global denies cannot be granted back per agent.
+    deny: ["nodes", "computer", "gateway"],
+  },
+  agents: {
+    defaults: {
+      workspace: "/home/jorah/workspace",
+      model: { fallbacks: [] },
+      utilityModel: "anthropic/claude-haiku-5-5",
+      embeddedAgent: { cyberFailover: { mode: "off" } },
+      sandbox: {
+        mode: "all",                          // every session, the main one included
+        backend: "podman",                    // rootless, as jorah
+        scope: "agent",
+        workspaceAccess: "rw",                // the workspace only. Home, tokens and state stay outside
+        docker: {
+          image: "openclaw-sandbox:bookworm-slim",
+          // Internet for the shell, through jorah's firewall. No path to the host's loopback,
+          // where the Gateway and the voice service listen.
+          network: "slirp4netns:allow_host_loopback=false",
+          readOnlyRoot: true,
+          capDrop: ["ALL"],
+          user: "1000:1000",
+          pidsLimit: 512,
+          memory: "4g",
+        },
+      },
+    },
+    entries: { main: {
+      workspace: "/home/jorah/workspace",
+      model: { fallbacks: [] },
+      // Media tools: cross-provider fallback is their fixed default (silent path 10).
+      tools: { deny: ["image_generate", "video_generate", "music_generate"] },
+    } },
+  },
+}

@@ -1,0 +1,25 @@
+// The `background` agent: Jorah's hands for shell work. Applied 2026-11-06 on Adam's go-ahead
+// ("do as much as you can without my help"), after `openclaw agents add background`.
+// Why: with the claude-cli runtime (main, Max login) OpenClaw's Podman sandbox doesn't apply, so
+// main's exec fails closed. The embedded runtime ("openclaw") does use the sandbox, and needs an
+// Anthropic API key, which Adam enters for this agent only (docs/runbooks/jorah-on-pc.md).
+// Main hands it jobs with sessions_spawn. It inherits agents.defaults.sandbox (podman, mode all).
+{
+  agents: {
+    entries: {
+      main: {
+        subagents: { allowAgents: ["background"] },
+      },
+      background: {
+        // agents.defaults.models pins every Claude model to claude-cli; this agent opts out.
+        models: {
+          "anthropic/claude-sonnet-5-5": { agentRuntime: { id: "openclaw" } },
+          "anthropic/claude-haiku-5-5": { agentRuntime: { id: "openclaw" } },
+        },
+        model: { primary: "anthropic/claude-sonnet-5-5", fallbacks: [] },
+        identity: { name: "Jorah (background)" },
+        tools: { deny: ["image_generate", "video_generate", "music_generate", "message"] },
+      },
+    },
+  },
+}

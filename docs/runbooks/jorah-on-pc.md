@@ -18,6 +18,8 @@ Steps marked [measured] ran on the PC on 2026-11-05 or 2026-11-06. The rest have
 
 ## Waived gate, 2026-11-06
 
+**Measured at the cutover:** with the `claude-cli` runtime (Jorah's Max login), OpenClaw's Podman sandbox doesn't apply, so `exec` refuses and Jorah has no shell. Files, memory and web work. Shell needs the embedded runtime or a paired node (`docs/evidence/p2-cutover/`).
+
 Adam waived decision 3 (stage 0: no shell, web, browser or cron until M3) for Jorah on the PC, recorded in `~/.jorah-private/answers.md`. Shell runs only in OpenClaw's rootless Podman sandbox, `tools.exec.host: "sandbox"`, which fails closed. Web, a headless browser and cron are on. Private connectors, device nodes, account credentials, binding beyond loopback and media generation stay off, and nothing private connects before M3's gate.
 
 **Chrome and the 7-day rule:** Google Chrome stable comes from Google's signed apt repository with no waiting period, a written exception to the 7-day rule, because a browser takes security fixes as they ship. Its package keeps its own `google-chrome.sources` and `/etc/cron.daily/google-chrome`, so it updates with `apt upgrade`. Installed 2026-11-06: 157.0.8103.38, signing key `EB4C 1BFD 4F04 2F6D DDCC EC91 7721 F63B D38B 4796`.

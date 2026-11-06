@@ -21,7 +21,11 @@ table inet jorah_out {
     # Mirrored networking sends all loopback TCP through this interface, whether it ends up
     # in this distro or on Windows, so only jorah's own ports are allowed.
     # 43181-43199 is the Gateway and its derived ports, 43210 is speech.
-    oifname "loopback0" tcp dport { 43181-43199, 43210 } accept
+    # 43255-47350 is Linux's own ephemeral range, which WSL sets under mirrored networking
+    # (net.ipv4.ip_local_port_range, measured 2026-11-06). OpenClaw's tool bridge for Claude
+    # listens on a random port there, and no setting pins it. No Windows listener is in it, and
+    # Windows' own dynamic range starts at 49152. If WSL moves the range, tools fail closed.
+    oifname "loopback0" tcp dport { 43181-43199, 43210, 43255-47350 } accept
     oifname "loopback0" counter reject
     # WSL's DNS stub, which sits inside 10.0.0.0/8.
     ip daddr 10.255.255.254 meta l4proto { tcp, udp } th dport 53 accept

@@ -48,7 +48,10 @@
     },
   },
   discovery: { mdns: { mode: "off" } },
-  session: { dmScope: "per-channel-peer" },   // may start a new Telegram session. Memory stays, thread context may not
+  // One conversation for Adam across channels: Telegram DMs and jorah-voice (agent:main:main) share
+  // the main session. Safe because Telegram allows only Adam. Set explicitly so a restored Mac value
+  // of "per-channel-peer" does not survive the patch.
+  session: { dmScope: "main" },
   commands: { restart: false,                 // agents cannot trigger /restart or SIGUSR2
               bash: false, config: false, plugins: false, mcp: false, debug: false },
   logging: { file: "/home/jorah/.openclaw-jorah/logs/openclaw.log" },

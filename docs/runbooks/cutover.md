@@ -284,7 +284,13 @@ chmod 600 /home/jorah/.config/jorah-voice/gateway-token
 
 `--show` prints only to an interactive terminal, so this is Adam's step. Unverified: whether it writes to a redirect. If the file ends up empty, put the token in with an editor instead. The sandbox can't see `/home/jorah`, so Jorah's shell can't read it [measured with a container on the same settings].
 
-In Telegram, Adam sends `Hello`. Expected: a reply. Then ask for a fact saved on the Mac. Expected: Jorah recalls it. `session.dmScope: "per-channel-peer"` may start a new Telegram session, so memory carries over but thread context may not.
+In Telegram, Adam sends `Hello`. Expected: a reply. Then ask for a fact saved on the Mac. Expected: Jorah recalls it. `session.dmScope: "main"` puts Telegram DMs and voice in one conversation, `agent:main:main`. Check it:
+
+```bash
+pc "wsl -d jorah -u jorah -- openclaw --profile jorah sessions --json"
+```
+
+Expected: the Telegram DM shows up as `agent:main:main`, with no `telegram:direct` session for Adam. After voice is on (step 11), say something, then ask in Telegram what you just said. Expected: Jorah knows.
 
 ### 12. Clean up
 

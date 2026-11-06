@@ -104,6 +104,9 @@
   agents: {
     defaults: {
       workspace: "/home/jorah/workspace",
+      // Needed to move agentDir off the Mac path: OpenClaw refuses the move while main's auth
+      // inheritance is implicit [measured on the real archive, 2026-11-06].
+      authInheritance: { agentId: "main" },
       model: { fallbacks: [] },
       utilityModel: "anthropic/claude-haiku-5-5",
       embeddedAgent: { cyberFailover: { mode: "off" } },
@@ -127,6 +130,8 @@
     },
     entries: { main: {
       workspace: "/home/jorah/workspace",
+      // The restored config keeps the Mac's agent folder here [measured on the real archive, 2026-11-06].
+      agentDir: "/home/jorah/.openclaw-jorah/agents/main/agent",
       model: { fallbacks: [] },
       // Media tools: cross-provider fallback is their fixed default (silent path 10).
       tools: { deny: ["image_generate", "video_generate", "music_generate"] },

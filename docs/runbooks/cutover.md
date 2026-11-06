@@ -8,6 +8,26 @@ The Mac's state isn't changed by any step here. That's what makes rollback simpl
 
 On the PC, Jorah gets shell and web inside the sandbox, by Adam's waived gate of 2026-11-06 (`docs/runbooks/jorah-on-pc.md`). The Mac's stage 0 is unchanged.
 
+## Progress, 2026-11-06
+
+Done by Claude, without a secret or a sign-in:
+
+- **Step 1:** no OpenClaw process, listener or launchd job on the Mac, at 13:05.
+- **B5, B6:** nothing listens on 43180-43199 on the PC, `jorah-dev` stopped. Both sides run `OpenClaw 2026.10.9 (8b18b55)`.
+- **Record:** `commands.ownerAllowFrom` holds one `telegram:` id (10 digits), kept outside the repo. `gateway.port` and `session.dmScope` are unset on the Mac, so it ran the defaults, 18789 and `main`. The cron list couldn't be read, because it needs a running Gateway. The backup dry run listed the expected `state` and `workspace` assets only.
+- **Step 3:** `~/Backups/jorah-cutover/2026-11-06T13-06-26.124+01-00-openclaw-backup.tar.gz`, 310 MB, `Archive verification: passed`, sha256 `5978eed4e51d7df1697556847dad855735958866759acfb4ecbe9f6352494e32`.
+- **Step 4:** the same hash on the PC, 38 s.
+- **Step 5:** 2 assets and 206 entries verified, no symlinks, nothing owned by anyone but `jorah`. The rehearsal's leftover folders were moved to `/home/jorah/rehearsal-2026-11-06`, not deleted.
+- **Step 6:** state and workspace in place, all owned by `jorah`. Seven Mac paths left in the config, in `agents.defaults.workspace`, `agents.entries.main.workspace`, `agents.entries.main.agentDir`, `plugins.entries.acpx.config.cwd`, `env.vars.CLAUDE_CONFIG_DIR` and two in `models.providers.llama-cpp`. A copy of the restored config is at `openclaw.json.restored`.
+- **Step 7:** warnings only, and `doctor --non-interactive` left the config unchanged (same hash). The acpx and llama.cpp plugins miss their `node_modules`, as expected, and the old Telegram token is still plaintext in the config until step 9.
+- **Step 9 rehearsed on a copy of the real state** (`~/.openclaw-jorah-cutrehearse`, placeholder secrets, no Gateway started). Two findings the `jorah-dev` rehearsal couldn't show:
+  - The patch missed `agents.entries.main.agentDir`. Moving it is refused while `main`'s auth inheritance is implicit, so the patch now sets `agentDir` and `agents.defaults.authInheritance: { agentId: "main" }`.
+  - `plugins.entries.acpx.config` can't be edited until acpx is reinstalled, so **step 8's plugin installs must come before step 9**. The rest of the patch, without the acpx line, gave `Dry run successful: 69 update(s)`, applied, `Config valid` with plugin warnings only, a clean secrets audit, and one Mac path left, acpx's `cwd`.
+
+**The Mac's state is frozen at the 13:06 backup.** Don't start the Mac Gateway or edit the Mac workspace before the window. If either changes, redo steps 3-7 after moving the PC copies aside.
+
+The old Telegram token sits in plaintext in `/home/jorah/.openclaw-jorah/openclaw.json` and the rehearsal copy until step 2 kills it. Both are mode 700 under `jorah`, out of the sandbox's reach.
+
 ## Adam's steps, in order
 
 Everything else is prepared, and B4, B7, B8, B9 and B10 are done. These need Adam, in this order. Steps 3, 4 and 6 go in a Terminal attached to no agent.
@@ -27,7 +47,7 @@ Each needs Adam's yes. The window doesn't start until all are done.
 
 | # | What | Why |
 |---|---|---|
-| B1 | Step 2 works: the Gateway service starts at boot with nobody signed in | Without it Jorah stops when the PC's last session ends. The window below uses a transient unit, which doesn't survive a reboot |
+| B1 | Step 2 works: the Gateway service starts at boot with nobody signed in | Without it Jorah stops when the PC's last session ends. The unit is `deploy/openclaw-gateway.service`, which passes `systemd-analyze verify` on the PC [measured, 2026-11-06]. On the yes it's copied to `/etc/systemd/system` and loaded, not enabled. Step 11 starts it and enables it once the checks pass. The reboot with nobody signed in stays untested |
 | B2 | `config/pc/` is on `main` and copied to `/opt/jorah` (command below) | The patch is read from there, root-owned |
 | B3 | `acpx` and `duckduckgo` installed in step 8, pinned to 2026.10.9 | External plugins, not in the PC's install [measured]. The Mac's `extensions` folder (648 MB) holds macOS-native parts, and plugin `node_modules` aren't in backups. `duckduckgo` 2026.10.9 was published 2026-10-29, so it meets the 7-day rule. `llama-cpp` isn't used on the PC (B7) |
 | B4 | Service hardening and linger | **Done 2026-11-06, on Adam's yes.** Step 11's unit blocks `/run/WSL` and vsock [measured], and step 2's service must carry the same two lines. `loginctl enable-linger jorah` is on, so rootless Podman uses systemd cgroups under a unit [measured] |
@@ -237,7 +257,7 @@ The restored auth profile points at the Mac's Claude login, which didn't move. T
 
 ### 11. Start, once
 
-Only after step 1's checks still hold on the Mac. A transient unit, gone at reboot. Step 2's service replaces it. The two hardening lines are B4's: they stop Jorah reaching the WSL interop socket and opening vsock connections. The Gateway ran healthy with them [measured, without channels or a model turn].
+Only after step 1's checks still hold on the Mac. If B1 installed `deploy/openclaw-gateway.service`, start that instead of the transient unit below. It has the same settings, plus `Requires=nftables.service` so Jorah doesn't start without the firewall: `systemctl start openclaw-gateway`, and `systemctl enable openclaw-gateway` only after the checks below pass. Otherwise a transient unit, gone at reboot. The two hardening lines are B4's: they stop Jorah reaching the WSL interop socket and opening vsock connections. The Gateway ran healthy with them [measured, without channels or a model turn].
 
 ```bash
 pc "wsl -d jorah -u root -- bash -s" <<'EOF'

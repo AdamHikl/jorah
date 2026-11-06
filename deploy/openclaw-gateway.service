@@ -1,0 +1,28 @@
+[Unit]
+Description=Jorah: the OpenClaw Gateway, profile jorah, loopback only
+# The firewall must be loaded first. If it fails, Jorah doesn't start (fails closed).
+Requires=nftables.service
+After=nftables.service network-online.target user@1000.service
+Wants=network-online.target user@1000.service
+
+[Service]
+User=jorah
+Group=jorah
+WorkingDirectory=/home/jorah
+Environment=HOME=/home/jorah
+# For rootless Podman, the sandbox. Linger keeps user@1000 and this folder up at boot.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PATH=/home/jorah/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CLAUDE_CONFIG_DIR=/home/jorah/.claude-jorah
+Environment=ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1
+ExecStart=/usr/local/bin/openclaw --profile jorah gateway run
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+# B4 hardening, the same as the cutover's transient unit [measured]: no WSL interop socket and
+# no vsock. NoNewPrivileges is left off because rootless Podman needs newuidmap's file capabilities.
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

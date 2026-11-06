@@ -34,7 +34,7 @@ Everything else is prepared, and B4, B7, B8, B9 and B10 are done. These need Ada
 
 1. ~~Before the window: say yes to B1 and B2.~~ Done 2026-11-06, on Adam's yes.
 2. ~~Before the window: say yes to the two plugin installs in step 8.~~ Done 2026-11-06, on Adam's yes.
-2b. **Before the window: say yes to step 8b,** `doctor --fix` and removing the Mac's llama.cpp key.
+2b. ~~Before the window: say yes to step 8b.~~ Done 2026-11-06, on Adam's yes. Its key removal now runs at the end of step 9.
 3. **Window, step 2: rotate the Telegram token** at BotFather (`/revoke`, then pick Jorah's bot). Expected: BotFather replies with a new token. Keep it in the password manager, never in a chat or file.
 4. **Window, step 8: store the two secrets** in the `jorah` shell. Expected: `Stored OPENCLAW_GATEWAY_TOKEN (secret).` and `Stored TELEGRAM_BOT_TOKEN (secret).`, then `secrets store list` shows both as `[secret] (write-only)`, with no token on screen.
 5. **Window, step 9: say yes to the patch** after its dry run. Expected: `Dry run successful: N update(s) validated`, N around 70, then `Config valid` and `0` Mac paths.
@@ -220,16 +220,17 @@ Expected: `Installed plugin: acpx` and `Installed plugin: duckduckgo` [the secon
 
 **llama.cpp isn't used on the PC** (B7). The patch removes `models.providers.llama-cpp`, the Mac's entry for a `darwin-arm64` build on port 58378. The restored `~/.openclaw-jorah/tools/llama.cpp` and `models` folders stay on disk, unused, for the later fix.
 
-### 8b. Finish acpx's migration, and drop the Mac's llama.cpp key [rehearsed on a copy of the real state]
+### 8b. Finish acpx's migration [done 2026-11-06, on Adam's yes]
 
-On Adam's yes. Without `doctor --fix`, acpx's settings stay locked and step 9 refuses the whole patch. The llama.cpp key is the Mac's local llama-server key, useless on the PC, and the only thing step 11's secrets audit would flag. The Mac's backup still holds it.
+Without `doctor --fix`, acpx's settings stay locked and step 9 refuses the whole patch.
 
 ```bash
 pc "wsl -d jorah -u jorah -- openclaw --profile jorah doctor --fix --non-interactive"
-pc "wsl -d jorah -u jorah -- openclaw --profile jorah models auth logout llama-cpp:default --yes"
 ```
 
-Expected [rehearsed]: `Doctor finished with plugin load errors`, from llama.cpp only. It adds `enabled: false` to 30 bundled skills, `enabled: true` to `memory-core` and three webhook migration markers, and changes nothing else in the config. Then `No auth profiles remain for llama-cpp`.
+Result on the real profile, the same as the rehearsal: `Doctor finished with plugin load errors`, from llama.cpp only. It set `enabled: false` on 30 bundled skills, all of them `needs setup` before, `enabled: true` on `memory-core`, and three webhook migration markers. Nothing else in the config changed. The config before it is `openclaw.json.before-8b`.
+
+The llama.cpp key removal moved to the end of step 9. Run before the patch, it fails with `EACCES: permission denied, mkdir '/Users/adam/.openclaw-jorah/agents/main/agent'`, because `agentDir` still points at the Mac [measured]. It removed nothing.
 
 With 8b on the copy, the whole patch gave `Dry run successful: 70 update(s)`, applied, `Config valid` with one llama.cpp warning, `0` Mac paths, acpx's `cwd` at `/home/jorah/work`, and `Secrets audit: clean. plaintext=0`.
 
@@ -257,6 +258,15 @@ pc "wsl -d jorah -u jorah -- bash -c 'grep -c /Users/ /home/jorah/.openclaw-jora
 ```
 
 Expected: `Config valid`, with warnings only for plugins not yet installed, and `0` Mac paths. A count above 0 means a Mac path the patch doesn't know: stop and add it to the patch copy. Delete the temp folder afterwards.
+
+Then drop the Mac's llama.cpp key, on Adam's yes of 2026-11-06. It's the Mac's local llama-server key, useless on the PC, and the only thing step 11's secrets audit would flag. The Mac's backup still holds it.
+
+```bash
+pc "wsl -d jorah -u jorah -- openclaw --profile jorah models auth logout llama-cpp:default --yes"
+pc "wsl -d jorah -u jorah -- openclaw --profile jorah secrets audit --check"
+```
+
+Expected [rehearsed on the copy]: `No auth profiles remain for llama-cpp`, then `Secrets audit: clean. plaintext=0`.
 
 ### 10. Adam: sign in to Claude
 

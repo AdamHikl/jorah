@@ -2,6 +2,7 @@
 
 import ctypes
 import sys
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -48,37 +49,104 @@ VOICES = {
 }
 
 
-class Ears:
-    """Finds where speech starts and ends in the incoming 16 kHz, 16-bit mono audio."""
+def _vad_config(sherpa_onnx, root, silence, speech):
+    config = sherpa_onnx.VadModelConfig()
+    config.silero_vad.model = str(root / "silero_vad_v5.onnx")
+    config.silero_vad.threshold = 0.5
+    config.silero_vad.min_silence_duration = silence
+    config.silero_vad.min_speech_duration = speech
+    config.silero_vad.max_speech_duration = 30
+    config.silero_vad.window_size = VAD_WINDOW
+    config.sample_rate = MIC_RATE
+    return config
 
-    def __init__(self, root=models.ROOT, silence=0.6):
+
+class Ears:
+    """Finds where speech starts and ends in the incoming 16 kHz, 16-bit mono audio.
+
+    One detector runs for each pause length in `pauses`, all fed the same windows, so each counts
+    quiet exactly as a single fixed-pause detector would. The shortest closes segments early, so
+    they can be transcribed while the session waits; the longer ones only report that their pause
+    has passed. A detector with no hold time resets the quiet as soon as voice comes back, which
+    stops a turn ending in the moment he starts talking again.
+
+    Each segment comes with the quiet before it, when that quiet is short enough to be a pause
+    inside a turn. Segments joined without it lose words at the join, or come back in the wrong
+    language.
+    """
+
+    def __init__(self, root=models.ROOT, pauses=(0.6,)):
         sherpa_onnx = _sherpa("cpu")
-        config = sherpa_onnx.VadModelConfig()
-        config.silero_vad.model = str(root / "silero_vad_v5.onnx")
-        config.silero_vad.threshold = 0.5
-        config.silero_vad.min_silence_duration = silence
-        config.silero_vad.min_speech_duration = 0.25
-        config.silero_vad.max_speech_duration = 30
-        config.silero_vad.window_size = VAD_WINDOW
-        config.sample_rate = MIC_RATE
-        self._vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=60)
+        self._pauses = sorted(set(pauses))
+        self._vads = [
+            sherpa_onnx.VoiceActivityDetector(_vad_config(sherpa_onnx, root, pause, 0.25), buffer_size_in_seconds=60)
+            for pause in self._pauses
+        ]
+        # Both times are shorter than one window: voice counts from the second voiced window.
+        self._voice = sherpa_onnx.VadModel.create(_vad_config(sherpa_onnx, root, 0.01, 0.01))
+        # Silero v5 reads each window together with the end of the one before it.
+        self._context = np.zeros(self._voice.window_size() - VAD_WINDOW, dtype=np.float32)
+        self._found = []
+        self._quiet = 0.0
         self._pending = np.zeros(0, dtype=np.float32)
+        self._max_gap = int((self._pauses[-1] + 0.5) * MIC_RATE)
+        # Recent windows, enough for the longest segment and the gap before it.
+        self._recent = deque(maxlen=(30 * MIC_RATE + self._max_gap) // VAD_WINDOW + 2)
+        self._fed = 0
+        self._last_end = None
 
     def accept(self, pcm):
         incoming = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
         self._pending = np.concatenate((self._pending, incoming))
         while len(self._pending) >= VAD_WINDOW:
-            self._vad.accept_waveform(self._pending[:VAD_WINDOW])
+            window = self._pending[:VAD_WINDOW]
             self._pending = self._pending[VAD_WINDOW:]
+            for vad in self._vads:
+                vad.accept_waveform(window)
+            self._recent.append((self._fed, window))
+            self._fed += VAD_WINDOW
+            if self._voice.is_speech(np.concatenate((self._context, window))):
+                self._quiet = 0.0
+            if len(self._context):
+                self._context = window[-len(self._context):]
+            self._collect()
+
+    def _collect(self):
+        first = self._vads[0]
+        if not first.empty():
+            self._quiet = self._pauses[0]
+        while not first.empty():
+            segment = np.array(first.front.samples, dtype=np.float32)
+            start = first.front.start
+            first.pop()
+            self._found.append(np.concatenate((self._gap(start), segment)))
+            self._last_end = start + len(segment)
+        for pause, vad in zip(self._pauses[1:], self._vads[1:]):
+            if not vad.empty():
+                self._quiet = max(self._quiet, pause)
+                while not vad.empty():
+                    vad.pop()
+
+    def _gap(self, start):
+        """The audio between the last segment and this one, if it was a short pause."""
+        if self._last_end is None or not 0 < start - self._last_end <= self._max_gap:
+            return np.zeros(0, dtype=np.float32)
+        pieces = [w for at, w in self._recent if at + VAD_WINDOW > self._last_end and at < start]
+        if not pieces:
+            return np.zeros(0, dtype=np.float32)
+        first_at = next(at for at, _ in self._recent if at + VAD_WINDOW > self._last_end)
+        joined = np.concatenate(pieces)
+        return joined[self._last_end - first_at : start - first_at]
 
     def speech_now(self):
-        return self._vad.is_speech_detected()
+        return self._vads[0].is_speech_detected()
+
+    def quiet_seconds(self):
+        """The longest of `pauses` that has passed since he last spoke, or 0."""
+        return self._quiet
 
     def segments(self):
-        found = []
-        while not self._vad.empty():
-            found.append(np.array(self._vad.front.samples, dtype=np.float32))
-            self._vad.pop()
+        found, self._found = self._found, []
         return found
 
 
@@ -96,9 +164,10 @@ class Listener:
             model_type="nemo_transducer",
         )
 
-    def transcribe(self, samples):
+    def transcribe(self, *pieces):
+        """Transcribe one or more stretches of 16 kHz audio as one utterance."""
         stream = self._recognizer.create_stream()
-        stream.accept_waveform(MIC_RATE, samples)
+        stream.accept_waveform(MIC_RATE, np.concatenate(pieces) if len(pieces) > 1 else pieces[0])
         self._recognizer.decode_stream(stream)
         return stream.result.text.strip()
 

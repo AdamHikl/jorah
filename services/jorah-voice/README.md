@@ -7,7 +7,7 @@ Mac: mac-ear ──tailnet──> Windows: tailscale serve ──> WSL jorah: 12
      mic, speaker                                      as Linux user jorah
 ```
 
-This is the first working piece of P3 (`docs/plan/10-roadmap.md` section 2a). It is smaller than M20.1's stack: no Pipecat or Smart Turn yet, and a fixed 0.6 s pause ends your turn.
+This is the first working piece of P3 (`docs/plan/10-roadmap.md` section 2a). It is smaller than M20.1's stack: no Pipecat or Smart Turn yet. See "When your turn ends" below.
 
 ## CPU and GPU
 
@@ -24,6 +24,10 @@ Measured on the PC on 2026-11-06, with a stand-in Gateway that answers at once:
 All three recognisers made the same 2.9% word errors on 10 test clips. v3 on the CPU was chosen for keeping GPU memory free and understanding Slovak, at a cost of about 26 ms. End of speech to first audio was 1.1 s with Kokoro on the GPU, against 2.4 s on the CPU, and 0.6 s of it is the pause that ends your turn.
 
 The CUDA libraries come from NVIDIA's pip packages in the venv, and `speech.load_cuda()` loads them before sherpa-onnx needs them, so no library path is needed. Each model runs a few times at startup, because the GPU's first run is slow. `--stt-provider` and `--tts-provider` pick `cpu` or `cuda` for each.
+
+## When your turn ends
+
+Speech is transcribed after a 0.3 s pause, while the service waits to see whether you carry on. The turn ends after 0.65 s of quiet if the transcript sounds finished: it ends in `.`, `?` or `!`, and not on a word such as "and", "the" or "um". Otherwise it waits 1.2 s. If you start talking again first, the new words join the same turn. `--early-pause`, `--finished-pause` and `--unfinished-pause` change the three times. On synthetic speech this cut mid-sentence splits from 6 to 0 out of 56 turns, and the median wait from the end of speech to text ready from 0.82 s to 0.76 s: `docs/evidence/voice-endpointing/README.md`. Session summaries log `end_pause`, the pause that ended each turn, and never what was said.
 
 ## What it needs from the Gateway
 

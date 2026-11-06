@@ -4,7 +4,7 @@ import asyncio
 import time
 
 from .brain import BrainError
-from .core import IdleClock, SentenceChunker, classify, percentile
+from .core import IdleClock, SentenceChunker, TurnEnd, classify, percentile
 
 BLOCK_SECONDS = 0.1
 BYTES_PER_SAMPLE = 2
@@ -15,7 +15,7 @@ EMPTY_LINE = "I didn't get an answer. Try me again."
 class VoiceSession:
     def __init__(self, ears, listener, speaker, brain, send_json, send_audio, on_close, *,
                  barge_in=False, idle_seconds=60, max_seconds=1800,
-                 clock=time.monotonic, sleep=asyncio.sleep, lead=0.2):
+                 clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -29,11 +29,17 @@ class VoiceSession:
         self._clock = clock
         self._sleep = sleep
         self._lead = lead
+        self._turn_end = turn_end or TurnEnd(0.6, 0.6)
+        # Speech segments of the turn in progress, held until a long enough pause ends the turn.
+        self._held = []
+        self._heard = None
+        self._hearing = None
+        self._version = 0
         self._idle = IdleClock(idle_seconds, now=clock)
         self._started = clock()
         self._turn = None
         self.closed = False
-        self.numbers = {"transcribe": [], "first_token": [], "first_audio": []}
+        self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_audio": []}
 
     def busy(self):
         return self._turn is not None and not self._turn.done()
@@ -48,9 +54,40 @@ class VoiceSession:
         self._ears.accept(pcm)
         if self.busy() and self._ears.speech_now():
             await self.interrupt()
-        for segment in self._ears.segments():
-            await self.interrupt(quiet=True)
-            self._turn = asyncio.create_task(self._run_turn(segment))
+        segments = self._ears.segments()
+        if segments:
+            self._held.extend(segments)
+            self._listen()
+        await self._maybe_end()
+
+    def _listen(self):
+        """Transcribe everything held so far. A newer segment makes an older transcript stale."""
+        self._version += 1
+        self._heard = None
+        self._hearing = asyncio.create_task(self._hear(self._version, list(self._held)))
+
+    async def _hear(self, version, held):
+        started = self._clock()
+        text = await asyncio.to_thread(self._listener.transcribe, *held)
+        if version != self._version or self.closed:
+            return
+        self._heard = (text, self._clock() - started)
+        await self._maybe_end()
+
+    async def _maybe_end(self):
+        """Start Jorah's turn once the transcript is in and the pause is long enough for it."""
+        if self._heard is None:
+            return
+        text, seconds = self._heard
+        quiet = self._ears.quiet_seconds()
+        if not self._turn_end.done(text, quiet, self._ears.speech_now()):
+            return
+        self._held, self._heard = [], None
+        self._version += 1
+        self.numbers["transcribe"].append(seconds)
+        self.numbers["end_pause"].append(quiet)
+        await self.interrupt(quiet=True)
+        self._turn = asyncio.create_task(self._run_turn(text))
 
     async def interrupt(self, quiet=False):
         """Stop thinking and speaking at once."""
@@ -94,12 +131,9 @@ class VoiceSession:
     async def _state(self, state):
         await self._send_json({"type": "state", "state": state})
 
-    async def _run_turn(self, segment):
+    async def _run_turn(self, text):
         await self._state("thinking")
-        started = self._clock()
-        text = await asyncio.to_thread(self._listener.transcribe, segment)
         heard_at = self._clock()
-        self.numbers["transcribe"].append(heard_at - started)
         kind = classify(text)
         if kind == "empty":
             await self._state("listening")

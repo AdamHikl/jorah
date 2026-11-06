@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from jorah_voice.brain import BrainError
-from jorah_voice.core import parse_hello
+from jorah_voice.core import TurnEnd, parse_hello
 from jorah_voice.session import FAILURE_LINE, VoiceSession
 
 
@@ -16,12 +16,16 @@ class FakeEars:
         self.accepted = []
         self.pending = []
         self.speech = False
+        self.quiet = 10.0
 
     def accept(self, pcm):
         self.accepted.append(pcm)
 
     def speech_now(self):
         return self.speech
+
+    def quiet_seconds(self):
+        return self.quiet
 
     def segments(self):
         found, self.pending = self.pending, []
@@ -31,9 +35,11 @@ class FakeEars:
 class FakeListener:
     def __init__(self, text):
         self.text = text
+        self.heard = []
 
-    def transcribe(self, segment):
-        return self.text
+    def transcribe(self, *pieces):
+        self.heard.append(pieces)
+        return self.text(pieces) if callable(self.text) else self.text
 
 
 class FakeSpeaker:
@@ -89,16 +95,19 @@ class Harness:
         async def no_wait(_seconds):
             await asyncio.sleep(0)
 
+        self.listener = FakeListener(text)
         self.session = VoiceSession(
-            self.ears, FakeListener(text), self.speaker, self.brain,
+            self.ears, self.listener, self.speaker, self.brain,
             send_json, send_audio, on_close, sleep=no_wait, **options,
         )
 
-    async def say(self):
-        self.ears.pending = ["segment"]
+    async def say(self, segment="segment"):
+        self.ears.pending = [segment]
         await self.session.feed(b"\0\0")
 
     async def settle(self):
+        if self.session._hearing:
+            await asyncio.gather(self.session._hearing, return_exceptions=True)
         if self.session._turn:
             await asyncio.gather(self.session._turn, return_exceptions=True)
 
@@ -119,7 +128,7 @@ class Turns(unittest.IsolatedAsyncioTestCase):
         self.assertIn({"type": "heard", "text": "Hello there"}, h.sent)
         self.assertEqual(len(h.audio), 4)
         self.assertEqual(h.brain.prompts[0], "Hello there")
-        for name in ("transcribe", "first_token", "first_audio"):
+        for name in ("transcribe", "end_pause", "first_token", "first_audio"):
             self.assertEqual(len(h.session.numbers[name]), 1)
 
     async def test_each_turn_sends_only_the_new_words_because_jorah_keeps_the_conversation(self):
@@ -160,6 +169,90 @@ class Turns(unittest.IsolatedAsyncioTestCase):
         await h.settle()
         self.assertEqual(h.speaker.lines, [FAILURE_LINE])
         self.assertEqual(h.session.numbers["first_token"], [])
+
+
+class EndOfTurn(unittest.IsolatedAsyncioTestCase):
+    def harness(self, text):
+        h = Harness(text=text, turn_end=TurnEnd(0.3, 0.9))
+        h.ears.quiet = 0.3
+        return h
+
+    async def test_a_finished_sentence_goes_to_jorah_after_the_short_pause(self):
+        h = self.harness("Turn off the lights.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, ["Turn off the lights."])
+        self.assertEqual(h.session.numbers["end_pause"], [0.3])
+
+    async def test_an_open_sentence_is_held_until_the_long_pause(self):
+        h = self.harness("I want to book a table for.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        self.assertEqual(h.states(), [])
+        h.ears.quiet = 0.9
+        await h.session.feed(b"\0\0")
+        await h.settle()
+        self.assertEqual(h.brain.prompts, ["I want to book a table for."])
+
+    async def test_speech_after_a_pause_joins_the_same_turn(self):
+        h = self.harness(lambda pieces: "I want to book a table for." if len(pieces) == 1 else "I want to book a table for four.")
+        await h.say("first")
+        await h.settle()
+        h.ears.quiet = 0.0
+        await h.session.feed(b"\0\0")
+        h.ears.quiet = 0.3
+        await h.say("second")
+        await h.settle()
+        self.assertEqual(h.listener.heard[-1], ("first", "second"))
+        self.assertEqual(h.brain.prompts, ["I want to book a table for four."])
+
+    async def test_the_early_transcript_is_used_once_the_pause_is_long_enough(self):
+        h = Harness(text="Turn off the lights.", turn_end=TurnEnd(0.6, 1.0))
+        h.ears.quiet = 0.3
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        h.ears.quiet = 0.6
+        await h.session.feed(b"\0\0")
+        await h.settle()
+        self.assertEqual(h.brain.prompts, ["Turn off the lights."])
+        self.assertEqual(len(h.listener.heard), 1)
+
+    async def test_nothing_is_sent_while_he_is_talking_again(self):
+        h = self.harness("Turn off the lights.")
+        h.ears.speech = True
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        h.ears.speech = False
+        await h.session.feed(b"\0\0")
+        await h.settle()
+        self.assertEqual(h.brain.prompts, ["Turn off the lights."])
+
+    async def test_a_transcript_of_older_audio_is_never_sent(self):
+        import threading
+
+        gate = threading.Event()
+
+        def slow(pieces):
+            if len(pieces) == 1:
+                gate.wait(5)
+                return "Stale."
+            return "Both pieces."
+
+        h = self.harness(slow)
+        await h.say("first")
+        h.ears.quiet = 0.0
+        await h.say("second")
+        h.ears.quiet = 0.3
+        gate.set()
+        for task in list(asyncio.all_tasks()):
+            if task is not asyncio.current_task():
+                await asyncio.gather(task, return_exceptions=True)
+        await h.session.feed(b"\0\0")
+        await h.settle()
+        self.assertEqual(h.brain.prompts, ["Both pieces."])
 
 
 class Mic(unittest.IsolatedAsyncioTestCase):

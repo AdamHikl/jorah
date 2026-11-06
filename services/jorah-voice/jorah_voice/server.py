@@ -6,10 +6,14 @@ import json
 import os
 from pathlib import Path
 
-from .core import parse_hello
+from .core import TurnEnd, parse_hello
 
 DEFAULT_PORT = 43210
 HELLO_SECONDS = 5
+# Measured on synthetic speech: docs/evidence/voice-endpointing/README.md.
+EARLY_PAUSE = 0.3
+FINISHED_PAUSE = 0.65
+UNFINISHED_PAUSE = 1.2
 
 
 def read_token(path):
@@ -31,6 +35,9 @@ async def serve(args):
     from .speech import Ears, Listener, Speaker, warm_up
 
     token = read_token(args.token_file)
+    if not 0 < args.early_pause <= args.finished_pause <= args.unfinished_pause:
+        raise SystemExit("need 0 < --early-pause <= --finished-pause <= --unfinished-pause")
+    turn_end = TurnEnd(args.finished_pause, args.unfinished_pause)
     root = models.ensure()
     print("Loading speech models", flush=True)
     listener = Listener(root, args.stt_provider)
@@ -53,12 +60,13 @@ async def serve(args):
             return
         async with one_at_a_time:
             session = VoiceSession(
-                Ears(root), listener, speaker, JorahBrain(args.gateway_url, args.gateway_token_file),
+                Ears(root, pauses=(args.early_pause, args.finished_pause, args.unfinished_pause)), listener, speaker, JorahBrain(args.gateway_url, args.gateway_token_file),
                 send_json=lambda message: ws.send(json.dumps(message)),
                 send_audio=ws.send,
                 on_close=ws.close,
                 barge_in=hello["barge_in"],
                 idle_seconds=args.idle,
+                turn_end=turn_end,
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())
@@ -94,6 +102,12 @@ def main():
     parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")
     parser.add_argument("--gateway-token-file", default=os.path.expanduser("~/.config/jorah-voice/gateway-token"))
     parser.add_argument("--idle", type=int, default=60, help="seconds of quiet before the session closes")
+    parser.add_argument("--early-pause", type=float, default=EARLY_PAUSE,
+                        help="seconds of quiet before transcribing starts, so the text is ready when the turn ends")
+    parser.add_argument("--finished-pause", type=float, default=FINISHED_PAUSE,
+                        help="seconds of quiet that end a turn whose transcript sounds finished")
+    parser.add_argument("--unfinished-pause", type=float, default=UNFINISHED_PAUSE,
+                        help="seconds of quiet that end any other turn, such as one ending in 'and' or 'the'")
     asyncio.run(serve(parser.parse_args()))
 
 

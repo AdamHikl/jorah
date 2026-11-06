@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from jorah_voice.core import IdleClock, SentenceChunker, classify, clean_for_speech, percentile
+from jorah_voice.core import IdleClock, SentenceChunker, TurnEnd, classify, clean_for_speech, percentile, sounds_finished
 
 
 class Classify(unittest.TestCase):
@@ -19,6 +19,56 @@ class Classify(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(classify("  ... "), "empty")
+
+
+
+class Finished(unittest.TestCase):
+    def test_a_punctuated_sentence_sounds_finished(self):
+        for text in ("Turn off the lights.", "What time is it?", "Do it now!", "Okay.", "That's it."):
+            self.assertTrue(sounds_finished(text), text)
+
+    def test_no_closing_punctuation_is_open(self):
+        for text in ("", "   ", "Turn off the lights", "Well,", "So I was thinking...", "Hmm.."):
+            self.assertFalse(sounds_finished(text), text)
+
+    def test_a_full_stop_after_an_open_word_is_still_open(self):
+        # Parakeet puts a full stop on a fragment as readily as on a sentence.
+        for text in ("I went to the park and.", "Can you check the.", "So I need to, um.", "So.",
+                     "Tell her that I.", "Pozri sa na to, ale."):
+            self.assertFalse(sounds_finished(text), text)
+
+    def test_case_and_trailing_space_do_not_matter(self):
+        self.assertFalse(sounds_finished("Buy milk AND. "))
+        self.assertTrue(sounds_finished(" Buy milk. "))
+
+
+class TurnEnding(unittest.TestCase):
+    def setUp(self):
+        self.end = TurnEnd(0.3, 0.9)
+
+    def test_a_finished_sentence_ends_after_the_short_pause(self):
+        self.assertFalse(self.end.done("Turn off the lights.", 0.25, False))
+        self.assertTrue(self.end.done("Turn off the lights.", 0.3, False))
+
+    def test_an_open_sentence_waits_for_the_long_pause(self):
+        self.assertFalse(self.end.done("I want to book a table for.", 0.5, False))
+        self.assertTrue(self.end.done("I want to book a table for.", 0.9, False))
+        self.assertEqual(self.end.wait_for("Lights on"), 0.9)
+
+    def test_nothing_ends_while_the_transcript_is_being_made_or_he_is_talking(self):
+        self.assertFalse(self.end.done(None, 5, False))
+        self.assertFalse(self.end.done("Turn off the lights.", 5, True))
+
+    def test_equal_pauses_behave_like_one_fixed_pause(self):
+        fixed = TurnEnd(0.6, 0.6)
+        for text in ("Done.", "and"):
+            self.assertFalse(fixed.done(text, 0.59, False))
+            self.assertTrue(fixed.done(text, 0.6, False))
+
+    def test_the_finished_pause_must_be_the_shorter_one(self):
+        for finished, unfinished in ((0.9, 0.3), (0, 0.5), (-1, 1)):
+            with self.assertRaises(ValueError):
+                TurnEnd(finished, unfinished)
 
 
 class Chunker(unittest.TestCase):

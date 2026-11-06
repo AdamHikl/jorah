@@ -72,6 +72,48 @@ class SentenceChunker:
         return [rest] if rest else []
 
 
+# A sentence ending in one of these is still open, however it is punctuated. English, then Slovak.
+OPEN_ENDINGS = frozenset("""
+    a an the and or but so because cause then if that than to of for with about from into in on at by as
+    my your his her our their its this these those some
+    um uh er erm hmm mm like i we you is are was were
+    ale alebo že lebo aby keď či ani
+""".split())
+
+
+def sounds_finished(text):
+    """True when a transcript reads as a whole turn: it ends in . ? or ! and not on a word that leaves it open.
+
+    Parakeet punctuates even a fragment, so the full stop alone isn't enough.
+    """
+    text = text.strip()
+    if not text or text[-1] not in ".?!" or text.endswith(".."):
+        return False
+    words = normalize_command(text).split()
+    return bool(words) and words[-1] not in OPEN_ENDINGS
+
+
+class TurnEnd:
+    """Decides when a pause ends Adam's turn.
+
+    A sentence that sounds finished ends after `finished` seconds of quiet. Anything else waits
+    `unfinished` seconds, so a pause to think after "and" or "the" doesn't cut him off.
+    """
+
+    def __init__(self, finished, unfinished):
+        if not 0 < finished <= unfinished:
+            raise ValueError("need 0 < finished <= unfinished")
+        self.finished = finished
+        self.unfinished = unfinished
+
+    def wait_for(self, text):
+        return self.finished if sounds_finished(text) else self.unfinished
+
+    def done(self, text, quiet, speaking):
+        """`text` is the transcript of everything held so far, or None while it is still being made."""
+        return text is not None and not speaking and quiet >= self.wait_for(text)
+
+
 class IdleClock:
     """Closes the session after a stretch with nobody talking, so the mic never stays open by accident."""
 

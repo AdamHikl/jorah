@@ -32,11 +32,12 @@ The old Telegram token sits in plaintext in `/home/jorah/.openclaw-jorah/opencla
 
 Everything else is prepared, and B4, B7, B8, B9 and B10 are done. These need Adam, in this order. Steps 3, 4 and 6 go in a Terminal attached to no agent.
 
-1. **Before the window: say yes to B1 and B2.** B1 is step 2's boot service, which is still open. B2 is pushing this branch to `main` and copying `config/pc` and `deploy` to the PC. Expected: `ls /opt/jorah/config/pc/stage0.patch.json5` works on the PC.
-2. **Before the window: say yes to the two plugin installs in step 8,** `acpx` and `duckduckgo`, both pinned to 2026.10.9.
+1. ~~Before the window: say yes to B1 and B2.~~ Done 2026-11-06, on Adam's yes.
+2. ~~Before the window: say yes to the two plugin installs in step 8.~~ Done 2026-11-06, on Adam's yes.
+2b. **Before the window: say yes to step 8b,** `doctor --fix` and removing the Mac's llama.cpp key.
 3. **Window, step 2: rotate the Telegram token** at BotFather (`/revoke`, then pick Jorah's bot). Expected: BotFather replies with a new token. Keep it in the password manager, never in a chat or file.
 4. **Window, step 8: store the two secrets** in the `jorah` shell. Expected: `Stored OPENCLAW_GATEWAY_TOKEN (secret).` and `Stored TELEGRAM_BOT_TOKEN (secret).`, then `secrets store list` shows both as `[secret] (write-only)`, with no token on screen.
-5. **Window, step 9: say yes to the patch** after its dry run. Expected: `Dry run successful: N update(s) validated`, N around 68, then `Config valid` and `0` Mac paths.
+5. **Window, step 9: say yes to the patch** after its dry run. Expected: `Dry run successful: N update(s) validated`, N around 70, then `Config valid` and `0` Mac paths.
 6. **Window, step 10: sign in to Claude** in the same shell. Expected: both logins finish without an error. If any setup prompt offers a llama.cpp chat model, answer **No**.
 7. **Window, step 11, after the start: write the voice token file,** `/home/jorah/.config/jorah-voice/gateway-token`, mode 600. Expected: `ls -l` shows `-rw-------` owned by `jorah`, and the file isn't empty.
 8. **Window, step 11: in Telegram, send `Hello`,** then ask for a fact saved on the Mac. Expected: a reply within a minute, and the fact. Recall is keyword-only on the PC, so ask with words the fact contains.
@@ -47,9 +48,9 @@ Each needs Adam's yes. The window doesn't start until all are done.
 
 | # | What | Why |
 |---|---|---|
-| B1 | Step 2 works: the Gateway service starts at boot with nobody signed in | Without it Jorah stops when the PC's last session ends. The unit is `deploy/openclaw-gateway.service`, which passes `systemd-analyze verify` on the PC [measured, 2026-11-06]. On the yes it's copied to `/etc/systemd/system` and loaded, not enabled. Step 11 starts it and enables it once the checks pass. The reboot with nobody signed in stays untested |
-| B2 | `config/pc/` is on `main` and copied to `/opt/jorah` (command below) | The patch is read from there, root-owned |
-| B3 | `acpx` and `duckduckgo` installed in step 8, pinned to 2026.10.9 | External plugins, not in the PC's install [measured]. The Mac's `extensions` folder (648 MB) holds macOS-native parts, and plugin `node_modules` aren't in backups. `duckduckgo` 2026.10.9 was published 2026-10-29, so it meets the 7-day rule. `llama-cpp` isn't used on the PC (B7) |
+| B1 | Step 2 works: the Gateway service starts at boot with nobody signed in | Without it Jorah stops when the PC's last session ends. The unit is `deploy/openclaw-gateway.service`, which passes `systemd-analyze verify` on the PC [measured, 2026-11-06]. **Installed 2026-11-06, on Adam's yes,** loaded and not enabled. Step 11 starts it and enables it once the checks pass. The reboot with nobody signed in stays untested |
+| B2 | `config/pc/` is on `main` and copied to `/opt/jorah` (command below) | The patch is read from there, root-owned. **Done 2026-11-06:** `main` at `034e0e5` in `/opt/jorah`, same hash both ends, and both units in `/etc/systemd/system`, `disabled` and `inactive` |
+| B3 | `acpx` and `duckduckgo` installed in step 8, pinned to 2026.10.9 | External plugins, not in the PC's install [measured]. The Mac's `extensions` folder (648 MB) holds macOS-native parts, and plugin `node_modules` aren't in backups. `duckduckgo` 2026.10.9 was published 2026-10-29, so it meets the 7-day rule. `llama-cpp` isn't used on the PC (B7). **Done 2026-11-06,** before the window, as `jorah` over SSH: both published 2026-10-29, `Installed plugin: acpx` and `Installed plugin: duckduckgo`. acpx's activation waits for step 8b |
 | B4 | Service hardening and linger | **Done 2026-11-06, on Adam's yes.** Step 11's unit blocks `/run/WSL` and vsock [measured], and step 2's service must carry the same two lines. `loginctl enable-linger jorah` is on, so rootless Podman uses systemd cgroups under a unit [measured] |
 | B5 | Nothing listens on 43181 on the PC, and `jorah-dev` is stopped | One Gateway at a time on this distro too |
 | B6 | The Mac and PC run the same OpenClaw version | Restore onto another version needs `database preflight` first |
@@ -219,7 +220,20 @@ Expected: `Installed plugin: acpx` and `Installed plugin: duckduckgo` [the secon
 
 **llama.cpp isn't used on the PC** (B7). The patch removes `models.providers.llama-cpp`, the Mac's entry for a `darwin-arm64` build on port 58378. The restored `~/.openclaw-jorah/tools/llama.cpp` and `models` folders stay on disk, unused, for the later fix.
 
-### 9. Stage 0 for the PC [rehearsed on `jorah-dev`]
+### 8b. Finish acpx's migration, and drop the Mac's llama.cpp key [rehearsed on a copy of the real state]
+
+On Adam's yes. Without `doctor --fix`, acpx's settings stay locked and step 9 refuses the whole patch. The llama.cpp key is the Mac's local llama-server key, useless on the PC, and the only thing step 11's secrets audit would flag. The Mac's backup still holds it.
+
+```bash
+pc "wsl -d jorah -u jorah -- openclaw --profile jorah doctor --fix --non-interactive"
+pc "wsl -d jorah -u jorah -- openclaw --profile jorah models auth logout llama-cpp:default --yes"
+```
+
+Expected [rehearsed]: `Doctor finished with plugin load errors`, from llama.cpp only. It adds `enabled: false` to 30 bundled skills, `enabled: true` to `memory-core` and three webhook migration markers, and changes nothing else in the config. Then `No auth profiles remain for llama-cpp`.
+
+With 8b on the copy, the whole patch gave `Dry run successful: 70 update(s)`, applied, `Config valid` with one llama.cpp warning, `0` Mac paths, acpx's `cwd` at `/home/jorah/work`, and `Secrets audit: clean. plaintext=0`.
+
+### 9. Stage 0 for the PC [rehearsed on `jorah-dev`, and on a copy of the real state]
 
 Fill Adam's id from the record before the window, in a copy outside the repo. Then dry run:
 
@@ -234,7 +248,7 @@ echo "$T"
 EOF
 ```
 
-Replace `REPLACE_WITH_ID` in the command with the number, so the `grep` check passes. Expected: `Dry run successful: N update(s) validated`. N was 68 in the rehearsal with the final patch. If a store entry is missing, the dry run says `Secret store entry "..." was not found` and step 8 is redone [rehearsed]. Show Adam the dry run. On Adam's yes, apply the same file:
+Replace `REPLACE_WITH_ID` in the command with the number, so the `grep` check passes. Expected: `Dry run successful: N update(s) validated`. N was 70 on the copy of the real state after step 8b. If a store entry is missing, the dry run says `Secret store entry "..." was not found` and step 8 is redone [rehearsed]. Show Adam the dry run. On Adam's yes, apply the same file:
 
 ```bash
 pc "wsl -d jorah -u jorah -- openclaw --profile jorah config patch --file <folder from above>/pc.json5"

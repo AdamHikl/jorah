@@ -22,3 +22,14 @@ class Pieces(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Speak(unittest.TestCase):
+    def test_reply_is_cut_into_clean_sentences(self):
+        from jorah_voice import speak
+        parts = speak.sentences("**Done.** The backup ran at 04:30. See [the log](https://example.com).")
+        self.assertEqual(parts, ["Done.", "The backup ran at 04:30.", "See the log."])
+
+    def test_usage_error(self):
+        from jorah_voice import speak
+        self.assertEqual(speak.main(["only-one-arg"]), 2)

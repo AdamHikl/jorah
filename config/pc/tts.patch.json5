@@ -1,0 +1,17 @@
+// Jorah answers a Telegram voice note with a voice note, made on the PC with Kokoro (CPU) through
+// services/jorah-voice/bin/jorah-speak. "inbound": only when Adam sent audio; typed messages
+// get text as before. Text never leaves the PC for speech.
+{
+  tts: {
+    auto: "inbound",
+    provider: "tts-local-cli",
+    providers: {
+      "tts-local-cli": {
+        command: "/opt/jorah/services/jorah-voice/bin/jorah-speak",
+        args: ["{{OutputPath}}", "{{Text}}"],
+        outputFormat: "wav",
+        timeoutMs: 120000,
+      },
+    },
+  },
+}

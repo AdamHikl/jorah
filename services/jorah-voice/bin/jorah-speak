@@ -1,0 +1,6 @@
+#!/bin/sh
+# OpenClaw's local CLI text-to-speech: Jorah's voice replies in Telegram, made on the PC.
+# Runs as jorah from the root-owned copy in /opt/jorah. Arguments: <output.wav> <text>.
+set -eu
+cd /opt/jorah/services/jorah-voice
+exec /home/jorah/.venv/bin/python -m jorah_voice.speak "$1" "$2"

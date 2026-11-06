@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
   "numpy==2.5.4",
   "sherpa-onnx==2.0.1",
-  "websockets==17.4",
+  "websockets==17.3",
 ]
 
 [project.scripts]

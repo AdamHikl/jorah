@@ -120,20 +120,22 @@ git -C ~/Documents/jorah log --oneline | head -5
 
 **Adam approved this order on 2026-11-03. It wins over any milestone text it names.** Adam wants Jorah on the PC as soon as possible, working without the MacBook, which travels daily, and wants local voice first. Hours and dates don't matter to Adam, so they are old estimates, not commitments. Nothing here has been tried on the PC. Results are plan or docs claims, or `[inference]`, until a step measures them.
 
+**Adam changed the design on 2026-11-05, and this wins over everything below it:** one agent, one sandbox, one system. Jorah is OpenClaw's `main` agent in a single WSL distro named `jorah` on the PC, under Linux user `jorah`, and it works with the Mac closed. Telegram, the iPhone and the Mac's mic are only ways to talk to it, and its work stays on the PC. So there is no separate `voice` agent and no separate `jorah-gw` or `jorah-voice` distro. Sound is a channel into Jorah's main session, and `ask_main` isn't needed. Read `voice`, `jorah-gw` and `jorah-talk` below in that light. Other changes the same week: disk encryption is waived in writing (P1.1), and Adam gave setup agents admin access to Windows over key-only SSH (P1.2). The order and current state are in `docs/runbooks/jorah-on-pc.md`.
+
 **No hard gate gets weaker, and nothing private connects before M3's gate passes.** What changes is the order, and which machine each test runs on. Milestone numbers stay, so references in other documents still work.
 
 | Stage | What happens | Taken from | Adam gets |
 |---|---|---|---|
 | **P0** | Stage 0, tooling, API test and backup on the Mac | M0, amended | Jorah can't run a shell as Adam |
 | **P1** | PC inventory, set up and tested with a throwaway bot, 7-day soak | M7, trimmed | A verdict on whether the PC can carry Jorah |
-| **P2** | Jorah moves to the PC. `voice` and `background` agents added. Rescue bot on the Pi | M9 reduced, M1-C, 1.26 | **Telegram Jorah with the Mac closed** |
+| **P2** | Jorah moves to the PC. `background` agent added. Rescue bot on the Pi | M9 reduced, M1-C, 1.26 | **Telegram Jorah with the Mac closed** |
 | **P3** | Local speech on the RTX 5070, reached from iPhone and AirPods | M20, parts of M2a and M2b | **Talking to Jorah without the Mac** |
 | **P4** | Pi as room ear, trained wake word | M10, on the Pi | **"Hey Jorah" in the room** |
 | **P5** | Bridge and guard, then M3's hard gate on the PC | M2b-C, M2b-D, M3 | Voice-started jobs, web answers, ready for private data |
 | **P5a** | Typed Haiku pilot on Telegram, two weeks, then Adam decides | New, on P5's bridge | A measured answer on whether everyday typed chat can run on Haiku |
 | **Then** | M4 onward, in the existing order | Table below | Mail, calendar and the rest |
 
-**The honest catch:** voice before M3 has no private memory and starts no real jobs. It is a real conversation with the thin `voice` agent, not yet the full assistant.
+**The honest catch:** voice reaches the same agent with the same tools as Telegram, so anything said in the room, or misheard, reaches Jorah. Stage 0's limits have to be on before sound connects, and nothing private connects before M3's gate.
 
 ### P0. Safe on the Mac (M0, amended)
 

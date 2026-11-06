@@ -1,10 +1,13 @@
 """Speech models, behind plain methods so the session can be tested without them."""
 
+from pathlib import Path
+
 import numpy as np
 import sherpa_onnx
 
-from . import models
+from . import models, spoken
 
+NAMES = Path(__file__).with_name("lexicon-names.txt")
 MIC_RATE = 16000
 VAD_WINDOW = 512
 
@@ -71,11 +74,13 @@ class Listener:
 class Speaker:
     def __init__(self, root=models.ROOT, provider="cpu", threads=4, voice="michael", speed=1.0):
         folder = root / models.TTS_DIR
+        lists = [folder / "lexicon-us-en.txt", NAMES]
+        lists.append(spoken.write_inflections(lists[0], root / "lexicon-inflections.txt"))
         kokoro = sherpa_onnx.OfflineTtsKokoroModelConfig(
             model=str(folder / "model.int8.onnx"),
             voices=str(folder / "voices.bin"),
             tokens=str(folder / "tokens.txt"),
-            lexicon=str(folder / "lexicon-us-en.txt"),
+            lexicon=",".join(str(path) for path in lists),
             data_dir=str(folder / "espeak-ng-data"),
         )
         config = sherpa_onnx.OfflineTtsConfig(
@@ -83,6 +88,7 @@ class Speaker:
             max_num_sentences=1,
         )
         self._tts = sherpa_onnx.OfflineTts(config)
+        self._known = spoken.load_words(*lists)
         self._voice = VOICES[voice]
         self._speed = speed
 
@@ -92,6 +98,6 @@ class Speaker:
 
     def synthesize(self, text):
         """Return 16-bit mono audio bytes for one sentence."""
-        audio = self._tts.generate(text, sid=self._voice, speed=self._speed)
+        audio = self._tts.generate(spoken.rewrite(text, self._known), sid=self._voice, speed=self._speed)
         samples = np.clip(np.asarray(audio.samples, dtype=np.float32), -1, 1)
         return (samples * 32767).astype(np.int16).tobytes()

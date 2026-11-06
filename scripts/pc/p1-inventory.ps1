@@ -71,23 +71,27 @@ Try-Value "Ports" {
 }
 
 Section "Leftovers, by path only. No file was opened"
-$skip = "\\node_modules\\|\\AppData\\|\\\.git\\|\\\.venv\\|\\site-packages\\"
-Try-Value "Folders named like Merlin or OpenClaw" {
-  Get-ChildItem $env:USERPROFILE -Directory -Recurse -Depth 4 -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match "merlin|openclaw|\.clawd" -and $_.FullName -notmatch $skip } |
-    ForEach-Object { Hide-Home $_.FullName }
+$skip = @("AppData", "node_modules", ".git", ".venv", "site-packages", "__pycache__")
+$match = "merlin|openclaw|^\.clawd$|^certs$|\.key$|\.pem$|\.pfx$|^\.env$|^\.env\.|^id_rsa$|^id_ed25519$"
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$queue = New-Object System.Collections.Queue
+$queue.Enqueue(@($env:USERPROFILE, 0))
+$hits = New-Object System.Collections.Generic.List[string]
+while ($queue.Count -gt 0 -and $clock.Elapsed.TotalSeconds -lt 60) {
+  $item = $queue.Dequeue()
+  try { $entries = ([IO.DirectoryInfo]$item[0]).EnumerateFileSystemInfos() } catch { continue }
+  try {
+    foreach ($entry in $entries) {
+      if ($entry.Name -match $match -and $hits.Count -lt 150) { $hits.Add((Hide-Home $entry.FullName)) }
+      $isDir = $entry.Attributes -band [IO.FileAttributes]::Directory
+      $isLink = $entry.Attributes -band [IO.FileAttributes]::ReparsePoint
+      if ($isDir -and -not $isLink -and $skip -notcontains $entry.Name -and $item[1] -lt 5) { $queue.Enqueue(@($entry.FullName, ($item[1] + 1))) }
+    }
+  } catch { continue }
 }
-Try-Value "Key, certificate and env files" {
-  Get-ChildItem $env:USERPROFILE -File -Recurse -Depth 5 -Force -ErrorAction SilentlyContinue -Include "*.key", "*.pem", ".env", ".env.*", "*.pfx", "id_rsa", "id_ed25519" |
-    Where-Object { $_.FullName -notmatch $skip } |
-    Select-Object -First 100 |
-    ForEach-Object { Hide-Home $_.FullName }
-}
-Try-Value "Folders named certs" {
-  Get-ChildItem $env:USERPROFILE -Directory -Recurse -Depth 5 -Force -ErrorAction SilentlyContinue -Filter "certs" |
-    Where-Object { $_.FullName -notmatch $skip } |
-    ForEach-Object { Hide-Home $_.FullName }
-}
+Say "Search covered everything to depth 5: $($queue.Count -eq 0). AppData and dependency folders skipped."
+if ($hits.Count) { $hits | ForEach-Object { Say $_ } } else { Say "No matches" }
+Try-Value "Top-level folders on C:" { Get-ChildItem C:\ -Directory -Force | Where-Object { $_.Name -notmatch '^\$|^(Windows|Program Files|Program Files \(x86\)|ProgramData|Users|PerfLogs|Recovery|System Volume Information|Documents and Settings|Config\.Msi|MSOCache)$' } | ForEach-Object { $_.Name } }
 
 $report = $out -join "`r`n"
 $file = Join-Path ([Environment]::GetFolderPath("Desktop")) "jorah-inventory.txt"

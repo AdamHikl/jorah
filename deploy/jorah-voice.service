@@ -1,6 +1,6 @@
 [Unit]
-Description=Jorah voice: speech and thinking, reached only through Tailscale Serve
-After=network-online.target
+Description=Jorah voice: speech to and from Jorah's main session, reached only through Tailscale Serve
+After=network-online.target openclaw-gateway.service
 Wants=network-online.target
 
 [Service]
@@ -10,15 +10,15 @@ ExecStart=/home/jorah/.venv/bin/python -m jorah_voice.server
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
-Environment=PATH=/home/jorah/.local/bin:/usr/bin:/bin
 # The code is read-only to it, and the rest of the system is out of reach.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=tmpfs
-BindPaths=/home/jorah/.cache/jorah-voice /home/jorah/.claude-jorah
+BindPaths=/home/jorah/.cache/jorah-voice
 BindReadOnlyPaths=/home/jorah/.venv /home/jorah/.local /home/jorah/.config/jorah-voice
 PrivateTmp=yes
-PrivateDevices=yes
+# The GPU is /dev/dxg in WSL, so devices stay visible, but only that one is allowed.
+DeviceAllow=/dev/dxg rw
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

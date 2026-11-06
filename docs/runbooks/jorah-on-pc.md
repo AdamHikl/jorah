@@ -9,11 +9,11 @@ Steps marked [measured] ran on the PC on 2026-11-05. The rest haven't run yet, s
 | Step | What | State |
 |---|---|---|
 | 1 | Distro, user, Node, OpenClaw, firewall, speech models | Done [measured]. No Gateway started |
-| 2 | Starts at boot with nobody signed in | Not run |
+| 2 | Starts at boot with nobody signed in | Set up [measured]: Tailscale unattended on, Windows task "Jorah WSL" (at startup, `adamh`, S4U, `wsl.exe -d jorah --exec /bin/sleep infinity`) starts and keeps the distro. Reboot with nobody signed in not tested |
 | 3 | Stage 0 settings for the PC, secrets store, new Telegram token | Not run |
 | 4 | Move: stop the Mac Gateway, back up, restore here, sign in. **Never two Gateways** | Not run |
 | 5 | Proof: Mac closed, PC rebooted, Telegram answers and recalls a saved fact | Not run |
-| 6 | Speech feeds Jorah's main session, and `brain.py` goes | Not run |
+| 6 | Speech feeds Jorah's main session through the Gateway's Chat Completions endpoint | Code done. End to end on the PC with a stand-in Gateway and the service's sandbox settings [measured]: heard correctly, reply streamed and spoken, recognition on the CPU (Parakeet v3) and speech on the GPU (Kokoro fp32). Not run against the real Gateway |
 | 7 | Pair the iPhone and the Mac as clients | Not run |
 
 ## The distro

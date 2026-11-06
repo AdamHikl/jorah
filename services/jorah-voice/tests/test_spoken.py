@@ -71,6 +71,7 @@ class Words(unittest.TestCase):
 
     def test_joined_words_and_mixed_tokens(self):
         self.assertEqual(rewrite("open-claw", KNOWN), "open claw")
+        self.assertEqual(rewrite("Tail-scale", KNOWN | {"tailscale"}), "Tailscale")
         self.assertEqual(rewrite("M3", KNOWN), "M three")
 
     def test_nothing_is_lost_from_a_real_sentence(self):

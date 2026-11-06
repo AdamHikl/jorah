@@ -118,17 +118,17 @@ class Turns(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(h.states(), ["thinking", "speaking", "listening"])
         self.assertIn({"type": "heard", "text": "Hello there"}, h.sent)
         self.assertEqual(len(h.audio), 4)
-        self.assertIn("Adam: Hello there", h.brain.prompts[0])
+        self.assertEqual(h.brain.prompts[0], "Hello there")
         for name in ("transcribe", "first_token", "first_audio"):
             self.assertEqual(len(h.session.numbers[name]), 1)
 
-    async def test_the_next_turn_remembers_this_session(self):
+    async def test_each_turn_sends_only_the_new_words_because_jorah_keeps_the_conversation(self):
         h = Harness()
         await h.say()
         await h.settle()
         await h.say()
         await h.settle()
-        self.assertIn("Jorah: Hi Adam. All good.", h.brain.prompts[1])
+        self.assertEqual(h.brain.prompts, ["Hello there", "Hello there"])
 
     async def test_silence_transcribed_as_nothing_never_reaches_the_brain(self):
         h = Harness(text="  ...  ")
@@ -154,12 +154,11 @@ class Turns(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(h.close_count, 1)
         self.assertEqual([m for m in h.sent if m["type"] == "closed"][0]["reason"], "said goodbye")
 
-    async def test_a_failed_brain_is_said_out_loud_and_not_remembered(self):
+    async def test_a_failed_brain_is_said_out_loud(self):
         h = Harness(brain=FakeBrain(error=BrainError("down")))
         await h.say()
         await h.settle()
         self.assertEqual(h.speaker.lines, [FAILURE_LINE])
-        self.assertEqual(h.session._history.as_prompt(), "\nJorah:")
         self.assertEqual(h.session.numbers["first_token"], [])
 
 
@@ -194,13 +193,12 @@ class Mic(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(h.brain.cancelled)
         self.assertIn("cut", h.kinds())
 
-    async def test_enter_cuts_him_off_and_keeps_what_he_had_said(self):
+    async def test_enter_cuts_him_off(self):
         h = await self.held_turn()
         await h.session.interrupt()
         self.assertFalse(h.session.busy())
         self.assertTrue(h.brain.cancelled)
         self.assertEqual(h.states()[-1], "listening")
-        self.assertIn("Jorah: Thinking about it.", h.session._history.as_prompt())
 
 
 class Closing(unittest.IsolatedAsyncioTestCase):

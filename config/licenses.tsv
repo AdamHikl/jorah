@@ -3,3 +3,10 @@ numpy	BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
 sherpa-onnx	Apache-2.0
 sherpa-onnx-core	Apache-2.0
 websockets	BSD-3-Clause
+nvidia-cuda-runtime	LicenseRef-NVIDIA-Proprietary
+nvidia-cublas	LicenseRef-NVIDIA-Proprietary
+nvidia-curand	LicenseRef-NVIDIA-Proprietary
+nvidia-cufft	LicenseRef-NVIDIA-Proprietary
+nvidia-cudnn-cu13	LicenseRef-NVIDIA-Proprietary
+nvidia-cuda-nvrtc	LicenseRef-NVIDIA-Proprietary
+nvidia-nvjitlink	LicenseRef-NVIDIA-Proprietary

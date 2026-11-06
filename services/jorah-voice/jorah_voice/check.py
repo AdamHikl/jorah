@@ -1,4 +1,4 @@
-"""Test the speech models on the PC with no client: a recording in, a recording out."""
+"""Test one spoken turn on the PC with no client: a recording in, Jorah's reply out as a recording."""
 
 import argparse
 import time
@@ -7,8 +7,8 @@ import wave
 import numpy as np
 
 from . import models
-from .brain import ClaudeBrain
-from .core import History, SentenceChunker
+from .brain import JorahBrain
+from .core import SentenceChunker
 from .speech import MIC_RATE, Listener, Speaker
 
 
@@ -17,7 +17,8 @@ def main():
     parser.add_argument("--input", help="16 kHz mono WAV. Without it, the text below is used")
     parser.add_argument("--text", default="Say good morning to Adam in one short sentence.")
     parser.add_argument("--output", default="reply.wav")
-    parser.add_argument("--provider", default="cpu")
+    parser.add_argument("--stt-provider", default="cpu")
+    parser.add_argument("--tts-provider", default="cuda")
     parser.add_argument("--voice", default="michael")
     args = parser.parse_args()
 
@@ -29,17 +30,15 @@ def main():
                 raise SystemExit(f"{args.input} must be {MIC_RATE} Hz mono")
             samples = np.frombuffer(source.readframes(source.getnframes()), dtype=np.int16).astype(np.float32) / 32768
         started = time.monotonic()
-        text = Listener(root, args.provider).transcribe(samples)
+        text = Listener(root, args.stt_provider).transcribe(samples)
         print(f"Heard in {time.monotonic() - started:.2f}s: {text}")
 
-    speaker = Speaker(root, args.provider, voice=args.voice)
-    history = History()
-    history.add("Adam", text)
+    speaker = Speaker(root, args.tts_provider, voice=args.voice)
     chunker = SentenceChunker()
     audio = []
     started = time.monotonic()
     first_token = None
-    for delta in ClaudeBrain().stream(history.as_prompt()):
+    for delta in JorahBrain().stream(text):
         first_token = first_token or time.monotonic() - started
         for sentence in chunker.feed(delta):
             print(f"Jorah: {sentence}")

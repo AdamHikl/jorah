@@ -1,13 +1,43 @@
 """Speech models, behind plain methods so the session can be tested without them."""
 
+import ctypes
+import sys
 from pathlib import Path
 
 import numpy as np
-import sherpa_onnx
 
 from . import models, spoken
 
 NAMES = Path(__file__).with_name("lexicon-names.txt")
+
+
+def load_cuda():
+    """Load the CUDA libraries from the nvidia pip packages before sherpa-onnx needs them.
+
+    They live in the venv rather than on the library path, so each one is opened globally,
+    retrying until the ones that depend on others load too.
+    """
+    site = Path(sys.prefix) / "lib" / f"python{sys.version_info[0]}.{sys.version_info[1]}" / "site-packages" / "nvidia"
+    pending = sorted(path for folder in ("cu13", "cudnn") for path in (site / folder / "lib").glob("lib*.so.*"))
+    if not pending:
+        raise RuntimeError(f"no CUDA libraries under {site}")
+    while pending:
+        failed = []
+        for path in pending:
+            try:
+                ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                failed.append(path)
+        if len(failed) == len(pending):
+            raise RuntimeError(f"can't load {failed[0].name}")
+        pending = failed
+
+
+def _sherpa(provider):
+    if provider == "cuda":
+        load_cuda()
+    import sherpa_onnx
+    return sherpa_onnx
 MIC_RATE = 16000
 VAD_WINDOW = 512
 
@@ -22,6 +52,7 @@ class Ears:
     """Finds where speech starts and ends in the incoming 16 kHz, 16-bit mono audio."""
 
     def __init__(self, root=models.ROOT, silence=0.6):
+        sherpa_onnx = _sherpa("cpu")
         config = sherpa_onnx.VadModelConfig()
         config.silero_vad.model = str(root / "silero_vad_v5.onnx")
         config.silero_vad.threshold = 0.5
@@ -53,6 +84,7 @@ class Ears:
 
 class Listener:
     def __init__(self, root=models.ROOT, provider="cpu", threads=4):
+        sherpa_onnx = _sherpa(provider)
         folder = root / models.STT_DIR
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
             encoder=str(folder / "encoder.int8.onnx"),
@@ -72,12 +104,13 @@ class Listener:
 
 
 class Speaker:
-    def __init__(self, root=models.ROOT, provider="cpu", threads=4, voice="michael", speed=1.0):
+    def __init__(self, root=models.ROOT, provider="cuda", threads=4, voice="michael", speed=1.0):
+        sherpa_onnx = _sherpa(provider)
         folder = root / models.TTS_DIR
         lists = [folder / "lexicon-us-en.txt", NAMES]
-        lists.append(spoken.write_inflections(lists[0], root / "lexicon-inflections.txt"))
+        lists.append(spoken.write_inflections(lists[0], folder / "lexicon-inflections.txt"))
         kokoro = sherpa_onnx.OfflineTtsKokoroModelConfig(
-            model=str(folder / "model.int8.onnx"),
+            model=str(folder / "model.onnx"),
             voices=str(folder / "voices.bin"),
             tokens=str(folder / "tokens.txt"),
             lexicon=",".join(str(path) for path in lists),
@@ -101,3 +134,11 @@ class Speaker:
         audio = self._tts.generate(spoken.rewrite(text, self._known), sid=self._voice, speed=self._speed)
         samples = np.clip(np.asarray(audio.samples, dtype=np.float32), -1, 1)
         return (samples * 32767).astype(np.int16).tobytes()
+
+
+def warm_up(listener, speaker, rounds=3):
+    """Run each model a few times so the first real turn isn't the slow one."""
+    quiet = np.zeros(MIC_RATE, dtype=np.float32)
+    for _ in range(rounds):
+        listener.transcribe(quiet)
+        speaker.synthesize("Ready when you are.")

@@ -26,15 +26,17 @@ async def serve(args):
     from websockets.exceptions import ConnectionClosed
 
     from . import models
-    from .brain import ClaudeBrain
+    from .brain import JorahBrain
     from .session import VoiceSession
-    from .speech import Ears, Listener, Speaker
+    from .speech import Ears, Listener, Speaker, warm_up
 
     token = read_token(args.token_file)
     root = models.ensure()
     print("Loading speech models", flush=True)
-    listener = Listener(root, args.provider)
-    speaker = Speaker(root, args.provider, voice=args.voice, speed=args.speed)
+    listener = Listener(root, args.stt_provider)
+    speaker = Speaker(root, args.tts_provider, voice=args.voice, speed=args.speed)
+    # The GPU's first run of each model is slow while it picks kernels, so do it before anyone talks.
+    warm_up(listener, speaker)
     one_at_a_time = asyncio.Lock()
 
     async def handler(ws):
@@ -51,7 +53,7 @@ async def serve(args):
             return
         async with one_at_a_time:
             session = VoiceSession(
-                Ears(root), listener, speaker, ClaudeBrain(args.model),
+                Ears(root), listener, speaker, JorahBrain(args.gateway_url, args.gateway_token_file),
                 send_json=lambda message: ws.send(json.dumps(message)),
                 send_audio=ws.send,
                 on_close=ws.close,
@@ -85,10 +87,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--token-file", default=os.path.expanduser("~/.config/jorah-voice/token"))
-    parser.add_argument("--provider", default="cpu", help="cpu, or cuda once the GPU spike passes")
+    parser.add_argument("--stt-provider", default="cpu", help="where speech recognition runs: cpu or cuda")
+    parser.add_argument("--tts-provider", default="cuda", help="where speech is made: cuda, or cpu without the GPU")
     parser.add_argument("--voice", default="michael")
     parser.add_argument("--speed", type=float, default=1.0)
-    parser.add_argument("--model", default="claude-haiku-5-5")
+    parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")
+    parser.add_argument("--gateway-token-file", default=os.path.expanduser("~/.config/jorah-voice/gateway-token"))
     parser.add_argument("--idle", type=int, default=60, help="seconds of quiet before the session closes")
     asyncio.run(serve(parser.parse_args()))
 

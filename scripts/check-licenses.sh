@@ -22,13 +22,15 @@ if [ -n "$unchecked" ]; then
 fi
 
 allowed=" MIT BSD-2-Clause BSD-3-Clause Apache-2.0 MPL-2.0 ISC CC0-1.0 0BSD Zlib "
+# Accepted one by one in docs/adr/0001-voice-licences.md, not allowed in general.
+allowed="$allowed LicenseRef-NVIDIA-Proprietary "
 failed=0
 
 # Names only: the first word of each pinned dependency, then every package in a lock file.
 list_packages() {
   printf '%s\n' "$manifests" | while read -r manifest; do
     case "$manifest" in
-      */pyproject.toml|pyproject.toml) sed -nE 's/^[[:space:]]*"([A-Za-z0-9._-]+)==[^"]*",?$/\1/p' "$manifest" ;;
+      */pyproject.toml|pyproject.toml) sed -nE 's/^[[:space:]]*"([A-Za-z0-9._-]+)[[:space:]]*(==|@)[^"]*",?$/\1/p' "$manifest" ;;
       *) awk '/^\[\[package\]\]/{getline line; print line}' "$manifest" | sed -nE 's/^name = "([^"]+)"$/\1/p' ;;
     esac
   done

@@ -1,12 +1,19 @@
 [project]
 name = "jorah-voice"
 version = "0.1.0"
-description = "The PC side of talking to Jorah: speech recognition, thinking and speech"
+description = "The sound layer for Jorah: speech recognition and speech on the PC's GPU"
 requires-python = ">=3.12"
 dependencies = [
   "numpy==2.5.4",
-  "sherpa-onnx==2.0.1",
   "websockets==17.3",
+  # sherpa-onnx's CUDA 13 build is published as a wheel by its author, not on PyPI. uv.lock pins its hash.
+  "sherpa-onnx @ https://huggingface.co/csukuangfj2/sherpa-onnx-wheels/resolve/main/cuda/2.0.1/sherpa_onnx-2.0.1+cuda13.cudnn9.onnxruntime1.28.2-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux'",
+  # CUDA 13.4, matching the Windows driver's CUDA 13.4, so no newer runtime than the driver.
+  "nvidia-cuda-runtime==13.4.92 ; sys_platform == 'linux'",
+  "nvidia-cublas==13.4.3.11 ; sys_platform == 'linux'",
+  "nvidia-curand==10.4.4.72 ; sys_platform == 'linux'",
+  "nvidia-cufft==12.4.0.43 ; sys_platform == 'linux'",
+  "nvidia-cudnn-cu13==9.27.0.42 ; sys_platform == 'linux'",
 ]
 
 [project.scripts]

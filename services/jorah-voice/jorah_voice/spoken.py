@@ -21,6 +21,7 @@ _DECIMAL = re.compile(r"(\d+)\.(\d+)")
 _THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
 _NUMBER = re.compile(r"\d+")
 _JOINER = re.compile(r"(?<=\w)[-/_](?=\w)")
+_HYPHENATED = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)+")
 _WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
 _CASE_CHANGE = re.compile(r"(?<=[a-z])(?=[A-Z])")
 _MONEY_NAMES = {"$": "dollars", "€": "euros", "£": "pounds"}
@@ -133,6 +134,7 @@ def say_word(word, known):
 
 def rewrite(text, known):
     text = text.replace("’", "'").replace("&", " and ").replace("+", " plus ").replace("@", " at ")
+    text = _HYPHENATED.sub(lambda m: m[0].replace("-", "") if m[0].replace("-", "").lower() in known else m[0], text)
     text = _JOINER.sub(" ", say_numbers(text))
     text = _WORD.sub(lambda m: say_word(m[0], known), text)
     return re.sub(r"\s+([.,!?;:])", r"\1", re.sub(r"\s+", " ", text)).strip()

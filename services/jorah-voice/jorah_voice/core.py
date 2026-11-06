@@ -87,25 +87,6 @@ class IdleClock:
         return self._now() - self._last >= self._limit
 
 
-class History:
-    """The current conversation, in memory only. It is gone when the session ends."""
-
-    def __init__(self, max_turns=12):
-        self._turns = []
-        self._max = max_turns
-
-    def add(self, who, text):
-        self._turns.append((who, text))
-        self._turns = self._turns[-self._max :]
-
-    def drop_last(self):
-        if self._turns:
-            self._turns.pop()
-
-    def as_prompt(self):
-        return "\n".join(f"{who}: {text}" for who, text in self._turns) + "\nJorah:"
-
-
 def percentile(values, share):
     """Nearest-rank percentile. Returns None with no samples, so a missing number never reads as 0."""
     if not values:

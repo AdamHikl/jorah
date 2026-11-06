@@ -10,14 +10,19 @@ from pathlib import Path
 ROOT = Path.home() / ".cache" / "jorah-voice" / "models"
 BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
 
+# Parakeet TDT 0.6B v3 int8 runs on the CPU: as fast as the GPU would make it (about 120 ms a
+# sentence), no GPU memory, and it understands 25 European languages, Slovak included.
+STT_DIR = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+
+# Kokoro v1.0 at full precision on the GPU, because int8 runs slower than fp32 there.
+TTS_DIR = "kokoro-multi-lang-v1_0"
+
 FILES = {
     "vad": ("asr-models/silero_vad_v5.onnx", "6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"),
     "stt": ("asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2", "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf"),
-    "tts": ("tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2", "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653"),
+    "tts": ("tts-models/kokoro-multi-lang-v1_0.tar.bz2", "60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4"),
 }
-
-STT_DIR = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
-TTS_DIR = "kokoro-int8-multi-lang-v1_0"
+FOLDERS = {"stt": STT_DIR, "tts": TTS_DIR}
 
 
 def _sha256(path):
@@ -62,10 +67,13 @@ def _fetch(relative, expected, root):
 def ensure(root=ROOT):
     root.mkdir(parents=True, exist_ok=True)
     for key, (relative, expected) in FILES.items():
+        folder = FOLDERS.get(key)
+        if folder and (root / folder).exists():
+            continue
         archive = _fetch(relative, expected, root)
-        folder = {"stt": STT_DIR, "tts": TTS_DIR}.get(key)
-        if folder and not (root / folder).exists():
+        if folder:
             print(f"Unpacking {archive.name}")
             with tarfile.open(archive) as tar:
                 tar.extractall(root, filter="data")
+            archive.unlink()
     return root

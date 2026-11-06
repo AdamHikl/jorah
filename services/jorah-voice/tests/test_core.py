@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from jorah_voice.core import History, IdleClock, SentenceChunker, classify, clean_for_speech, percentile
+from jorah_voice.core import IdleClock, SentenceChunker, classify, clean_for_speech, percentile
 
 
 class Classify(unittest.TestCase):
@@ -56,21 +56,6 @@ class Idle(unittest.TestCase):
         self.assertFalse(clock.expired())
         now[0] = 119
         self.assertTrue(clock.expired())
-
-
-class Memory(unittest.TestCase):
-    def test_keeps_only_recent_turns(self):
-        history = History(max_turns=2)
-        for text in ("one", "two", "three"):
-            history.add("Adam", text)
-        self.assertEqual(history.as_prompt(), "Adam: two\nAdam: three\nJorah:")
-
-    def test_drop_last(self):
-        history = History()
-        history.add("Adam", "hi")
-        history.drop_last()
-        history.drop_last()
-        self.assertEqual(history.as_prompt(), "\nJorah:")
 
 
 class Percentile(unittest.TestCase):

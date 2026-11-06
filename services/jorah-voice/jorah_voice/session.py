@@ -4,7 +4,7 @@ import asyncio
 import time
 
 from .brain import BrainError
-from .core import History, IdleClock, SentenceChunker, classify, percentile
+from .core import IdleClock, SentenceChunker, classify, percentile
 
 BLOCK_SECONDS = 0.1
 BYTES_PER_SAMPLE = 2
@@ -31,7 +31,6 @@ class VoiceSession:
         self._lead = lead
         self._idle = IdleClock(idle_seconds, now=clock)
         self._started = clock()
-        self._history = History()
         self._turn = None
         self.closed = False
         self.numbers = {"transcribe": [], "first_token": [], "first_audio": []}
@@ -114,19 +113,18 @@ class VoiceSession:
             await self._speak_lines(["Talk soon."], heard_at, record=False)
             await self.close("said goodbye")
             return
-        self._history.add("Adam", text)
-        await self._reply(heard_at)
+        await self._reply(text, heard_at)
         self._idle.touch()
         await self._state("listening")
 
-    async def _reply(self, heard_at):
+    async def _reply(self, text, heard_at):
         sentences = asyncio.Queue()
         speaking = asyncio.create_task(self._speak_queue(sentences, heard_at, record=True))
         chunker = SentenceChunker()
         reply = []
         try:
             first_token = None
-            async for delta in self._stream(self._history.as_prompt()):
+            async for delta in self._stream(text):
                 if first_token is None:
                     first_token = self._clock()
                     self.numbers["first_token"].append(first_token - heard_at)
@@ -141,7 +139,6 @@ class VoiceSession:
             await speaking
         except BrainError as error:
             print(f"brain failed: {error}", flush=True)
-            self._history.drop_last()
             reply = []
             sentences.put_nowait(FAILURE_LINE)
             sentences.put_nowait(None)
@@ -150,18 +147,15 @@ class VoiceSession:
             speaking.cancel()
             await asyncio.gather(speaking, return_exceptions=True)
             raise
-        finally:
-            if reply:
-                self._history.add("Jorah", "".join(reply))
 
-    async def _stream(self, prompt):
+    async def _stream(self, text):
         """Run the blocking brain call on a thread and hand its text to this loop."""
         loop = asyncio.get_running_loop()
         items = asyncio.Queue()
 
         def pump():
             try:
-                for delta in self._brain.stream(prompt):
+                for delta in self._brain.stream(text):
                     loop.call_soon_threadsafe(items.put_nowait, ("text", delta))
                 loop.call_soon_threadsafe(items.put_nowait, ("end", None))
             except Exception as error:

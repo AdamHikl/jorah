@@ -1,0 +1,11 @@
+# 04:30 local, after Dreaming at 03:00. Persistent catches up a run missed while the PC was off.
+[Unit]
+Description=Jorah: daily OpenClaw backup at 04:30
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

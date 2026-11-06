@@ -42,6 +42,17 @@ Built on Adam's go-ahead to build first and test at the end. Nothing here is tes
   Expected: the key prompt doesn't echo, the order is set, and the audit stays `clean`. If the audit reports the key as plaintext, tell Claude. The order matters because `auth.order.anthropic` is `[]` globally, which would exclude the key.
 - **Test at the end:** ask Jorah in Telegram to run `id; ls /home`. Expected: it hands the job to `background`, and the answer shows `uid=1000` and no `/home/jorah`.
 
+## Daily backup, written, not installed
+
+`deploy/jorah-backup.service` and `.timer`: `openclaw backup create --verify` at 04:30 into `/home/jorah/backups` (mode 700), keeping 14 daily, 8 weekly and 6 monthly archives with OpenClaw's own retention. Local only: it protects against a broken state, not a dead disk. Offsite is README decision 41 (restic to Hetzner, passphrase offline), Adam's choice. Installing a schedule needs Adam's yes. On that yes:
+
+```bash
+git -C ~/Documents/jorah archive HEAD deploy/jorah-backup.service deploy/jorah-backup.timer | pc "wsl -d jorah -u root -- tar -x -C /opt/jorah"
+echo 'install -d -o jorah -g jorah -m 700 /home/jorah/backups && install -m 644 /opt/jorah/deploy/jorah-backup.service /opt/jorah/deploy/jorah-backup.timer /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now jorah-backup.timer && systemctl list-timers jorah-backup.timer --no-pager' | pc "wsl -d jorah -u root -- bash -s"
+```
+
+Expected: the timer listed with its next run at 04:30. Undo: `systemctl disable --now jorah-backup.timer`.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

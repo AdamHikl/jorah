@@ -1,0 +1,21 @@
+# Daily backup of Jorah's state and workspaces on the PC, local only.
+# Offsite (README decision 41: restic to Hetzner, passphrase offline) is still Adam's choice.
+# The archive holds the secrets store and credentials, so it stays in jorah's mode-700 home.
+[Unit]
+Description=Jorah: daily OpenClaw backup, local, verified
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+User=jorah
+Group=jorah
+UMask=0077
+WorkingDirectory=/home/jorah
+Environment=HOME=/home/jorah
+Environment=PATH=/home/jorah/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/usr/bin/mkdir -p /home/jorah/backups
+ExecStart=/usr/local/bin/openclaw --profile jorah backup create --output /home/jorah/backups --verify --keep-daily 14 --keep-weekly 8 --keep-monthly 6
+Nice=10
+IOSchedulingClass=idle
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

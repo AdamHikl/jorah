@@ -1,0 +1,6 @@
+#!/bin/sh
+# OpenClaw's CLI audio entry: transcribes one voice note locally on the PC (tools.media.audio).
+# Runs as jorah from the root-owned copy in /opt/jorah, so the code can't be changed by Jorah.
+set -eu
+cd /opt/jorah/services/jorah-voice
+exec /home/jorah/.venv/bin/python -m jorah_voice.transcribe "$1"

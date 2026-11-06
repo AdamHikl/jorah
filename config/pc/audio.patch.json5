@@ -1,0 +1,19 @@
+// Telegram voice notes, transcribed on the PC with jorah-voice's Parakeet model (CPU), so audio
+// never leaves the machine. services/jorah-voice/bin/jorah-transcribe, root-owned in /opt/jorah.
+// No echo of the transcript to chat: Jorah just answers what Adam said.
+{
+  tools: {
+    media: {
+      models: [
+        {
+          type: "cli",
+          command: "/opt/jorah/services/jorah-voice/bin/jorah-transcribe",
+          args: ["{{AttachmentPath}}"],
+          timeoutSeconds: 180,
+          capabilities: ["audio"],
+        },
+      ],
+      audio: { enabled: true },
+    },
+  },
+}

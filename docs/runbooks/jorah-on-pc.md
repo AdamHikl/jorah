@@ -58,6 +58,7 @@ Adam asked for every agent on the API key "until I tell you to switch back to th
 
   Expected: a key prompt that doesn't echo, two order lines, `Dry run successful: 12 update(s)`, then `y` applies it, `validate` passes, and the audit stays clean.
 - **Test at the end:** send a Telegram message. Expected: a reply, Console usage for the `jorah` workspace goes up and Claude's Max usage doesn't. If the old session keeps the Max route, tell Claude.
+- **Applied 2026-11-07:** Adam ran the script. Main and `background` both list `anthropic:jorah [anthropic/api_key]`, `auth.order.anthropic` is `["anthropic:jorah"]`, no model is left on `claude-cli`, and the Gateway hot-reloaded without a restart. Open: the audit reports `PLAINTEXT_FOUND` for `profiles.anthropic:jorah.key` in `state/openclaw.sqlite`, because `paste-api-key` stores the key itself. Fix, by Adam: put the key in the store as `ANTHROPIC_API_KEY_JORAH` (kind secret), then `secrets configure --skip-provider-setup --agent main` maps the profile to that store ref and scrubs the plain copy. Expected after: `secrets audit --check` is clean.
 - **Switching back:** on Adam's word, `config patch --file /opt/jorah/config/pc/max-lane.patch.json5`, dry run first.
 
 ## Case fans

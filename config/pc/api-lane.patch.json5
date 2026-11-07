@@ -5,10 +5,10 @@
 // What it changes: every Claude model on main (chat, heartbeat, Dreaming, the utility model) runs on
 // OpenClaw's embedded runtime instead of claude-cli, so it uses the Anthropic API key, not the Max
 // login. Side effect: main is now inside the Podman sandbox too, so its own exec works.
-// The key's profile is anthropic:jorah in main's store. auth.order.anthropic was [] so no key could
+// The key is in the secret store as ANTHROPIC_API_KEY_JORAH, used through the profile anthropic:jorah-store (api-key-ref.plan.json). auth.order.anthropic was [] so no key could
 // be used silently; it now names that profile, for every agent, background included.
 {
-  auth: { order: { anthropic: ["anthropic:jorah"] } },
+  auth: { order: { anthropic: ["anthropic:jorah-store"] } },
   agents: {
     defaults: {
       models: {

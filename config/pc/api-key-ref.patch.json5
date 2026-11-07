@@ -1,0 +1,9 @@
+// Jorah's API key from the secret store instead of plain text, 2026-11-07.
+// With api-key-ref.plan.json: that plan gives main and background a local profile
+// anthropic:jorah-store whose keyRef is store/default/ANTHROPIC_API_KEY_JORAH. This patch puts that
+// profile first. Afterwards the shared plaintext profile anthropic:jorah is logged out, and
+// `secrets audit --check` should be clean. OpenClaw 2026.10.9's `secrets configure` can't migrate
+// the shared auth store, which is why this goes through per-agent profiles.
+{
+  auth: { order: { anthropic: ["anthropic:jorah-store"] } },
+}

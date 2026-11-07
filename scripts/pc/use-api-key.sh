@@ -3,40 +3,45 @@
 # Run it as jorah, in a Terminal attached to no agent:
 #   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 \
 #     wsl -d jorah -u jorah -- bash -l /opt/jorah/scripts/pc/use-api-key.sh
-# It never prints the key. The patch applies only after Adam types y at its dry run.
+# It never prints the key. The key goes into the secret store, never into an auth profile as plain text:
+# main and background get the profile anthropic:jorah-store, which only references it
+# (config/pc/api-key-ref.plan.json). The patch applies only after Adam types y at its dry run.
 # Safe to run again: a key already stored is kept.
 set -euo pipefail
 
+ID=ANTHROPIC_API_KEY_JORAH
+PROFILE=anthropic:jorah-store
+PLAN=/opt/jorah/config/pc/api-key-ref.plan.json
 PATCH=/opt/jorah/config/pc/api-lane.patch.json5
-PROFILE=anthropic:jorah
 oc() { openclaw --profile jorah "$@"; }
 say() { printf '\n== %s\n' "$*"; }
 
 [ "$(id -un)" = jorah ] || { echo "Run this as jorah."; exit 3; }
 [ -t 0 ] || { echo "Run this in an interactive terminal (ssh -t)."; exit 3; }
-[ -f "$PATCH" ] || { echo "$PATCH is missing. Ask Claude to copy it."; exit 3; }
+for f in "$PLAN" "$PATCH"; do [ -f "$f" ] || { echo "$f is missing. Ask Claude to copy it."; exit 3; }; done
 
-say "1. The API key, into main's store as $PROFILE"
-if oc models auth list --agent main 2>/dev/null | grep -q "$PROFILE"; then
-  echo "$PROFILE already stored, kept."
+say "1. The API key, into the secret store as $ID"
+if oc secrets store list 2>/dev/null | grep -q "$ID"; then
+  echo "$ID already stored, kept."
 else
-  echo "Paste Jorah's Console key at the prompt. It doesn't echo."
-  oc models auth paste-api-key --provider anthropic --agent main --profile-id "$PROFILE"
+  read -rs -p "Paste Jorah's Console key (hidden): " K; echo
+  [ -n "$K" ] || { echo "Empty key. Stopping."; exit 3; }
+  printf '%s' "$K" | oc secrets store set "$ID" --kind secret --value-file -
+  unset K
 fi
-oc models auth order set --provider anthropic --agent main "$PROFILE"
-oc models auth order set --provider anthropic --agent background "$PROFILE" \
-  || echo "background order not set: it falls back to the global order the patch sets."
 
-say "2. Every model onto the key"
+say "2. Profiles that reference it, for main and background"
+oc secrets apply --from "$PLAN" --dry-run
+oc secrets apply --from "$PLAN"
+for a in main background; do oc models auth order set --provider anthropic --agent "$a" "$PROFILE"; done
+
+say "3. Every model onto the key"
 oc config patch --file "$PATCH" --dry-run
 read -r -p 'Apply this patch? [y/N] ' A
 [ "$A" = y ] || { echo "Not applied. Jorah stays on the Max login."; exit 3; }
 oc config patch --file "$PATCH"
 oc config validate
 
-say "3. Checks"
-oc secrets audit --check || echo "The audit flagged something. Tell Claude, without pasting the key."
+say "4. Checks"
+oc secrets audit --check && echo "Audit clean." || echo "The audit flagged something. Tell Claude, without pasting the key."
 oc models auth list --agent main
-echo
-echo "Done. Send Jorah a message in Telegram. If the reply still comes from the Max login"
-echo "(Claude's usage page moves, the Console's doesn't), tell Claude."

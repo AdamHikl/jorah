@@ -19,7 +19,7 @@ Jorah is Adam's personal real-time assistant on OpenClaw. This file is for Claud
 
 ## Adam's yes
 
-Preview every install, config change, schedule, service, account, purchase, commit and push, then wait. Apply only what was approved. Adam places every order and does every sign-in, key entry, payment, system security setting and `sudo` prompt.
+Preview every install, config change, schedule, service, account, purchase and commit, then wait. Fast-forward pushes to `main` from a build session don't wait (see "Working in the repo"). Apply only what was approved. Adam places every order and does every sign-in, key entry, payment, system security setting and `sudo` prompt.
 
 A failed security gate stops what is behind it. Do not work around it. An override goes in writing as a waived gate.
 
@@ -27,7 +27,7 @@ If Adam says to stop at source, stop at source.
 
 ## Working in the repo
 
-- One issue, one session, one worktree. At most 2 sessions at once. No PRs: Adam is the only developer (2026-11-05). Commit on the worktree's branch, run `just check`, show Adam the summary, and only after Adam's yes in chat for that push, fast-forward `main` with `JORAH_ALLOW_MAIN=1 git push origin HEAD:main`. A push that isn't a fast-forward stops for Adam.
+- One issue, one session, one worktree. At most 2 sessions at once. No PRs: Adam is the only developer (2026-11-05). Commit on the worktree's branch, run `just check`, then fast-forward `main` yourself with `JORAH_ALLOW_MAIN=1 git push origin HEAD:main` and show Adam the summary (Adam's rule of 2026-11-07: Claude Code build sessions push without a per-push yes). Only Claude Code sessions push. Jorah, the runtime agent, never pushes to any repository. A push that isn't a fast-forward, or a force push, stops for Adam.
 - **Never `git checkout` in the main checkout until the P2 cutover,** because the repo and the live workspace share a directory. After a push, use `git -C ~/Documents/jorah pull --ff-only`. If it refuses because of dirty tracked files, stop and show the diff. Never reset or stash.
 - Only one session touches the live Gateway. Everything else uses a scratch, `jorah-dev` or canary profile (`09` 5.7). Config applied live must be merged first.
 - Do not re-run `scripts/configure.sh` on an existing profile. It refuses without `--diff`, and `--diff` writes nothing.

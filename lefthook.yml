@@ -6,7 +6,8 @@ pre-commit:
       run: gitleaks git . --staged --config .gitleaks.toml --redact --no-banner --log-level warn
 
 pre-push:
-  commands:
-    guard-main:
-      run: scripts/guard-push.sh
+  # A script, not a command: lefthook skipped the command form as "no matching push files" (2026-11-07).
+  scripts:
+    "guard-main.sh":
+      runner: bash
       use_stdin: true

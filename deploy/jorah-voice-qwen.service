@@ -1,5 +1,5 @@
 # Jorah's Qwen3-TTS voice, kept loaded for jorah-voice (live) and jorah-speak (Telegram), 2026-11-08.
-# Runs in Qwen3-TTS's own environment, answers only on a Unix socket in jorah's home (no network port).
+# Runs in the faster-qwen3-tts environment (CUDA graphs, 3x real time), answers only on a Unix socket in jorah's home (no network port).
 # jorah-voice falls back to Kokoro if this isn't running.
 [Unit]
 Description=Jorah voice: Qwen3-TTS speech service (Jorah's own voice)
@@ -13,7 +13,7 @@ Group=jorah
 UMask=0077
 WorkingDirectory=/opt/jorah/services/jorah-voice
 Environment=HOME=/home/jorah
-ExecStart=/home/jorah/apps/qwen-tts/.venv/bin/python -m jorah_voice.qwen_server
+ExecStart=/home/jorah/apps/fast-qwen/.venv/bin/python -m jorah_voice.qwen_server
 Restart=on-failure
 RestartSec=10
 InaccessiblePaths=/run/WSL

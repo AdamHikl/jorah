@@ -1,7 +1,8 @@
 """Jorah's Qwen3-TTS voice, kept loaded, for live voice and Telegram replies.
 
-Run in Qwen3-TTS's own environment: /home/jorah/apps/qwen-tts/.venv/bin/python -m jorah_voice.qwen_server
-It loads the 1.7B Base model once, clones Jorah's locked voice (the l3 "warm London" design Adam picked on
+Run in the faster-qwen3-tts environment: /home/jorah/apps/fast-qwen/.venv/bin/python -m jorah_voice.qwen_server
+(falls back to upstream qwen-tts if that's what's installed). faster-qwen3-tts adds a static cache and CUDA graphs:
+measured on 2026-11-08 at 0.35 s of compute per second of speech, first audio 0.29 s, 5.1 GB. It loads the 1.7B Base model once, clones Jorah's locked voice (the l3 "warm London" design Adam picked on
 2026-11-08, kept as ~/.config/jorah-voice/voice/jorah-ref.wav and .txt), and answers on a Unix socket only
 jorah can open, so nothing listens on a network port. Protocol in qwen_protocol.py.
 """
@@ -20,13 +21,27 @@ MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 def main():
     import numpy as np
     import torch
-    from qwen_tts import Qwen3TTSModel
 
-    print("Loading Qwen3-TTS", flush=True)
-    model = Qwen3TTSModel.from_pretrained(MODEL, device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa")
-    prompt = model.create_voice_clone_prompt(
-        ref_audio=str(VOICE / "jorah-ref.wav"), ref_text=(VOICE / "jorah-ref.txt").read_text().strip()
-    )
+    ref_audio = str(VOICE / "jorah-ref.wav")
+    ref_text = (VOICE / "jorah-ref.txt").read_text().strip()
+    try:
+        from faster_qwen3_tts import FasterQwen3TTS
+
+        print("Loading Qwen3-TTS (faster-qwen3-tts)", flush=True)
+        fast = FasterQwen3TTS.from_pretrained(MODEL)
+
+        def generate(text):
+            return fast.generate_voice_clone(text=text, language="English", ref_audio=ref_audio, ref_text=ref_text)
+    except ImportError:
+        from qwen_tts import Qwen3TTSModel
+
+        print("Loading Qwen3-TTS (upstream, slower than real time)", flush=True)
+        model = Qwen3TTSModel.from_pretrained(MODEL, device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa")
+        prompt = model.create_voice_clone_prompt(ref_audio=ref_audio, ref_text=ref_text)
+
+        def generate(text):
+            return model.generate_voice_clone(text=text, language="English", voice_clone_prompt=prompt)
+
     lock = threading.Lock()
     rate = {"value": 24000}
 
@@ -35,7 +50,7 @@ def main():
         if not text:
             return b""
         with lock:
-            wavs, sr = model.generate_voice_clone(text=text, language="English", voice_clone_prompt=prompt)
+            wavs, sr = generate(text)
         rate["value"] = sr
         samples = np.clip(np.asarray(wavs[0], dtype=np.float32), -1, 1)
         return (samples * 32767).astype(np.int16).tobytes()

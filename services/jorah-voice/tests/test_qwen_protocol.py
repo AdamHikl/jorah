@@ -36,7 +36,7 @@ class QwenProtocolTest(unittest.TestCase):
             speaker = QwenSpeaker(path=service.path, timeout=5)
             self.assertEqual(speaker.sample_rate, 24000)
             self.assertEqual(speaker.synthesize("Hello."), b"\x01\x00" * 10)
-            self.assertEqual(speaker.chunk_chars, 140)
+            self.assertEqual(speaker.chunk_chars, 300)
         finally:
             service.close()
 

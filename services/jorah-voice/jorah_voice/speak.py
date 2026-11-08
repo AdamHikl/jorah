@@ -15,7 +15,7 @@ from .core import SentenceChunker, clean_for_speech
 from .speech import Speaker
 
 MAX_CHARS = 4000
-QWEN_MAX_CHARS = 900  # Qwen3-TTS is slower than real time; longer replies use Kokoro within OpenClaw's 120 s
+QWEN_MAX_CHARS = 2500  # about 1 minute of compute at 0.35 s per second of speech, inside OpenClaw's 120 s
 PAUSE_SECONDS = 0.15
 
 

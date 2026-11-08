@@ -52,8 +52,8 @@ def ask(request, path=SOCKET, timeout=120):
 class QwenSpeaker:
     """Same interface as speech.Speaker, backed by the Qwen3-TTS service."""
 
-    # Qwen3-TTS runs slower than real time here, so speak sentence by sentence: shorter waits.
-    chunk_chars = 140
+    # Faster than real time with faster-qwen3-tts, so waiting sentences are spoken together, like Kokoro.
+    chunk_chars = 300
 
     def __init__(self, path=SOCKET, timeout=120):
         self._path = path

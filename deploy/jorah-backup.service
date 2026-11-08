@@ -17,7 +17,9 @@ ExecStartPre=/usr/bin/mkdir -p /home/jorah/backups
 # OpenClaw's --keep-* retention needs a storage location (--to), which comes with the offsite decision.
 # Until then: a local archive, verified, and archives older than 14 days removed.
 ExecStart=/usr/local/bin/openclaw --profile jorah backup create --output /home/jorah/backups --verify
-ExecStartPost=/usr/bin/find /home/jorah/backups -maxdepth 1 -type f -name '*openclaw-backup*' -mtime +14 -delete
+# agentmemory's data (memories, indexes, its secret) since 2026-11-08: a dated tar next to the archive.
+ExecStartPost=/bin/sh -c 'tar -C /home/jorah/.local/share -czf "/home/jorah/backups/$(date +%%Y-%%m-%%dT%%H-%%M)-agentmemory-backup.tar.gz" agentmemory'
+ExecStartPost=/bin/sh -c 'find /home/jorah/backups -maxdepth 1 -type f \\( -name "*openclaw-backup*" -o -name "*agentmemory-backup*" \\) -mtime +14 -delete'
 Nice=10
 IOSchedulingClass=idle
 InaccessiblePaths=/run/WSL

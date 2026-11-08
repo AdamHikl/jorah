@@ -247,9 +247,8 @@ BR-S1 to S7, `jorah-guard` v0, `ask_main` and jobs on the API lane (2.38 to 2.45
 
 **Optional, not on the critical path.** `rohitg00/agentmemory` is a self-hosted memory service with a native OpenClaw plugin: recall before every turn, local semantic search, a knowledge graph, decay. Adam likes it. Evaluation and reasons for not adopting it now: `research/agentmemory.md`.
 
-- [ ] **P5b.1 Claude. Semantic search in `memory-core` first** (NAT networking with Tailscale inside the distro, from the PC runbook's open list). If recall is then good enough, P5b stops here. `[M]`
-- [ ] **P5b.2 Adam decides, after P5's gate.** Trial it or not. `[S]`
-- [ ] **P5b.3 Claude, on `jorah-dev` only, on that yes.** A release at least 7 days old, pinned. Keyless (`LLM_PROVIDER` unset), local embeddings, ports inside 43255-47350, `AGENTMEMORY_SECRET` set, the `iii` engine and its two Rust workers pre-fetched with their checksums recorded. Through MCP alongside `memory-core`, never the memory slot during the trial. `[M]`
+- [x] **P5b.1 and P5b.2, changed 2026-11-08.** Adam chose agentmemory over the WSL networking change for semantic search, and to start the trial now, before P5, in two steps: next to `memory-core`, then decide. The networking research is kept in `research/wsl-nat-tailscale.md`. `[S]`
+- [x] **P5b.3 Claude, done 2026-11-08 on the live profile** (PC runbook, "agentmemory, two-week trial"), as written below except the profile. A release at least 7 days old, pinned. Keyless (`LLM_PROVIDER` unset), local embeddings, ports inside 43255-47350, `AGENTMEMORY_SECRET` set, the `iii` engine and its two Rust workers pre-fetched with their checksums recorded. Through MCP alongside `memory-core`, never the memory slot during the trial. `[M]`
 - [ ] **P5b.4 Adam, two weeks.** The same recall questions to both, logged. `[D]`
 - [ ] **P5b.5 Adam decides:** keep `memory-core`, add agentmemory through MCP, or give it the memory slot with a migration of `MEMORY.md` and Dreaming's output. `[S]`
 

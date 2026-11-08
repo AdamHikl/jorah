@@ -1,0 +1,27 @@
+# agentmemory (rohitg00/agentmemory v0.9.31) for Jorah, next to OpenClaw's memory-core. Roadmap P5b,
+# started early on Adam's choice of 2026-11-08. Local only: no LLM provider, local embeddings,
+# REST 127.0.0.1:47300, viewer :47302, iii engine :47304 (inside the firewall's open loopback range).
+# Settings in /home/jorah/.agentmemory/.env, data and secret in /home/jorah/.local/share/agentmemory.
+# `agentmemory` starts a detached compose daemon and returns, so this is a oneshot that stays active.
+[Unit]
+Description=Jorah: agentmemory, local memory service
+After=network-online.target
+Wants=network-online.target
+Before=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=jorah
+Group=jorah
+UMask=0077
+WorkingDirectory=/home/jorah
+Environment=HOME=/home/jorah
+Environment=PATH=/home/jorah/apps/agentmemory/node_modules/.bin:/home/jorah/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/jorah/apps/agentmemory/node_modules/.bin/agentmemory
+ExecStop=/home/jorah/apps/agentmemory/node_modules/.bin/agentmemory stop
+TimeoutStartSec=300
+InaccessiblePaths=/run/WSL
+
+[Install]
+WantedBy=multi-user.target

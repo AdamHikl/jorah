@@ -1,0 +1,26 @@
+// agentmemory as an MCP tool server for Jorah, next to memory-core (roadmap P5b step 1, started early on
+// Adam's choice of 2026-11-08: "two steps"). Not the memory slot: MEMORY.md, memory files and Dreaming
+// stay on memory-core. Jorah saves to and searches agentmemory when it chooses, through its tools.
+// The shim proxies to the local service on 127.0.0.1:47300 and reads its secret from agentmemory's own
+// data folder. AGENTMEMORY_TOOLS=core shows 8 tools (memory_save, memory_recall, memory_smart_search,
+// memory_consolidate, memory_sessions, memory_diagnose, memory_lesson_save, memory_reflect), not 54.
+// The shim ignores AGENTMEMORY_TOOLS when it proxies (probe showed 54), so toolFilter.include does it.
+// `background` is sandboxed with an allow list, so it doesn't see these tools.
+{
+  mcp: {
+    servers: {
+      agentmemory: {
+        command: "/opt/node/bin/node",
+        args: ["/home/jorah/apps/agentmemory/node_modules/@agentmemory/agentmemory/dist/standalone.mjs"],
+        cwd: "/home/jorah",
+        env: {
+          AGENTMEMORY_FORCE_PROXY: "1",
+          AGENTMEMORY_URL: "http://127.0.0.1:47300",
+          AGENTMEMORY_TOOLS: "core",
+        },
+        toolFilter: { include: ["memory_save", "memory_recall", "memory_smart_search", "memory_consolidate",
+                               "memory_sessions", "memory_diagnose", "memory_lesson_save", "memory_reflect"] },
+      },
+    },
+  },
+}

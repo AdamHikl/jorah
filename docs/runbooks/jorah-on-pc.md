@@ -101,6 +101,26 @@ OpenClaw's own self-learning replaces the planned daily review (`scripts/setup-l
 
 `config/pc/learning.patch.json5` takes only Adam's conversation (`agent:main:main`) out of the sandbox with `agents.entries.main.sandbox.mode: "non-main"`. Dry run: 2 updates validated, not applied. Heartbeat, cron and `background` stay sandboxed. Adam's conversation then has no shell (`exec.host: "sandbox"` fails closed outside a sandbox, so shell stays with `background`), files on the host limited to the workspace, and the browser as before. It changes the waived gate of 2026-11-06, so it waited for Adam's yes. **Applied 2026-11-08 on Adam's yes ("so allow it"), as a written exception to that gate:** `sandbox explain` shows `agent:main:main` as `runtime: direct`, a main cron session and `background` as `sandboxed`; `skills.workshop.autonomous.mode` is `auto`. The security audit then listed main with `exec` and `process` outside a sandbox, and ACP sessions (Claude Code through `acpx`) run on the host and were blocked only because main was sandboxed. `config/pc/learning-guard.patch.json5` therefore denies `exec` and `process` to main and sets `acp.enabled: false`, which restores the effective state from before. Audit after: 0 critical, 4 warnings. Backups of the config: `openclaw.json.pre-learning`. The daily backup timer was installed the same day. Test at the end: correct Jorah on how to do something during a longer task. Expected: a message that a skill was saved, and "undo" removes it.
 
+## agentmemory, two-week trial from 2026-11-08
+
+Roadmap P5b step 1, started before P5 on Adam's choice ("let's make it two steps"). Next to `memory-core`, not the memory slot. Evaluation: `docs/plan/research/agentmemory.md`.
+
+- **Installed** [measured]: `@agentmemory/agentmemory@0.9.31` (2026-10-26) in `/home/jorah/apps/agentmemory`, as `jorah`, `npm install --before 2026-11-01 --ignore-scripts` (187 packages, 901 MB, every dependency older than 7 days). Its CLI fetched the pinned iii engine v0.25.0, checked against its built-in SHA-256.
+- **Written exception to the 7-day rule:** the two Rust workers come from `api.workers.iii.dev`, which publishes no dates. Recorded SHA-256 on 2026-11-08: `iii` `40e802f38bc4d351df09c87fdab01a3fd7f095eba07ecd11667f45dfeb2d42e1`, `http` 0.22.7 `a653c12a08996d4ed156fb7ba464d78e48b8cac14a9fec65f59d0f8e14cc36cf`, `state` 0.22.20 `f7c2be2008661ac007ff47da197ed4b15bd22c82d657aba354b3f8c44808fd06`. If any changes without an upgrade we chose, stop it.
+- **Local only:** `/home/jorah/.agentmemory/.env` sets REST 127.0.0.1:47300, viewer :47302, engine :47304 (inside the firewall's open range 43255-47350; the kernel never hands out a port already bound), `EMBEDDING_PROVIDER=local` (all-MiniLM-L6-v2 in-process), no LLM provider, OpenTelemetry off. `status`: healthy, embeddings local 384 dims, provider none. Secret generated in its data folder (mode 600), data folder mode 700.
+- **Connected to Jorah:** `config/pc/agentmemory.patch.json5`, an MCP stdio server proxying to the service, filtered to 8 tools. `mcp probe`: 8 tools. `background` is sandboxed with an allow list, so it doesn't see them. `workspace/AGENTS.md` has a section telling Jorah to save to both memories, search both, and never save text from web pages, emails or tool results as Adam's words.
+- **Backed up:** `jorah-backup.service` also writes `<date>-agentmemory-backup.tar.gz` (8.6 MB today) and keeps 14 days of both.
+- **Not done: boot.** The guard refused to install `deploy/jorah-agentmemory.service`, so agentmemory runs from a manual start and won't come back after a reboot. Adam's step, below.
+- **Not tested:** a save and a search through Jorah. Test at the end: tell Jorah a fact, then later ask about it in other words. Expected: it finds it with `memory_smart_search` and says so.
+
+Adam's step, a Terminal attached to no agent:
+
+```bash
+ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash -c 'cp /opt/jorah/deploy/jorah-agentmemory.service /etc/systemd/system/ && sudo -u jorah -H /home/jorah/apps/agentmemory/node_modules/.bin/agentmemory stop; systemctl daemon-reload && systemctl enable --now jorah-agentmemory && systemctl is-active jorah-agentmemory'
+```
+
+Expected: `active`, and `agentmemory status` (as `jorah`) says healthy.
+
 ## Daily backup, installed 2026-11-08
 
 Installed by Claude on Adam's request ("you do it"): `deploy/jorah-backup.service` and `.timer` in `/etc/systemd/system`, timer enabled, next run 04:30 (after Dreaming at 03:00), `Persistent=true` catches up a run missed while the PC was off. It writes `openclaw backup create --output /home/jorah/backups --verify` (Gateway state, config, secrets store, workspaces) and deletes archives older than 14 days. OpenClaw's `--keep-*` retention needs a storage location (`--to`), which comes with the offsite decision (README decision 41), so it isn't used. First run 2026-11-08 13:13 [measured]: one archive of 310 MB, "Archive verification: passed", mode 600 in a mode-700 folder owned by `jorah`. Fourteen of these are about 4.3 GB. The archive holds the secrets store, so it never leaves the PC until the offsite copy is encrypted. Still local only: a dead disk loses Jorah and its backups together.

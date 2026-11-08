@@ -8,6 +8,7 @@
 # 3. Hook probe for roadmap step 2.1, test only: links plugins/jorah-hook-probe.
 # Then restarts the Gateway once and shows what loaded.
 #
+#   --firewall            Step 1 alone.
 #   --remove-hook-probe   After the test: unlinks the probe and puts the plugin list back.
 #   --undo                Talk off and the probe gone: plugin list as before, talk.realtime unset.
 #                         The firewall stays; the old file is in git history.
@@ -26,7 +27,27 @@ restart_gateway() {
   "${OC[@]}" health 2>&1 | tail -3
 }
 
+firewall() {
+  cp /opt/jorah/deploy/jorah-firewall.nft /etc/nftables.conf
+  nft -f /etc/nftables.conf
+  if nft list chain inet jorah_out output | grep -q "dport { 80, 443 }"; then
+    echo "  web-ports-only rule: loaded"
+  else
+    echo "  web-ports-only rule: MISSING"
+  fi
+  runuser -u jorah -- curl -s -o /dev/null -w "  https to Telegram: %{http_code} (any number means it got through)\n" --max-time 8 https://api.telegram.org/ || echo "  https to Telegram: FAILED"
+  if runuser -u jorah -- timeout 6 bash -c 'echo > /dev/tcp/smtp.gmail.com/587' 2>/dev/null; then
+    echo "  mail port 587: OPEN, which is wrong"
+  else
+    echo "  mail port 587: refused, as intended"
+  fi
+}
+
 case "${1:-}" in
+  --firewall)
+    firewall
+    exit 0
+    ;;
   --remove-hook-probe)
     "${OC[@]}" plugins uninstall jorah-hook-probe --force --keep-files
     "${OC[@]}" config patch --file /opt/jorah/config/pc/talk.patch.json5
@@ -47,14 +68,7 @@ case "${1:-}" in
 esac
 
 echo "== 1. Firewall"
-cp /opt/jorah/deploy/jorah-firewall.nft /etc/nftables.conf
-nft -f /etc/nftables.conf
-runuser -u jorah -- curl -s -o /dev/null -w "  https to Telegram: %{http_code} (any number means it got through)\n" --max-time 8 https://api.telegram.org/ || echo "  https to Telegram: FAILED"
-if runuser -u jorah -- timeout 6 bash -c 'echo > /dev/tcp/smtp.gmail.com/587' 2>/dev/null; then
-  echo "  mail port 587: OPEN, which is wrong"
-else
-  echo "  mail port 587: refused, as intended"
-fi
+firewall
 
 echo "== 2. Talk plugin and config"
 [ -f "$CFG.pre-talk" ] || cp -p "$CFG" "$CFG.pre-talk"

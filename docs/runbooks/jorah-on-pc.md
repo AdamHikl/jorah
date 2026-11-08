@@ -159,6 +159,8 @@ Built and pushed on Adam's yes ("build everything first and then test at once"),
 
 **Applied** [measured 2026-11-08]: the new code is in `/opt/jorah` and `jorah-voice` restarted on it (Qwen voice, listening on 127.0.0.1:43210). **Not applied:** the firewall and the plugins, because the build session's safety check refused root firewall changes and accepting a plugin's capabilities without Adam. Both are Adam's step 1 below.
 
+**Adam ran `apply-talk.sh` at 19:08** [measured]: both plugins loaded (Gateway lists 13 plugins), `talk.catalog` reports realtime ready with `jorah-local` active, audit 0 critical. `talk.session.create` from the PC returned a relay session at PCM16 24 kHz with brain `agent-consult` (the only brain the Gateway accepts for realtime relay; `none` is refused), and `jorah-voice` logged `session open`, so the Gateway, the plugin, the token and the 24 kHz hello work together. It closed at once because the CLI disconnects after the call. **The firewall step loaded the old file:** Claude's copy to `/opt/jorah` had left out `deploy/`. Fixed file copied at 19:15; it loads with `apply-talk.sh --firewall`.
+
 ### Test pass
 
 1. **Apply (Adam, a Terminal attached to no agent):**

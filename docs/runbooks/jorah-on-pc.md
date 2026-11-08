@@ -210,8 +210,7 @@ If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `co
 - Semantic memory search: keyword-only until NAT networking with Tailscale inside the distro lets llama.cpp use its random loopback ports.
 - Linger gives `jorah` a systemd user manager, so it could create user services. Shell runs in the sandbox, which can't reach it, but step 2 should check `systemctl --user list-units` as part of the soak.
 - `/run/WSL/2_interop` stays world-writable, but the Gateway, voice and backup units all set `InaccessiblePaths=/run/WSL`. The installed Gateway unit matches `deploy/openclaw-gateway.service` [measured 2026-11-08].
-- `socat` isn't installed, so Claude Code's sandbox can't start. `scripts/pc/wsl-jorah-setup.sh` doesn't install it.
-- `scripts/setup-permissions.sh` writes macOS paths, so it needs a Linux version before delegated coding.
+- Delegated coding's sandbox, 2026-11-08: `socat` installed from Ubuntu's archive (`bubblewrap` was already there), and `scripts/pc/setup-permissions.sh`, the Linux version, wrote `/home/jorah/.claude-jorah/settings.json` (mode 600): sandbox on and failing closed, no unsandboxed commands, no network, home unreadable except `~/sandbox` and `~/work` (both mode 700). ACP stays off until a coding job is shown to run inside that sandbox [not tested: needs a real Claude Code run].
 - Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried for the Gateway. Voice has its own route on port 43210, waiting on Adam's Serve consent.
 - `/usr/lib/wsl/drivers` is a read-only mount from Windows, kept for the GPU. It also puts Windows `.exe` files inside the distro.
 - Public internet is open to the agent.

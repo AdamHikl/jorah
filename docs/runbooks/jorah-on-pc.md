@@ -91,8 +91,10 @@ Expected: quiet or stopped case fans at idle, and they speed up during a heavy j
 2. **iPhone:** install the OpenClaw app. In a Terminal attached to no agent, make a setup code (it holds a pairing secret):
 
    ```bash
-   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash -l -c "openclaw --profile jorah qr --public-url https://rocket.tail1574a5.ts.net"
+   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- /usr/local/bin/openclaw --profile jorah qr --public-url https://rocket.tail1574a5.ts.net
    ```
+
+   No inner quotes: Windows' shell drops them, and on 2026-11-08 the quoted form started OpenClaw's setup wizard on the default profile instead (cancelled, Jorah's config untouched).
 
    In the app: **Settings → Gateway**, scan the QR, connect. Expected: Jorah's chat with the Telegram history, because it's the same `agent:main:main` session. If the app shows **Pending approval**, approve it in the same Terminal with `openclaw --profile jorah devices list` and `devices approve <requestId>`, after checking it's your phone. Device commands (camera, location, screen and the rest) stay denied by `gateway.nodes.commands.deny`.
 3. **Mac browser:** open `https://rocket.tail1574a5.ts.net/` and connect with the Gateway token. Get it in the same Terminal with `openclaw --profile jorah gateway auth-token --show`, paste it into the page, and don't save it anywhere else. Expected: the Control UI, with Chat, Dreams and Skill workshop.

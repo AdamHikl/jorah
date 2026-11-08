@@ -44,7 +44,7 @@ memory, labelled "untrusted background"; after every turn it saves the user and 
 
 ## Recommendation
 
-Not as Jorah's memory now. Two steps instead, in order:
+Not as Jorah's memory now. It is an optional plugin in the roadmap, P5b (`10-roadmap.md`). Two steps instead, in order:
 
 1. **Get semantic search in OpenClaw's own memory** (the planned NAT networking fix in the runbook's
    open list), which removes the main gap with no new service.

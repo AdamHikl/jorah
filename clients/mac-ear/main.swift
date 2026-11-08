@@ -6,7 +6,7 @@ import Foundation
 import Speech
 
 let usage = """
-usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43210 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path] [--wake]
+usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43211 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path] [--wake]
 
 The token comes from the Keychain: service "jorah-voice", account "adam".
 --barge-in   talk over Jorah to cut him off, with echo cancellation on

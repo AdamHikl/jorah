@@ -77,3 +77,7 @@ def ensure(root=ROOT):
                 tar.extractall(root, filter="data")
             archive.unlink()
     return root
+
+# Jorah's voice everywhere (live voice and Telegram replies): Adam's pick by ear, 2026-11-08.
+DEFAULT_VOICE = "daniel"
+DEFAULT_SPEED = 1.2

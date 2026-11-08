@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--output", default="reply.wav")
     parser.add_argument("--stt-provider", default="cpu")
     parser.add_argument("--tts-provider", default="cuda")
-    parser.add_argument("--voice", default="michael")
+    parser.add_argument("--voice", default=models.DEFAULT_VOICE)
     args = parser.parse_args()
 
     root = models.ensure()

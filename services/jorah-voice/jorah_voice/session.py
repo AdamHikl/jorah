@@ -4,12 +4,16 @@ import asyncio
 import time
 
 from .brain import BrainError
-from .core import IdleClock, SentenceChunker, TurnEnd, classify, percentile
+from .core import IdleClock, SentenceChunker, TurnEnd, classify, join_waiting, percentile
 
 BLOCK_SECONDS = 0.1
 BYTES_PER_SAMPLE = 2
 FAILURE_LINE = "I can't reach my brain right now."
 EMPTY_LINE = "I didn't get an answer. Try me again."
+
+
+# Longest piece of text spoken in one go, after the first sentence of a reply.
+SPOKEN_CHUNK_CHARS = 300
 
 
 class VoiceSession:
@@ -214,10 +218,15 @@ class VoiceSession:
 
     async def _speak_queue(self, sentences, heard_at, record):
         first = True
-        while True:
+        ended = False
+        while not ended:
             sentence = await sentences.get()
             if sentence is None:
                 break
+            if not first:
+                # Kokoro shapes tone within one piece of text only, so sentences that are already
+                # waiting are spoken together. The first stays alone, to start speaking sooner.
+                sentence, ended = join_waiting(sentence, sentences, SPOKEN_CHUNK_CHARS)
             await self._send_json({"type": "reply", "text": sentence})
             pcm = await asyncio.to_thread(self._speaker.synthesize, sentence)
             if first:

@@ -119,3 +119,29 @@ class Percentile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JoinWaitingTest(unittest.TestCase):
+    def queue(self, *items):
+        import asyncio
+        q = asyncio.Queue()
+        for item in items:
+            q.put_nowait(item)
+        return q
+
+    def test_joins_what_is_waiting(self):
+        from jorah_voice.core import join_waiting
+        q = self.queue("Two.", "Three.")
+        self.assertEqual(join_waiting("One.", q, 300), ("One. Two. Three.", False))
+        self.assertTrue(q.empty())
+
+    def test_stops_at_the_end_marker(self):
+        from jorah_voice.core import join_waiting
+        q = self.queue("Two.", None)
+        self.assertEqual(join_waiting("One.", q, 300), ("One. Two.", True))
+
+    def test_keeps_order_when_too_long(self):
+        from jorah_voice.core import join_waiting
+        q = self.queue("x" * 20, "Next.", None)
+        self.assertEqual(join_waiting("One.", q, 10), ("One.", False))
+        self.assertEqual([q.get_nowait() for _ in range(3)], ["x" * 20, "Next.", None])

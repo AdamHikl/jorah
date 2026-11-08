@@ -72,6 +72,27 @@ class SentenceChunker:
         return [rest] if rest else []
 
 
+def join_waiting(sentence, queue, max_chars):
+    """Join sentences already waiting in an asyncio queue onto this one, up to max_chars.
+
+    Returns the joined text and whether the end marker (None) was reached.
+    """
+    while not queue.empty():
+        nxt = queue.get_nowait()
+        if nxt is None:
+            return sentence, True
+        if len(sentence) + 1 + len(nxt) > max_chars:
+            # Too long to join: put it back at the front by rebuilding the queue.
+            rest = [nxt]
+            while not queue.empty():
+                rest.append(queue.get_nowait())
+            for item in rest:
+                queue.put_nowait(item)
+            return sentence, False
+        sentence = f"{sentence} {nxt}"
+    return sentence, False
+
+
 # A sentence ending in one of these is still open, however it is punctuated. English, then Slovak.
 OPEN_ENDINGS = frozenset("""
     a an the and or but so because cause then if that than to of for with about from into in on at by as

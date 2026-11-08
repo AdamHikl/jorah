@@ -14,7 +14,7 @@ Steps marked [measured] ran on the PC on 2026-11-05 or 2026-11-06. The rest have
 | 4 | Move: stop the Mac Gateway, back up, restore here, sign in. **Never two Gateways** | **Done 2026-11-06** [measured]: Mac Gateway down, Claude signed in as Jorah (Max), Gateway on 127.0.0.1/[::1]:43181, health ok, 0 critical, `Heartbeat (main)` hourly on Haiku and `Memory Dreaming` at 03:00. Telegram answered `Hello` at 15:10 on Opus in `agent:main:main`. Recall of a Mac fact and the sandboxed shell through Telegram: see `docs/evidence/p2-cutover/` |
 | 5 | Proof: Mac closed, PC rebooted, Telegram answers and recalls a saved fact | Not run |
 | 6 | Speech feeds Jorah's main session through the Gateway's Chat Completions endpoint | **Running since 2026-11-06 15:56** [measured]: files in `/opt/jorah` match `main` (lockfile unchanged, so no `uv sync`), `jorah-voice.service` **enabled** and active, models loaded in 13 s, listening on `127.0.0.1:43210` only, and Windows reaches that port. Earlier, end to end with a stand-in Gateway and the service's sandbox settings [measured]: heard correctly, reply streamed and spoken, recognition on the CPU (Parakeet v3), speech on the GPU (Kokoro fp32). End of turn: 0.65 s after a finished sentence, 1.2 s after an open word, synthetic speech only (`docs/evidence/voice-endpointing/`). Not run against the real Gateway: Adam's test, see "Voice from the Mac". Undo: `systemctl disable --now jorah-voice` as root |
-| 7 | Pair the iPhone and the Mac as clients | **Mac voice:** `mac-ear` built [measured, stand-in tests pass]. Windows Tailscale Serve route `https://rocket.tail1574a5.ts.net:43210` → `http://127.0.0.1:43210` **not up yet**: Serve isn't enabled on the tailnet, which needs Adam's admin consent. Steps in "Voice from the Mac". iPhone and Gateway route: not run |
+| 7 | Pair the iPhone and the Mac as clients | **Mac voice:** `mac-ear` built [measured, stand-in tests pass]. Windows Tailscale Serve route `https://rocket.tail1574a5.ts.net:43211` → `http://127.0.0.1:43210` **not up yet**: Serve isn't enabled on the tailnet, which needs Adam's admin consent. Steps in "Voice from the Mac". iPhone and Gateway route: not run |
 
 ## Waived gate, 2026-11-06
 
@@ -77,7 +77,11 @@ Expected: quiet or stopped case fans at idle, and they speed up during a heavy j
 
 `config/pc/remote.patch.json5` is applied (no restart): `gateway.publicOrigin` is `https://rocket.tail1574a5.ts.net` and `gateway.trustedProxies` holds `127.0.0.1` and `::1`, so traffic from Windows' Serve proxy is attributed to the real tailnet client and still needs the token. The audit's `trusted_proxies_missing` warning is gone. Port 443 for the Gateway, 43210 for voice. Unverified: that Windows' proxy reaches the distro from loopback.
 
-**Serve is on, 2026-11-08** [measured]: Adam enabled HTTPS certificates on the tailnet with Funnel unticked. Claude added both routes from the Mac: `https://rocket.tail1574a5.ts.net` → `http://127.0.0.1:43181` and `https://rocket.tail1574a5.ts.net:43210` → `http://127.0.0.1:43210`, both "tailnet only" in `tailscale serve status` and `funnel status`. From the Mac: the Gateway answers 200 with a valid certificate, voice answers 426 (WebSocket only, as expected). So Windows' proxy does reach the distro over loopback. Steps 1 below and "Voice from the Mac" steps 1 and 2 are done. The lost-phone runbook (`docs/runbooks/lost-phone.md`) exists, so pairing may go ahead.
+**Jorah's voice, 2026-11-08:** Daniel at 1.2, Adam's pick from samples (`jorah_voice/models.py` `DEFAULT_VOICE`, `DEFAULT_SPEED`, used by live voice and Telegram replies). Sentences that are already waiting are spoken as one piece of up to 300 characters (`join_waiting`, `speak.pieces`), the first sentence alone, because Kokoro carries tone only within one piece. Tests: 73 pass. Deployed and `jorah-voice` restarted. A better TTS model is being researched (`docs/plan/research/`, when done).
+
+**Voice route moved to 43211, 2026-11-08** [measured]: with mirrored networking a Windows listener on a port blocks the same port in the distro, so Serve's `:43210` stopped `jorah-voice` from binding 127.0.0.1:43210 after a restart (`Errno 98`). Serve now listens on `https://rocket.tail1574a5.ts.net:43211` and forwards to `http://127.0.0.1:43210`; `jorah-voice` is back (Daniel at 1.2), and from the Mac `:43211` answers 426 (WebSocket only). Rule: a Serve port must never equal a port a distro service binds. The Gateway's 443 → 43181 is fine.
+
+**Serve is on, 2026-11-08** [measured]: Adam enabled HTTPS certificates on the tailnet with Funnel unticked. Claude added both routes from the Mac: `https://rocket.tail1574a5.ts.net` → `http://127.0.0.1:43181` and `https://rocket.tail1574a5.ts.net:43211` → `http://127.0.0.1:43210`, both "tailnet only" in `tailscale serve status` and `funnel status`. From the Mac: the Gateway answers 200 with a valid certificate, voice answers 426 (WebSocket only, as expected). So Windows' proxy does reach the distro over loopback. Steps 1 below and "Voice from the Mac" steps 1 and 2 are done. The lost-phone runbook (`docs/runbooks/lost-phone.md`) exists, so pairing may go ahead.
 
 **Adam's steps**, after "Voice from the Mac" step 1 enabled Serve on the tailnet:
 
@@ -201,14 +205,14 @@ Windows' own Tailscale serves it, because the distro has no `tailscale`. Under m
 
 1. **Enable Serve on the tailnet** (one time). From the Mac:
    ```bash
-   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve --bg --yes --https=43210 http://127.0.0.1:43210"
+   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve --bg --yes --https=43211 http://127.0.0.1:43210"
    ```
-   The first time it prints `Serve is not enabled on your tailnet` and a `login.tailscale.com/f/serve?node=...` link, then waits. Open the link, sign in as the tailnet admin, and enable Serve. Turn on HTTPS certificates too if the page asks. The waiting command then finishes and prints `Available within your tailnet: https://rocket.tail1574a5.ts.net:43210/` with `|-- proxy http://127.0.0.1:43210`. If it doesn't, press Ctrl-C and run the same command again.
+   The first time it prints `Serve is not enabled on your tailnet` and a `login.tailscale.com/f/serve?node=...` link, then waits. Open the link, sign in as the tailnet admin, and enable Serve. Turn on HTTPS certificates too if the page asks. The waiting command then finishes and prints `Available within your tailnet: https://rocket.tail1574a5.ts.net:43211/` with `|-- proxy http://127.0.0.1:43210`. If it doesn't, press Ctrl-C and run the same command again.
 2. **Check the route** (no secret):
    ```bash
    ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "tailscale serve status & tailscale funnel status"
    ```
-   Expected: one entry, `https://rocket.tail1574a5.ts.net:43210 (tailnet only)` proxying to `http://127.0.0.1:43210`, and nothing that says Funnel is on.
+   Expected: one entry, `https://rocket.tail1574a5.ts.net:43211 (tailnet only)` proxying to `http://127.0.0.1:43210`, and nothing that says Funnel is on.
 3. **Put the client token in the Mac's Keychain.** `mac-ear` reads Keychain service `jorah-voice`, account `adam`. This copies it from the PC without showing it:
    ```bash
    security add-generic-password -U -s jorah-voice -a adam -w "$(ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "wsl -d jorah -u jorah -- cat /home/jorah/.config/jorah-voice/token")"
@@ -219,15 +223,15 @@ Windows' own Tailscale serves it, because the distro has no `tailscale`. Under m
    just mac-ear
    ```
    ```bash
-   build/mac-ear --url wss://rocket.tail1574a5.ts.net:43210
+   build/mac-ear --url wss://rocket.tail1574a5.ts.net:43211
    ```
    macOS asks whether Terminal may use the microphone the first time: allow it. The first connection can take up to half a minute while Tailscale gets the certificate. Expected: `● MIC OPEN`. Say "Hello Jorah, what did we last talk about on Telegram?": `You:` shows your words, `Jorah:` the reply as it is spoken. Say "goodbye": `○ MIC CLOSED` and the session's timings. On the PC, `journalctl -u jorah-voice` shows `session open` and `session closed` with timings, never the words.
 5. **Same session as Telegram:** send Jorah a message on Telegram that mentions what you just said by voice. Jorah should know it, since both use `agent:main:main`. This is the unverified part of step 6.
-6. **Always on, with a wake word** (2026-11-08, written by Antigravity on Argon, reviewed by Claude): `build/mac-ear --url wss://rocket.tail1574a5.ts.net:43210 --wake`. It listens on the Mac with Apple's on-device speech recognition (`requiresOnDeviceRecognition`; it refuses to start if the Mac can't recognise on-device) and opens nothing over the network until it hears "Jorah" or "hey Jorah". Then a Tink, `● Jorah is listening`, and a normal session; when that closes ("goodbye", a minute of quiet, the time limit) it goes back to `○ waiting for "Jorah"`. What it hears while waiting is never printed or kept. Ctrl-C quits. macOS asks once for Speech Recognition permission. Checked: `--self-test-wake` (20 cases) and the stand-in server tests pass. Not checked: the real wake behaviour and false triggers, which need Adam's mic. Roadmap 2.33's sherpa-onnx wake word on the Pi (P4) is a separate, later piece.
+6. **Always on, with a wake word** (2026-11-08, written by Antigravity on Argon, reviewed by Claude): `build/mac-ear --url wss://rocket.tail1574a5.ts.net:43211 --wake`. It listens on the Mac with Apple's on-device speech recognition (`requiresOnDeviceRecognition`; it refuses to start if the Mac can't recognise on-device) and opens nothing over the network until it hears "Jorah" or "hey Jorah". Then a Tink, `● Jorah is listening`, and a normal session; when that closes ("goodbye", a minute of quiet, the time limit) it goes back to `○ waiting for "Jorah"`. What it hears while waiting is never printed or kept. Ctrl-C quits. macOS asks once for Speech Recognition permission. Checked: `--self-test-wake` (20 cases) and the stand-in server tests pass. Not checked: the real wake behaviour and false triggers, which need Adam's mic. Roadmap 2.33's sherpa-onnx wake word on the Pi (P4) is a separate, later piece.
 
 If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `connection lost` at once means the Serve route is down (step 2) or `jorah-voice` isn't running (`systemctl status jorah-voice` in the distro). "I can't reach my brain right now" means the Gateway refused or is down.
 
-**Undo:** `tailscale serve --https=43210 off` on Windows removes only this route (`tailscale serve reset` removes all Serve config, which is only this route today). `systemctl disable --now jorah-voice` as root in the distro stops the service. `security delete-generic-password -s jorah-voice -a adam` on the Mac removes the token.
+**Undo:** `tailscale serve --https=43211 off` on Windows removes only this route (`tailscale serve reset` removes all Serve config, which is only this route today). `systemctl disable --now jorah-voice` as root in the distro stops the service. `security delete-generic-password -s jorah-voice -a adam` on the Mac removes the token.
 
 ## Still open
 

@@ -173,7 +173,7 @@ class Listener:
 
 
 class Speaker:
-    def __init__(self, root=models.ROOT, provider="cuda", threads=4, voice="michael", speed=1.0):
+    def __init__(self, root=models.ROOT, provider="cuda", threads=4, voice=models.DEFAULT_VOICE, speed=models.DEFAULT_SPEED):
         sherpa_onnx = _sherpa(provider)
         folder = root / models.TTS_DIR
         lists = [folder / "lexicon-us-en.txt", NAMES]

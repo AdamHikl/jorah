@@ -77,6 +77,8 @@ Expected: quiet or stopped case fans at idle, and they speed up during a heavy j
 
 `config/pc/remote.patch.json5` is applied (no restart): `gateway.publicOrigin` is `https://rocket.tail1574a5.ts.net` and `gateway.trustedProxies` holds `127.0.0.1` and `::1`, so traffic from Windows' Serve proxy is attributed to the real tailnet client and still needs the token. The audit's `trusted_proxies_missing` warning is gone. Port 443 for the Gateway, 43210 for voice. Unverified: that Windows' proxy reaches the distro from loopback.
 
+**Serve is on, 2026-11-08** [measured]: Adam enabled HTTPS certificates on the tailnet with Funnel unticked. Claude added both routes from the Mac: `https://rocket.tail1574a5.ts.net` → `http://127.0.0.1:43181` and `https://rocket.tail1574a5.ts.net:43210` → `http://127.0.0.1:43210`, both "tailnet only" in `tailscale serve status` and `funnel status`. From the Mac: the Gateway answers 200 with a valid certificate, voice answers 426 (WebSocket only, as expected). So Windows' proxy does reach the distro over loopback. Steps 1 below and "Voice from the Mac" steps 1 and 2 are done. The lost-phone runbook (`docs/runbooks/lost-phone.md`) exists, so pairing may go ahead.
+
 **Adam's steps**, after "Voice from the Mac" step 1 enabled Serve on the tailnet:
 
 1. **Route, from the Mac** (no secret):

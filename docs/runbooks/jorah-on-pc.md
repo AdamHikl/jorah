@@ -110,16 +110,8 @@ Roadmap P5b step 1, started before P5 on Adam's choice ("let's make it two steps
 - **Local only:** `/home/jorah/.agentmemory/.env` sets REST 127.0.0.1:47300, viewer :47302, engine :47304 (inside the firewall's open range 43255-47350; the kernel never hands out a port already bound), `EMBEDDING_PROVIDER=local` (all-MiniLM-L6-v2 in-process), no LLM provider, OpenTelemetry off. `status`: healthy, embeddings local 384 dims, provider none. Secret generated in its data folder (mode 600), data folder mode 700.
 - **Connected to Jorah:** `config/pc/agentmemory.patch.json5`, an MCP stdio server proxying to the service, filtered to 8 tools. `mcp probe`: 8 tools. `background` is sandboxed with an allow list, so it doesn't see them. `workspace/AGENTS.md` has a section telling Jorah to save to both memories, search both, and never save text from web pages, emails or tool results as Adam's words.
 - **Backed up:** `jorah-backup.service` also writes `<date>-agentmemory-backup.tar.gz` (8.6 MB today) and keeps 14 days of both.
-- **Not done: boot.** The guard refused to install `deploy/jorah-agentmemory.service`, so agentmemory runs from a manual start and won't come back after a reboot. Adam's step, below.
+- **Boot:** `jorah-agentmemory.service` installed by Claude on Adam's "yes install it", 2026-11-08 [measured]: enabled, active, ports 47300/47302/47304 on 127.0.0.1, `agentmemory status` healthy, unauthenticated `/health` refused with 401 (its secret is required), `mcp probe` 8 tools. Not yet seen across a reboot.
 - **Not tested:** a save and a search through Jorah. Test at the end: tell Jorah a fact, then later ask about it in other words. Expected: it finds it with `memory_smart_search` and says so.
-
-Adam's step, a Terminal attached to no agent:
-
-```bash
-ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash -c 'cp /opt/jorah/deploy/jorah-agentmemory.service /etc/systemd/system/ && sudo -u jorah -H /home/jorah/apps/agentmemory/node_modules/.bin/agentmemory stop; systemctl daemon-reload && systemctl enable --now jorah-agentmemory && systemctl is-active jorah-agentmemory'
-```
-
-Expected: `active`, and `agentmemory status` (as `jorah`) says healthy.
 
 ## Daily backup, installed 2026-11-08
 

@@ -226,7 +226,8 @@ class VoiceSession:
             if not first:
                 # Kokoro shapes tone within one piece of text only, so sentences that are already
                 # waiting are spoken together. The first stays alone, to start speaking sooner.
-                sentence, ended = join_waiting(sentence, sentences, SPOKEN_CHUNK_CHARS)
+                limit = getattr(self._speaker, "chunk_chars", SPOKEN_CHUNK_CHARS)
+                sentence, ended = join_waiting(sentence, sentences, limit)
             await self._send_json({"type": "reply", "text": sentence})
             pcm = await asyncio.to_thread(self._speaker.synthesize, sentence)
             if first:

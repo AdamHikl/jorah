@@ -42,7 +42,16 @@ async def serve(args):
     root = models.ensure()
     print("Loading speech models", flush=True)
     listener = Listener(root, args.stt_provider)
-    speaker = Speaker(root, args.tts_provider, voice=args.voice, speed=args.speed)
+    speaker = None
+    if args.tts_engine == "qwen":
+        from .qwen_protocol import QwenSpeaker
+        try:
+            speaker = QwenSpeaker()
+            print("Speaking with Qwen3-TTS (Jorah's voice)", flush=True)
+        except OSError as error:
+            print(f"Qwen3-TTS service unavailable ({error}), speaking with Kokoro", flush=True)
+    if speaker is None:
+        speaker = Speaker(root, args.tts_provider, voice=args.voice, speed=args.speed)
     # The GPU's first run of each model is slow while it picks kernels, so do it before anyone talks.
     warm_up(listener, speaker)
     one_at_a_time = asyncio.Lock()
@@ -98,6 +107,7 @@ def main():
     parser.add_argument("--token-file", default=os.path.expanduser("~/.config/jorah-voice/token"))
     parser.add_argument("--stt-provider", default="cpu", help="where speech recognition runs: cpu or cuda")
     parser.add_argument("--tts-provider", default="cuda", help="where speech is made: cuda, or cpu without the GPU")
+    parser.add_argument("--tts-engine", default="qwen", choices=["qwen", "kokoro"], help="qwen needs jorah-voice-qwen running; falls back to kokoro")
     parser.add_argument("--voice", default=models.DEFAULT_VOICE)
     parser.add_argument("--speed", type=float, default=models.DEFAULT_SPEED)
     parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")

@@ -15,6 +15,7 @@ from .core import SentenceChunker, clean_for_speech
 from .speech import Speaker
 
 MAX_CHARS = 4000
+QWEN_MAX_CHARS = 900  # Qwen3-TTS is slower than real time; longer replies use Kokoro within OpenClaw's 120 s
 PAUSE_SECONDS = 0.15
 
 
@@ -34,6 +35,15 @@ def pieces(text, max_chars=300):
     return out
 
 
+def write_wav(target, speaker, parts):
+    audio = b"".join(speaker.synthesize(part) + b"\x00\x00" * int(speaker.sample_rate * PAUSE_SECONDS) for part in parts)
+    with wave.open(target, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(speaker.sample_rate)
+        out.writeframes(audio)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 2:
@@ -43,14 +53,15 @@ def main(argv=None):
     parts = pieces(text)
     if not parts:
         return 1
-    speaker = Speaker(root=models.ROOT, provider="cpu")
-    pause = b"\x00\x00" * int(speaker.sample_rate * PAUSE_SECONDS)
-    with wave.open(target, "wb") as out:
-        out.setnchannels(1)
-        out.setsampwidth(2)
-        out.setframerate(speaker.sample_rate)
-        for part in parts:
-            out.writeframes(speaker.synthesize(part) + pause)
+    if len(text) <= QWEN_MAX_CHARS:
+        # Jorah's own voice when its service is up; Kokoro if it's down, fails, or the reply is long.
+        from .qwen_protocol import QwenSpeaker
+        try:
+            write_wav(target, QwenSpeaker(), parts)
+            return 0
+        except (OSError, RuntimeError) as error:
+            print(f"Qwen3-TTS unavailable, using Kokoro: {error}", file=sys.stderr)
+    write_wav(target, Speaker(root=models.ROOT, provider="cpu"), parts)
     return 0
 
 

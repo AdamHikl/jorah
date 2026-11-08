@@ -1,0 +1,13 @@
+// With main's own chat outside the sandbox (learning.patch.json5), take shell tools away from it
+// explicitly, instead of relying on exec.host "sandbox" failing closed. The security audit of
+// 2026-11-08 listed main as "runtime=[exec, process]" without full sandboxing. Shell work stays with
+// `background`, which is sandboxed. Arrays replace, so the media denies are repeated.
+//
+// ACP off too: ACP sessions (Claude Code through acpx) always run on the host, never in the sandbox,
+// and OpenClaw blocks them only from sandboxed requesters (docs/tools/acp-agents/delivery.md,
+// "Sandbox compatibility"). Main's chat is no longer sandboxed, so it could start one. Off restores the
+// effective state before learning.patch.json5. Nothing used ACP; delegated coding gets its own design at P5.
+{
+  acp: { enabled: false },
+  agents: { entries: { main: { tools: { deny: ["image_generate", "video_generate", "music_generate", "exec", "process"] } } } },
+}

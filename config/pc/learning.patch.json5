@@ -1,0 +1,22 @@
+// Let Jorah learn skills again, 2026-11-08. Applied only on Adam's yes, after a dry run.
+//
+// OpenClaw's self-learning (skills.workshop.autonomous.mode, default "auto") reviews a conversation
+// after substantial work and may save or update a skill with skill_workshop, announcing it in chat;
+// every change can be undone ("undo", or `openclaw skills workshop restore <name>`). It only runs in a
+// session that isn't sandboxed (docs/tools/self-learning.md, "Nothing is learned", item 4). Since the
+// API switch every session, Adam's chat included, is sandboxed, so nothing is learned.
+//
+// This takes only main's own conversation (agent:main:main, Adam's Telegram and voice) out of the
+// sandbox. Everything else stays sandboxed: heartbeat, cron and other sessions of main, and every
+// `background` session. What that means for Adam's conversation:
+//   - shell: none. tools.exec.host stays "sandbox", which fails closed outside a sandbox
+//     (docs/tools/exec.md), so shell work still goes to `background`;
+//   - files: read and write on the host, limited to /home/jorah/workspace (tools.fs.workspaceOnly);
+//   - browser: unchanged, it already runs on the host as jorah;
+//   - skills: skill_workshop works, in the foreground and in the background review.
+// Undo: set agents.entries.main.sandbox.mode back to "all" (or remove it, since the default is "all").
+// It changes the waived gate of 2026-11-06 ("every session, the main one included"), on Adam's yes.
+{
+  agents: { entries: { main: { sandbox: { mode: "non-main" } } } },
+  skills: { workshop: { autonomous: { mode: "auto" } } },
+}

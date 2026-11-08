@@ -95,9 +95,11 @@ Expected: quiet or stopped case fans at idle, and they speed up during a heavy j
    In the app: **Settings → Gateway**, scan the QR, connect. Expected: Jorah's chat with the Telegram history, because it's the same `agent:main:main` session. If the app shows **Pending approval**, approve it in the same Terminal with `openclaw --profile jorah devices list` and `devices approve <requestId>`, after checking it's your phone. Device commands (camera, location, screen and the rest) stay denied by `gateway.nodes.commands.deny`.
 3. **Mac browser:** open `https://rocket.tail1574a5.ts.net/` and connect with the Gateway token. Get it in the same Terminal with `openclaw --profile jorah gateway auth-token --show`, paste it into the page, and don't save it anywhere else. Expected: the Control UI, with Chat, Dreams and Skill workshop.
 
-## Daily learning review: blocked by the sandbox
+## Learning skills: off while every session is sandboxed
 
-`scripts/setup-learning.sh` and its prompt are in `/opt/jorah`, but don't schedule it yet. `openclaw doctor` warns that with `agents.defaults.sandbox.mode: "all"`, `skill_workshop` is unavailable in a sandboxed run without library-authoring authority, so a cron review could read sessions but never save a skill. Adam's own turns may still save skills in the moment, if they carry the host's authority (unverified, test at the end: correct Jorah on how to do something, expect `💾 Learned: ...`). Fixing the review means a non-sandboxed run for it, which weakens the sandbox, so it's a decision for later.
+OpenClaw's own self-learning replaces the planned daily review (`scripts/setup-learning.sh` stays unscheduled). With `skills.workshop.autonomous.mode` at its default `auto`, a review runs 30 s after substantial work (10 model iterations) and may save or update a skill with `skill_workshop`, announcing it in chat; "undo" reverts it. It only runs in a session that isn't sandboxed (`docs/tools/self-learning.md`, "Nothing is learned", item 4). Since the API switch every session is sandboxed, Adam's included, so Jorah learns nothing [read in the docs, 2026-11-08].
+
+`config/pc/learning.patch.json5` takes only Adam's conversation (`agent:main:main`) out of the sandbox with `agents.entries.main.sandbox.mode: "non-main"`. Dry run: 2 updates validated, not applied. Heartbeat, cron and `background` stay sandboxed. Adam's conversation then has no shell (`exec.host: "sandbox"` fails closed outside a sandbox, so shell stays with `background`), files on the host limited to the workspace, and the browser as before. It changes the waived gate of 2026-11-06, so it waits for Adam's yes. Test at the end: correct Jorah on how to do something during a longer task. Expected: a message that a skill was saved, and "undo" removes it.
 
 ## Daily backup, written, not installed
 
@@ -209,10 +211,10 @@ If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `co
 
 ## Still open
 
-- Boot with nobody signed in is untested on Windows Home. The Windows task "Jorah WSL" keeps the distro running (step 2), but the Gateway has no boot service yet, and a reboot test is still owed.
+- Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.
 - Semantic memory search: keyword-only until NAT networking with Tailscale inside the distro lets llama.cpp use its random loopback ports.
 - Linger gives `jorah` a systemd user manager, so it could create user services. Shell runs in the sandbox, which can't reach it, but step 2 should check `systemctl --user list-units` as part of the soak.
-- `/run/WSL/2_interop` stays world-writable. Adam approved the hardening: step 11's unit has it, and step 2's service must carry it too.
+- `/run/WSL/2_interop` stays world-writable, but the Gateway, voice and backup units all set `InaccessiblePaths=/run/WSL`. The installed Gateway unit matches `deploy/openclaw-gateway.service` [measured 2026-11-08].
 - `socat` isn't installed, so Claude Code's sandbox can't start. `scripts/pc/wsl-jorah-setup.sh` doesn't install it.
 - `scripts/setup-permissions.sh` writes macOS paths, so it needs a Linux version before delegated coding.
 - Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried for the Gateway. Voice has its own route on port 43210, waiting on Adam's Serve consent.

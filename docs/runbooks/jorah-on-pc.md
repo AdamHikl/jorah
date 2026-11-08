@@ -87,6 +87,8 @@ ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -
 
 Expected: `Qwen3-TTS ready on /home/jorah/.cache/jorah-voice/qwen.sock`, then `Speaking with Qwen3-TTS (Jorah's voice)`.
 
+**Running since 2026-11-08 18:21** [measured]: Adam ran the script; `Qwen3-TTS ready on ...qwen.sock`, then `jorah-voice` logged `Speaking with Qwen3-TTS (Jorah's voice)`. `jorah-voice-qwen` enabled and active. Not yet heard by Adam live or in Telegram; not yet seen across a reboot.
+
 **Qwen3-TTS trial, 2026-11-08** [measured], on Adam's yes, for samples only (not wired into `jorah-voice`): `qwen-tts==0.1.1` with PyTorch 2.15 cu132 in `/home/jorah/apps/qwen-tts/.venv` (uv, `--exclude-newer 2026-11-01`, 6 GB), models `Qwen3-TTS-12Hz-1.7B-CustomVoice` and `-Base` from Hugging Face. Nine preset voices and a Daniel clone of a 245-character reply: 1.23 to 1.53 seconds per second of audio, slower than real time, without FlashAttention and with a kernel compile failing; peak 4.8 GB of GPU memory. Not usable for live voice as is; fine quality-wise for Telegram replies if Adam prefers it. Next, only if Adam picks it: FlashAttention or a faster runtime, then a streaming test. Script: `~/apps/qwen-tts/samples.py`.
 
 **Voice route moved to 43211, 2026-11-08** [measured]: with mirrored networking a Windows listener on a port blocks the same port in the distro, so Serve's `:43210` stopped `jorah-voice` from binding 127.0.0.1:43210 after a restart (`Errno 98`). Serve now listens on `https://rocket.tail1574a5.ts.net:43211` and forwards to `http://127.0.0.1:43210`; `jorah-voice` is back (Daniel at 1.2), and from the Mac `:43211` answers 426 (WebSocket only). Rule: a Serve port must never equal a port a distro service binds. The Gateway's 443 → 43181 is fine.

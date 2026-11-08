@@ -33,7 +33,7 @@ fi
 say "2. Profiles that reference it, for main and background"
 oc secrets apply --from "$PLAN" --dry-run
 oc secrets apply --from "$PLAN"
-for a in main background; do oc models auth order set --provider anthropic --agent "$a" "$PROFILE"; done
+for a in main background deep; do oc models auth order set --provider anthropic --agent "$a" "$PROFILE"; done
 
 say "3. Every model onto the key"
 oc config patch --file "$PATCH" --dry-run

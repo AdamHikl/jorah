@@ -1,0 +1,26 @@
+// Haiku in front, Opus behind, 2026-11-08, on Adam's request: "keeping the main agent at haiku means
+// that it is fast and cheap and handles 90% of everyday conversations, harder tasks will automatically
+// be handed off". A simpler, earlier form of roadmap P5a (no separate `front` agent, no P5 bridge):
+//   - main (Telegram, voice, the iPhone app; agent:main:main) runs on Haiku 5.5;
+//   - `deep` runs on Opus 5.5 in the sandbox, for hard questions, through sessions_spawn;
+//   - `background` keeps shell work.
+// Applied after `openclaw agents add deep`. Undo: main's model.primary back to anthropic/claude-opus-5-5.
+{
+  agents: {
+    entries: {
+      main: {
+        model: { primary: "anthropic/claude-haiku-5-5", fallbacks: [] },
+        subagents: { allowAgents: ["background", "deep"] },
+      },
+      deep: {
+        models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "openclaw" } } },
+        model: { primary: "anthropic/claude-opus-5-5", fallbacks: [] },
+        identity: { name: "Jorah (deep)" },
+        tools: {
+          deny: ["image_generate", "video_generate", "music_generate", "message"],
+          sandbox: { tools: { alsoAllow: ["group:web"] } },
+        },
+      },
+    },
+  },
+}

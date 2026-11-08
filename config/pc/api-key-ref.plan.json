@@ -5,18 +5,50 @@
     {
       "type": "auth-profiles.api_key.key",
       "path": "profiles.anthropic:jorah-store.key",
-      "pathSegments": ["profiles", "anthropic:jorah-store", "key"],
+      "pathSegments": [
+        "profiles",
+        "anthropic:jorah-store",
+        "key"
+      ],
       "agentId": "main",
       "authProfileProvider": "anthropic",
-      "ref": { "source": "store", "provider": "default", "id": "ANTHROPIC_API_KEY_JORAH" }
+      "ref": {
+        "source": "store",
+        "provider": "default",
+        "id": "ANTHROPIC_API_KEY_JORAH"
+      }
     },
     {
       "type": "auth-profiles.api_key.key",
       "path": "profiles.anthropic:jorah-store.key",
-      "pathSegments": ["profiles", "anthropic:jorah-store", "key"],
+      "pathSegments": [
+        "profiles",
+        "anthropic:jorah-store",
+        "key"
+      ],
       "agentId": "background",
       "authProfileProvider": "anthropic",
-      "ref": { "source": "store", "provider": "default", "id": "ANTHROPIC_API_KEY_JORAH" }
+      "ref": {
+        "source": "store",
+        "provider": "default",
+        "id": "ANTHROPIC_API_KEY_JORAH"
+      }
+    },
+    {
+      "type": "auth-profiles.api_key.key",
+      "path": "profiles.anthropic:jorah-store.key",
+      "pathSegments": [
+        "profiles",
+        "anthropic:jorah-store",
+        "key"
+      ],
+      "agentId": "deep",
+      "authProfileProvider": "anthropic",
+      "ref": {
+        "source": "store",
+        "provider": "default",
+        "id": "ANTHROPIC_API_KEY_JORAH"
+      }
     }
   ]
 }

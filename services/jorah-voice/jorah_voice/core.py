@@ -4,11 +4,20 @@ import hmac
 import json
 import math
 import re
+import sys
 import time
+from array import array
 
-STOP_SPEECH = {"stop", "stop it", "be quiet", "quiet"}
+STOP_SPEECH = {"stop", "stop it", "be quiet", "quiet", "enough"}
 CANCEL = {"cancel", "cancel that", "never mind", "nevermind"}
 END_SESSION = {"goodbye", "goodbye jorah", "bye jorah", "stop listening", "go to sleep"}
+# Close at once, with nothing said back (04 5.3).
+END_QUIETLY = {"thanks", "thank you", "thanks jorah", "thank you jorah", "that s all", "thats all", "that is all"}
+STAY = {"stay with me", "stay with me jorah", "keep listening"}
+
+# Audio rates a client may send. The recogniser wants 16 kHz; OpenClaw's Talk relay sends 24 kHz.
+MIC_RATE = 16000
+INPUT_RATES = (16000, 24000)
 
 _MARKUP = re.compile(r"[*_`#>|]+")
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
@@ -23,7 +32,10 @@ def normalize_command(text):
 
 
 def classify(text):
-    """Return "stop", "cancel", "end" or "talk" for a transcript. Only an exact phrase is a command."""
+    """Return "stop", "cancel", "end", "end_quietly", "stay" or "talk" for a transcript.
+
+    Only an exact phrase is a command, so none of these reach the model.
+    """
     command = normalize_command(text)
     if not command:
         return "empty"
@@ -33,6 +45,10 @@ def classify(text):
         return "cancel"
     if command in END_SESSION:
         return "end"
+    if command in END_QUIETLY:
+        return "end_quietly"
+    if command in STAY:
+        return "stay"
     return "talk"
 
 
@@ -150,6 +166,107 @@ class IdleClock:
         return self._now() - self._last >= self._limit
 
 
+class FollowUp:
+    """When a session closes by itself, from voice plan 04 5.3. All times in seconds, on one clock.
+
+    - Opening: nothing said within `first` of the session opening closes it.
+    - Follow-up: after a reply, `follow_up` of quiet closes it, or `question` if the reply asked one.
+    - Stay ("stay with me"): `stay_quiet` of quiet, or `stay_cap` in all, with a warning
+      `warn_before` the cap. "That's all" leaves it.
+    Nothing closes while Jorah is busy: the caller asks only when he isn't.
+    """
+
+    def __init__(self, now, first=5.0, follow_up=8.0, question=12.0, stay_quiet=120.0, stay_cap=600.0, warn_before=30.0):
+        self.first, self.follow_up, self.question = first, follow_up, question
+        self.stay_quiet, self.stay_cap, self.warn_before = stay_quiet, stay_cap, warn_before
+        self.state = "opening"
+        self._since = now
+        self._limit = first
+        self._stay_started = None
+        self._warned = False
+
+    def heard(self, now):
+        """Speech is coming in: the window restarts from now."""
+        if self.state != "stay":
+            self.state = "listening"
+        self._since = now
+
+    def replied(self, now, text=""):
+        """Jorah finished speaking. A reply ending in a question gets the longer window."""
+        if self.state == "stay":
+            self._since = now
+            return
+        self.state = "follow_up"
+        self._since = now
+        self._limit = self.question if text.rstrip().endswith("?") else self.follow_up
+
+    def stay(self, now):
+        self.state = "stay"
+        self._since = now
+        self._stay_started = now
+        self._warned = False
+
+    def check(self, now):
+        """Return ("close", reason), ("warn", seconds_left) once, or None."""
+        if self.state == "stay":
+            left = self._stay_started + self.stay_cap - now
+            if left <= 0:
+                return ("close", f"{int(self.stay_cap // 60)} minute stay limit")
+            if now - self._since >= self.stay_quiet:
+                return ("close", f"{int(self.stay_quiet)}s of quiet")
+            if left <= self.warn_before and not self._warned:
+                self._warned = True
+                return ("warn", left)
+            return None
+        if self.state == "listening":
+            # Mid-turn quiet is the turn ender's business, not a reason to close.
+            return None
+        if now - self._since >= self._limit:
+            return ("close", "nothing said" if self.state == "opening" else f"{self._limit:g}s follow-up ended")
+        return None
+
+
+class Resampler:
+    """Converts 16-bit mono PCM between rates by linear interpolation, chunk by chunk.
+
+    Pure Python so the unit tests need no install. 24 kHz in, 16 kHz out, is about 2% of one core.
+    """
+
+    def __init__(self, source_rate, target_rate=MIC_RATE):
+        if source_rate <= 0 or target_rate <= 0:
+            raise ValueError("rates must be positive")
+        self.source_rate, self.target_rate = source_rate, target_rate
+        self._step = source_rate / target_rate
+        self._position = 0.0
+        self._last = None
+
+    def convert(self, pcm):
+        if self.source_rate == self.target_rate:
+            return pcm
+        samples = array("h")
+        samples.frombytes(pcm[: len(pcm) - len(pcm) % 2])
+        if sys.byteorder != "little":
+            samples.byteswap()
+        if not samples:
+            return b""
+        # Index -1 is the last sample of the previous chunk, so interpolation crosses chunk edges.
+        source = ([self._last] if self._last is not None else [samples[0]]) + list(samples)
+        out = array("h")
+        position = self._position + 1
+        limit = len(source) - 1
+        while position < limit:
+            base = int(position)
+            frac = position - base
+            value = source[base] + (source[base + 1] - source[base]) * frac
+            out.append(max(-32768, min(32767, int(round(value)))))
+            position += self._step
+        self._position = position - 1 - len(samples)
+        self._last = samples[-1]
+        if sys.byteorder != "little":
+            out.byteswap()
+        return out.tobytes()
+
+
 def percentile(values, share):
     """Nearest-rank percentile. Returns None with no samples, so a missing number never reads as 0."""
     if not values:
@@ -171,4 +288,12 @@ def parse_hello(message, expected_token):
     token = hello.get("token")
     if not isinstance(token, str) or not hmac.compare_digest(token, expected_token):
         return None
-    return {"barge_in": hello.get("barge_in") is True}
+    rate = hello.get("input_rate", MIC_RATE)
+    if rate not in INPUT_RATES:
+        return None
+    return {
+        "barge_in": hello.get("barge_in") is True,
+        "input_rate": rate,
+        # Short windows (04 5.3) for clients that open per conversation, such as the iPhone's Talk.
+        "follow_up": hello.get("follow_up") is True,
+    }

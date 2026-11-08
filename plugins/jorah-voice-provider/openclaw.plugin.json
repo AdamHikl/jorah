@@ -1,0 +1,16 @@
+{
+  "id": "jorah-voice-provider",
+  "name": "Jorah local voice",
+  "description": "A realtime Talk provider that hands Talk audio to jorah-voice on loopback. Speech is recognised and spoken on the PC; no audio leaves it.",
+  "categories": ["other"],
+  "contracts": {
+    "realtimeVoiceProviders": ["jorah-local"]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

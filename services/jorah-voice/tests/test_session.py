@@ -315,6 +315,119 @@ class Closing(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(Harness().session.summary()["first_audio"]["median"])
 
 
+class ShortWindows(unittest.IsolatedAsyncioTestCase):
+    """Voice plan 04 5.3, for clients that open a session per conversation."""
+
+    def harness(self, text="Hello there", **options):
+        self.now = [0.0]
+        return Harness(text=text, clock=lambda: self.now[0], follow_up=True, **options)
+
+    async def watch_once(self, h):
+        h.session.closed_before = h.session.closed
+        task = asyncio.create_task(h.session.watch())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        if not h.session.closed:
+            h.session.closed = True
+        await asyncio.wait_for(task, 2)
+
+    def reasons(self, h):
+        return [m.get("reason") for m in h.sent if m["type"] == "closed"]
+
+    async def test_nothing_said_closes_after_five_seconds(self):
+        h = self.harness()
+        self.now[0] = 5
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), ["nothing said"])
+
+    async def test_four_seconds_is_not_enough(self):
+        h = self.harness()
+        self.now[0] = 4
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), [])
+
+    async def test_eight_seconds_after_a_reply_closes(self):
+        h = self.harness()
+        await h.say()
+        await h.settle()
+        self.now[0] += 8
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), ["8s follow-up ended"])
+
+    async def test_a_question_gets_twelve_seconds(self):
+        h = self.harness(brain=FakeBrain(["Want the long version?"]))
+        await h.say()
+        await h.settle()
+        self.now[0] += 8
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), [])
+        h.session.closed = False
+        self.now[0] += 4
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), ["12s follow-up ended"])
+
+    async def test_thanks_closes_at_once_without_the_brain(self):
+        h = self.harness(text="Thanks.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        self.assertEqual(h.speaker.lines, [])
+        self.assertEqual(self.reasons(h), ["said thanks"])
+
+    async def test_stay_with_me_keeps_the_mic_open_for_two_minutes_of_quiet(self):
+        h = self.harness(text="Stay with me.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        self.assertEqual(h.speaker.lines, ["I'm here."])
+        self.now[0] += 60
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), [])
+        h.session.closed = False
+        self.now[0] += 60
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), ["120s of quiet"])
+
+    async def test_stay_warns_before_the_ten_minute_cap(self):
+        h = self.harness(text="Stay with me.")
+        await h.say()
+        await h.settle()
+        h.session._follow_up.stay_quiet = 10_000
+        self.now[0] = 580
+        await self.watch_once(h)
+        await h.settle()
+        self.assertIn("I'll stop listening in half a minute.", h.speaker.lines)
+        h.session.closed = False
+        self.now[0] = 601
+        await self.watch_once(h)
+        self.assertEqual(self.reasons(h), ["10 minute stay limit"])
+
+    async def test_without_the_option_the_old_sixty_seconds_hold(self):
+        now = [0.0]
+        h = Harness(clock=lambda: now[0])
+        now[0] = 30
+        task = asyncio.create_task(h.session.watch())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        h.session.closed = True
+        await task
+        self.assertEqual([m for m in h.sent if m["type"] == "closed"], [])
+
+
+class Rates(unittest.TestCase):
+    def test_24_khz_becomes_16_khz(self):
+        from array import array
+        from jorah_voice.core import Resampler
+        r = Resampler(24000)
+        chunk = array("h", range(0, 4800, 10)).tobytes()  # 480 samples, 20 ms
+        out = b"".join(r.convert(chunk) for _ in range(50))
+        self.assertEqual(len(out) // 2, 16000)
+
+    def test_16_khz_passes_through(self):
+        from jorah_voice.core import Resampler
+        self.assertEqual(Resampler(16000).convert(b"\1\2\3\4"), b"\1\2\3\4")
+
+
 class Hello(unittest.TestCase):
     TOKEN = "t" * 40
 
@@ -322,8 +435,16 @@ class Hello(unittest.TestCase):
         return json.dumps({"type": "hello", **fields})
 
     def test_right_token(self):
-        self.assertEqual(parse_hello(self.hello(token=self.TOKEN), self.TOKEN), {"barge_in": False})
-        self.assertEqual(parse_hello(self.hello(token=self.TOKEN, barge_in=True), self.TOKEN), {"barge_in": True})
+        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False}
+        self.assertEqual(parse_hello(self.hello(token=self.TOKEN), self.TOKEN), plain)
+        self.assertEqual(parse_hello(self.hello(token=self.TOKEN, barge_in=True), self.TOKEN), {**plain, "barge_in": True})
+
+    def test_the_talk_relay_options(self):
+        hello = parse_hello(self.hello(token=self.TOKEN, input_rate=24000, follow_up=True), self.TOKEN)
+        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": True})
+
+    def test_an_unknown_rate_is_refused(self):
+        self.assertIsNone(parse_hello(self.hello(token=self.TOKEN, input_rate=44100), self.TOKEN))
 
     def test_refused(self):
         for bad in (self.hello(token="wrong"), self.hello(), self.hello(token=5), "not json", "[]", b"\0\0"):

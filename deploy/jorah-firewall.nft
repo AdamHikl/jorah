@@ -1,6 +1,6 @@
 #!/usr/sbin/nft -f
 # Limits what the jorah user can reach. jorah has no root, so it can't change this.
-# Public internet is allowed. The LAN, the tailnet and Windows are not.
+# Public internet on web ports is allowed. The LAN, the tailnet and Windows are not.
 flush ruleset
 
 table inet jorah_out {
@@ -31,5 +31,12 @@ table inet jorah_out {
     ip daddr 10.255.255.254 meta l4proto { tcp, udp } th dport 53 accept
     ip daddr @private4 counter reject
     ip6 daddr @private6 counter reject
+    # Public internet: web ports only (2026-11-08). Jorah's web, browser, Anthropic, Telegram,
+    # npm and Hugging Face all use 443; 80 for plain-http pages; udp 443 for HTTP/3. Mail, SSH,
+    # IRC and other ports a page could talk him into are refused. Only 443 was in use when
+    # measured. A domain list isn't possible here: web search and the browser need any site.
+    meta l4proto tcp th dport { 80, 443 } accept
+    udp dport 443 accept
+    counter reject
   }
 }

@@ -4,12 +4,14 @@ import asyncio
 import time
 
 from .brain import BrainError
-from .core import IdleClock, SentenceChunker, TurnEnd, classify, join_waiting, percentile
+from .core import FollowUp, IdleClock, Resampler, SentenceChunker, TurnEnd, classify, join_waiting, percentile
 
 BLOCK_SECONDS = 0.1
 BYTES_PER_SAMPLE = 2
 FAILURE_LINE = "I can't reach my brain right now."
 EMPTY_LINE = "I didn't get an answer. Try me again."
+STAY_LINE = "I'm here."
+STAY_WARNING = "I'll stop listening in half a minute."
 
 
 # Longest piece of text spoken in one go, after the first sentence of a reply.
@@ -19,7 +21,8 @@ SPOKEN_CHUNK_CHARS = 300
 class VoiceSession:
     def __init__(self, ears, listener, speaker, brain, send_json, send_audio, on_close, *,
                  barge_in=False, idle_seconds=60, max_seconds=1800,
-                 clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None):
+                 clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None,
+                 follow_up=False, input_rate=16000):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -42,6 +45,9 @@ class VoiceSession:
         self._idle = IdleClock(idle_seconds, now=clock)
         self._started = clock()
         self._turn = None
+        # Short windows from voice plan 04 5.3, for clients that open per conversation.
+        self._follow_up = FollowUp(clock()) if follow_up else None
+        self._resampler = Resampler(input_rate)
         self.closed = False
         self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_audio": []}
 
@@ -55,10 +61,13 @@ class VoiceSession:
         if self.busy() and not self._barge_in:
             self._idle.touch()
             return
-        self._ears.accept(pcm)
-        if self.busy() and self._ears.speech_now():
+        self._ears.accept(self._resampler.convert(pcm))
+        speaking = self._ears.speech_now()
+        if self.busy() and speaking:
             await self.interrupt()
         segments = self._ears.segments()
+        if self._follow_up and (speaking or segments):
+            self._follow_up.heard(self._clock())
         if segments:
             self._held.extend(segments)
             self._listen()
@@ -112,7 +121,15 @@ class VoiceSession:
             if self._clock() - self._started >= self._max_seconds:
                 await self.interrupt(quiet=True)
                 await self.close(f"{self._max_seconds // 60} minute limit")
-            elif not self.busy() and self._idle.expired():
+            elif self.busy() or self._held:
+                continue
+            elif self._follow_up:
+                verdict = self._follow_up.check(self._clock())
+                if verdict and verdict[0] == "close":
+                    await self.close(verdict[1])
+                elif verdict:
+                    self._turn = asyncio.create_task(self._say_only(STAY_WARNING))
+            elif self._idle.expired():
                 await self.close(f"{self._idle_seconds}s of quiet")
 
     async def close(self, reason):
@@ -145,14 +162,37 @@ class VoiceSession:
         self._idle.touch()
         await self._send_json({"type": "heard", "text": text})
         if kind in ("stop", "cancel"):
+            self._replied("")
             await self._state("listening")
             return
         if kind == "end":
             await self._speak_lines(["Talk soon."], heard_at, record=False)
             await self.close("said goodbye")
             return
-        await self._reply(text, heard_at)
+        if kind == "end_quietly":
+            await self.close("said thanks")
+            return
+        if kind == "stay":
+            if self._follow_up:
+                self._follow_up.stay(self._clock())
+            await self._speak_lines([STAY_LINE], heard_at, record=False)
+            self._replied("")
+            await self._state("listening")
+            return
+        reply = await self._reply(text, heard_at)
         self._idle.touch()
+        self._replied(reply)
+        await self._state("listening")
+
+    def _replied(self, text):
+        if self._follow_up:
+            self._follow_up.replied(self._clock(), text)
+
+    async def _say_only(self, line):
+        """Speak a line of Jorah's own, such as a warning, without a turn from Adam."""
+        await self._speak_lines([line], self._clock(), record=False)
+        self._idle.touch()
+        self._replied("")
         await self._state("listening")
 
     async def _reply(self, text, heard_at):
@@ -175,12 +215,13 @@ class VoiceSession:
                 sentences.put_nowait(EMPTY_LINE)
             sentences.put_nowait(None)
             await speaking
+            return "".join(reply)
         except BrainError as error:
             print(f"brain failed: {error}", flush=True)
-            reply = []
             sentences.put_nowait(FAILURE_LINE)
             sentences.put_nowait(None)
             await speaking
+            return FAILURE_LINE
         except asyncio.CancelledError:
             speaking.cancel()
             await asyncio.gather(speaking, return_exceptions=True)

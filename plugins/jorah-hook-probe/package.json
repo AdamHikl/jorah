@@ -1,0 +1,13 @@
+{
+  "name": "@jorah/openclaw-jorah-hook-probe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Roadmap step 2.1: shows whether before_tool_call fires on Jorah's runtime and can block",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": { "pluginApi": ">=2026.10.9", "minGatewayVersion": "2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9", "pluginSdkVersion": "2026.10.9" }
+  }
+}

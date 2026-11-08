@@ -14,7 +14,25 @@ if [ -z "$manifests" ]; then
   exit 0
 fi
 
-unchecked="$(printf '%s\n' "$manifests" | grep -vE '(^|/)(pyproject\.toml|uv\.lock)$' || true)"
+# A package.json that declares no dependencies of any kind has nothing to check, such as the
+# OpenClaw plugins in plugins/. One that declares any still fails closed below.
+no_deps() {
+  python3 - "$1" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+kinds = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "bundleDependencies", "bundledDependencies")
+sys.exit(0 if not any(data.get(kind) for kind in kinds) else 1)
+PY
+}
+unchecked_list() {
+  printf '%s\n' "$manifests" | grep -vE '(^|/)(pyproject\.toml|uv\.lock)$' | while read -r manifest; do
+    if [ "$(basename "$manifest")" = package.json ] && no_deps "$manifest"; then
+      continue
+    fi
+    echo "$manifest"
+  done
+}
+unchecked="$(unchecked_list || true)"
 if [ -n "$unchecked" ]; then
   echo "Dependency manifests found, but no licence checker exists for them yet:" >&2
   printf '  %s\n' "$unchecked" >&2

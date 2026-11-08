@@ -77,6 +77,8 @@ async def serve(args):
                 barge_in=hello["barge_in"],
                 idle_seconds=args.idle,
                 turn_end=turn_end,
+                follow_up=hello["follow_up"],
+                input_rate=hello["input_rate"],
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())

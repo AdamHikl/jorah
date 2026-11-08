@@ -1,0 +1,43 @@
+// Talk from the iPhone app (and the Control UI) through Jorah's own voice on the PC.
+// Provider "jorah-local" is plugins/jorah-voice-provider, linked from root-owned /opt/jorah.
+// It moves audio between the Gateway's Talk relay and jorah-voice on 127.0.0.1:43210, which
+// recognises speech, asks main through Chat Completions, and speaks in the Qwen voice.
+// No audio leaves the PC. Install the plugin first:
+//   openclaw --profile jorah plugins install --link /opt/jorah/plugins/jorah-voice-provider
+// Merge patch: arrays are replaced, so plugins.allow is the whole list (2026-11-08) plus the plugin.
+// Undo: talk.realtime back to unset, and the plugin off the list.
+{
+  plugins: {
+    allow: [
+      "anthropic",
+      "telegram",
+      "acpx",
+      "memory-core",
+      "active-memory",
+      "memory-wiki",
+      "device-pair",
+      "talk-voice",
+      "browser",
+      "duckduckgo",
+      "jorah-voice-provider",
+    ],
+  },
+  talk: {
+    agentId: "main",
+    realtime: {
+      provider: "jorah-local",
+      providers: {
+        "jorah-local": {
+          url: "ws://127.0.0.1:43210",
+          tokenFile: "/home/jorah/.config/jorah-voice/token",
+        },
+      },
+      mode: "realtime",
+      // Keeps audio on the Gateway: the phone talks only to the PC.
+      transport: "gateway-relay",
+      // jorah-voice already asks main itself; the provider never calls tools.
+      brain: "agent-consult",
+      consultRouting: "provider-direct",
+    },
+  },
+}

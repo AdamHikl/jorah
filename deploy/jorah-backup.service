@@ -14,7 +14,10 @@ WorkingDirectory=/home/jorah
 Environment=HOME=/home/jorah
 Environment=PATH=/home/jorah/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStartPre=/usr/bin/mkdir -p /home/jorah/backups
-ExecStart=/usr/local/bin/openclaw --profile jorah backup create --output /home/jorah/backups --verify --keep-daily 14 --keep-weekly 8 --keep-monthly 6
+# OpenClaw's --keep-* retention needs a storage location (--to), which comes with the offsite decision.
+# Until then: a local archive, verified, and archives older than 14 days removed.
+ExecStart=/usr/local/bin/openclaw --profile jorah backup create --output /home/jorah/backups --verify
+ExecStartPost=/usr/bin/find /home/jorah/backups -maxdepth 1 -type f -name '*openclaw-backup*' -mtime +14 -delete
 Nice=10
 IOSchedulingClass=idle
 InaccessiblePaths=/run/WSL

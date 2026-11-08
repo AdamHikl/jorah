@@ -1,0 +1,21 @@
+// Roadmap step 2.1, test only: talk.patch.json5's plugin list plus jorah-hook-probe.
+// The probe logs tool names (never arguments) and blocks any call holding its probe word.
+// Remove after the test: scripts/pc/apply-talk.sh --remove-hook-probe re-applies talk.patch.json5.
+{
+  plugins: {
+    allow: [
+      "anthropic",
+      "telegram",
+      "acpx",
+      "memory-core",
+      "active-memory",
+      "memory-wiki",
+      "device-pair",
+      "talk-voice",
+      "browser",
+      "duckduckgo",
+      "jorah-voice-provider",
+      "jorah-hook-probe",
+    ],
+  },
+}

@@ -147,6 +147,39 @@ Installed by Claude on Adam's request ("you do it"): `deploy/jorah-backup.servic
 
 Restore check, not done yet: `openclaw --profile jorah backup verify <archive>`, then `backup restore <archive> --target <scratch folder>` on a scratch profile.
 
+## Talk from the iPhone, and the build of 2026-11-08
+
+Built and pushed on Adam's yes ("build everything first and then test at once"), roadmap 2a items 3 to 6 of that day's list. **Source and unit tests only** (88 Python, 10 Node); nothing below has run against the real Gateway yet.
+
+- **iPhone Talk (M20.3).** `plugins/jorah-voice-provider` registers `jorah-local`, a realtime Talk provider on the Gateway relay. It only moves 24 kHz audio between Talk and `jorah-voice` on 127.0.0.1:43210; `jorah-voice` does the turn as it does for `mac-ear` (Parakeet, then main through Chat Completions, then the Qwen voice, streaming). No audio leaves the PC. Transcripts go to Talk as non-final only, because the relay appends final ones to the session `jorah-voice` already writes to. `config/pc/talk.patch.json5` points `talk.realtime` at it (dry run: 9 updates validated). One voice session at a time: with `mac-ear` open, Talk is refused with "another voice session is open".
+- **Short windows (2.31, `04` 5.3), for Talk only:** closes after 5 s with nothing said, 8 s after a reply (12 s if Jorah asked a question), at once on "thanks" or "that's all". "Stay with me" keeps it open through 2 minutes of quiet, up to 10 minutes, with a spoken warning 30 s before. "Stop", "quiet" or "enough" cut the speech without reaching the model. `mac-ear` keeps its 60 s. Not built, client-side only: earcons, the RAM ring and echo gating (the iPhone cancels echo itself).
+- **Hook probe (2.1).** `plugins/jorah-hook-probe` logs each tool call's name and agent, never its arguments, and blocks any call whose arguments hold `JORAH-HOOK-PROBE-7Q`. Test only.
+- **Web-only egress.** `deploy/jorah-firewall.nft` now lets `jorah` reach the public internet on tcp 80 and 443 and udp 443 only; every other port is refused and counted. Only 443 was in use when measured. A list of domains isn't possible, because web search and the browser need any site.
+- **Setup SSH (P1.2).** `scripts/pc/close-setup-access.ps1`: password login off, and with `-EndSetup` the setup key removed and `sshd` stopped. Adam runs it on the PC, last, because it ends Claude's access.
+
+**Applied** [measured 2026-11-08]: the new code is in `/opt/jorah` and `jorah-voice` restarted on it (Qwen voice, listening on 127.0.0.1:43210). **Not applied:** the firewall and the plugins, because the build session's safety check refused root firewall changes and accepting a plugin's capabilities without Adam. Both are Adam's step 1 below.
+
+### Test pass
+
+1. **Apply (Adam, a Terminal attached to no agent):**
+
+   ```bash
+   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/apply-talk.sh
+   ```
+
+   Expected: "https to Telegram" with a number, "mail port 587: refused", both `jorah-` plugins listed as loaded, `talk.realtime.provider` `jorah-local`, health ok. Undo: the same command with `--undo` at the end.
+2. **Hook probe (Adam, Telegram):** send "Search the web for JORAH-HOOK-PROBE-7Q". Expected: Jorah says the search was blocked. Then tell Claude, who reads `journalctl -u openclaw-gateway | grep hook-probe` for `BLOCKED tool=web_search agent=main` and ordinary `saw` lines. Afterwards: the same command as step 1 with `--remove-hook-probe` at the end.
+3. **Telegram still works with the firewall (Adam):** ask "What's the weather in Bratislava?" Expected: an answer from a web search.
+4. **Talk from the Mac's browser first (Adam):** `https://rocket.tail1574a5.ts.net/`, Chat, the Talk control. Say "What did we last talk about?" Expected: Jorah's voice answers, and the turn shows in Chat once, not twice. Say nothing for 8 s: Talk ends.
+5. **Pair the iPhone (Adam):** the steps in "iPhone app and the Mac's browser" above. Expected: Jorah's chat with the Telegram history.
+6. **iPhone Talk (Adam, AirPods in):** Chat, the Talk control. Ask "What's on your mind?", then say "stop" while Jorah speaks. Expected: an answer in Jorah's voice; "stop" cuts it at once. Then "Stay with me", wait a minute, ask something else: still open. Then "thanks": Talk ends. If Talk won't start, note the message: that's the riskiest unknown, whether the app offers Talk with a non-OpenAI provider.
+7. **Packet capture, no audio leaves (Claude, during step 6):** on Windows, `pktmon` filtered to the Wi-Fi adapter, compared with the tailnet's traffic. Expected: audio-sized traffic only between the phone and the PC on the tailnet.
+8. **Reboot proof, P2 step 5 (Adam):** close the MacBook. Restart the PC from the Start menu and sign in to nothing. Within 3 minutes, Telegram: "What's the codeword I gave you?" after giving Jorah a new codeword beforehand. Expected: an answer with the codeword, and no re-pairing.
+9. **Learning (Adam, Telegram):** during a longer task, correct how Jorah did something. Expected: a message that a skill was saved; "undo" removes it.
+10. **Close setup access (Adam, last, PowerShell as Administrator on the PC):** `scripts/pc/close-setup-access.ps1`, copied from the repo. Expected: from the Mac, a password login is refused. Add `-EndSetup` only when no more setup sessions are planned.
+
+Then the two-week logs start: answers that should have gone to Opus (P5a.4), and the same recall questions to agentmemory and `memory-core` (P5b.4).
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.
@@ -254,6 +287,6 @@ If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `co
 - Delegated coding's sandbox, 2026-11-08: `socat` installed from Ubuntu's archive (`bubblewrap` was already there), and `scripts/pc/setup-permissions.sh`, the Linux version, wrote `/home/jorah/.claude-jorah/settings.json` (mode 600): sandbox on and failing closed, no unsandboxed commands, no network, home unreadable except `~/sandbox` and `~/work` (both mode 700). ACP stays off until a coding job is shown to run inside that sandbox [not tested: needs a real Claude Code run].
 - Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried for the Gateway. Voice has its own route on port 43210, waiting on Adam's Serve consent.
 - `/usr/lib/wsl/drivers` is a read-only mount from Windows, kept for the GPU. It also puts Windows `.exe` files inside the distro.
-- Public internet is open to the agent.
+- Public internet is open to the agent on web ports only, once `apply-talk.sh` has run (see "Talk from the iPhone").
 - SEC-T17, the packet capture from P3's gate, the GPU spike (P1.3) and the 7-day soak.
-- Windows SSH still allows password login, and the setup key gets removed when setup ends.
+- Windows SSH still allows password login, and the setup key gets removed when setup ends: `scripts/pc/close-setup-access.ps1`, test pass step 10.

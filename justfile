@@ -30,5 +30,6 @@ unit:
 # Mac only. Builds the mic and speaker client, and checks it against a stand-in server.
 mac-ear:
     mkdir -p build
-    swiftc -O -swift-version 5 clients/mac-ear/main.swift -o build/mac-ear
+    swiftc -O -swift-version 5 -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker clients/mac-ear/Info.plist clients/mac-ear/main.swift -o build/mac-ear
+    build/mac-ear --self-test-wake
     python3 clients/mac-ear/test_fake_server.py build/mac-ear

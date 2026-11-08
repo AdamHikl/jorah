@@ -1,20 +1,24 @@
 // mac-ear: Jorah's mic and speaker on the Mac, and nothing else.
 // Sends mic audio to jorah-voice on the PC and plays what comes back. No third-party code.
+import AppKit
 import AVFoundation
 import Foundation
+import Speech
 
 let usage = """
-usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43210 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path]
+usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43210 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path] [--wake]
 
 The token comes from the Keychain: service "jorah-voice", account "adam".
 --barge-in   talk over Jorah to cut him off, with echo cancellation on
 --no-mic     play sound only, for testing
+--wake       wait on-device for "Jorah" or "hey Jorah" before opening the connection
 """
 
 struct Options {
     var url: URL
     var bargeIn = false
     var noMic = false
+    var wake = false
     var maxMinutes = 30.0
     var tokenFile: String?
 }
@@ -24,6 +28,52 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+let wakePhrases: Set<String> = ["jorah", "hey jorah", "jora", "jorra", "zora", "hey jora"]
+
+func isWakePhrase(_ text: String) -> Bool {
+    let cleaned = text.lowercased().filter { !$0.isPunctuation }
+    let recent = Array(cleaned.split(whereSeparator: { $0.isWhitespace }).suffix(5).map(String.init))
+    for i in recent.indices {
+        if wakePhrases.contains(recent[i]) { return true }
+        if i + 1 < recent.count && wakePhrases.contains("\(recent[i]) \(recent[i + 1])") { return true }
+    }
+    return false
+}
+
+func runWakeSelfTest() -> Never {
+    let positives = [
+        "jorah",
+        "hey jorah",
+        "Hey, Jorah!",
+        "jorah what time is it",
+        "and then jorah said",
+        "hey jora can you help",
+        "jora",
+        "jorra please",
+        "okay zora",
+        "earlier words then hey jorah",
+    ]
+    let negatives = [
+        "",
+        "   ... !? ",
+        "georgia is lovely",
+        "and then jorah said one two three four five",
+        "jorah one two three four five",
+        "hey there how are you",
+        "majora mask is a game",
+        "jorahs coat is warm",
+        "hello world",
+        "Hey Jorah! One, two, three, four, five.",
+    ]
+    for sample in positives where !isWakePhrase(sample) {
+        fail("wake self-test failed: expected true for \(sample.debugDescription)")
+    }
+    for sample in negatives where isWakePhrase(sample) {
+        fail("wake self-test failed: expected false for \(sample.debugDescription)")
+    }
+    exit(0)
+}
+
 func parseOptions() -> Options {
     var url: URL?
     var options = Options(url: URL(string: "ws://localhost")!)
@@ -31,15 +81,18 @@ func parseOptions() -> Options {
     while !args.isEmpty {
         let arg = args.removeFirst()
         switch arg {
+        case "--self-test-wake": runWakeSelfTest()
         case "--url" where !args.isEmpty: url = URL(string: args.removeFirst())
         case "--barge-in": options.bargeIn = true
         case "--no-mic": options.noMic = true
+        case "--wake": options.wake = true
         case "--max-minutes" where !args.isEmpty: options.maxMinutes = Double(args.removeFirst()) ?? 30
         case "--token-file" where !args.isEmpty: options.tokenFile = args.removeFirst()
         default: fail(usage)
         }
     }
     guard let found = url else { fail(usage) }
+    if options.wake && options.noMic { fail("--wake and --no-mic cannot be used together") }
     options.url = found
     return options
 }
@@ -73,16 +126,20 @@ func readToken(_ options: Options) -> String {
 final class Ear: NSObject, URLSessionWebSocketDelegate {
     private let options: Options
     private let token: String
+    private let onFinish: ((String, Bool) -> Void)?
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private var playFormat: AVAudioFormat?
     private var socket: URLSessionWebSocketTask!
+    private var timeoutWork: DispatchWorkItem?
+    private var tapInstalled = false
     private var ready = false
     private var finished = false
 
-    init(options: Options, token: String) {
+    init(options: Options, token: String, onFinish: ((String, Bool) -> Void)? = nil) {
         self.options = options
         self.token = token
+        self.onFinish = onFinish
     }
 
     func start() {
@@ -90,9 +147,12 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
         socket = session.webSocketTask(with: options.url)
         socket.resume()
         receive()
-        DispatchQueue.main.asyncAfter(deadline: .now() + options.maxMinutes * 60) {
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self else { return }
             self.shut("\(Int(self.options.maxMinutes)) minute limit")
         }
+        timeoutWork = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + options.maxMinutes * 60, execute: timeout)
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
@@ -102,9 +162,9 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         switch closeCode.rawValue {
-        case 4401: shut("the PC refused the token")
-        case 4409: shut("another session is already open")
-        default: shut("the PC closed the connection")
+        case 4401: shut("the PC refused the token", isError: true)
+        case 4409: shut("another session is already open", isError: true)
+        default: shut("the PC closed the connection", isError: !ready)
         }
     }
 
@@ -125,7 +185,7 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
             guard let self else { return }
             switch result {
             case .failure:
-                DispatchQueue.main.async { self.shut("connection lost") }
+                DispatchQueue.main.async { self.shut("connection lost", isError: true) }
             case .success(.data(let data)):
                 DispatchQueue.main.async { self.play(data) }
                 self.receive()
@@ -174,18 +234,18 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
 
     private func startAudio(sampleRate: Double) {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            shut("can't set up audio")
+            shut("can't set up audio", isError: true)
             return
         }
         playFormat = format
         engine.attach(player)
         if options.bargeIn && !options.noMic {
-            do { try engine.inputNode.setVoiceProcessingEnabled(true) } catch { shut("echo cancellation failed: \(error)"); return }
+            do { try engine.inputNode.setVoiceProcessingEnabled(true) } catch { shut("echo cancellation failed: \(error)", isError: true); return }
         }
         engine.connect(player, to: engine.mainMixerNode, format: format)
         if !options.noMic { installMicTap() }
         engine.prepare()
-        do { try engine.start() } catch { shut("can't start audio: \(error)"); return }
+        do { try engine.start() } catch { shut("can't start audio: \(error)", isError: true); return }
         player.play()
         ready = true
         if options.noMic {
@@ -200,10 +260,10 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
         let micFormat = input.outputFormat(forBus: 0)
         guard let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true),
               let converter = AVAudioConverter(from: micFormat, to: target) else {
-            shut("can't convert the mic's audio")
+            shut("can't convert the mic's audio", isError: true)
             return
         }
-        input.installTap(onBus: 0, bufferSize: 2048, format: micFormat) { [weak self] buffer, _ in
+        installAudioTap(on: input, bufferSize: 2048, format: micFormat) { [weak self] buffer in
             guard let self else { return }
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16000 / micFormat.sampleRate) + 16
             guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
@@ -219,6 +279,7 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
             let data = Data(bytes: samples[0], count: Int(out.frameLength) * 2)
             self.socket.send(.data(data)) { _ in }
         }
+        tapInstalled = true
     }
 
     private func play(_ data: Data) {
@@ -233,15 +294,159 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
         player.scheduleBuffer(buffer, completionHandler: nil)
     }
 
-    func shut(_ reason: String) {
+    func shut(_ reason: String, isError: Bool = false) {
         DispatchQueue.main.async {
             guard !self.finished else { return }
             self.finished = true
-            if !self.options.noMic { self.engine.inputNode.removeTap(onBus: 0) }
+            self.timeoutWork?.cancel()
+            self.timeoutWork = nil
+            if self.tapInstalled {
+                self.engine.inputNode.removeTap(onBus: 0)
+                self.tapInstalled = false
+            }
             self.engine.stop()
             self.socket.cancel(with: .normalClosure, reason: nil)
             print("\n○ MIC CLOSED (\(reason)).")
-            exit(0)
+            if let onFinish = self.onFinish, reason != "Ctrl-C" {
+                onFinish(reason, isError)
+            } else {
+                exit(0)
+            }
+        }
+    }
+}
+
+func installAudioTap(on node: AVAudioNode, bufferSize: AVAudioFrameCount, format: AVAudioFormat, handler: @escaping (AVAudioPCMBuffer) -> Void) {
+    node.installTap(onBus: 0, bufferSize: bufferSize, format: format) { buffer, _ in
+        handler(buffer)
+    }
+}
+
+// Listens on-device for "Jorah" / "hey Jorah" and never sends audio over the network.
+final class WakeListener {
+    private let recognizer: SFSpeechRecognizer
+    private let onWake: () -> Void
+    private let requestLock = NSLock()
+    private var engine = AVAudioEngine()
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private var restartTimer: DispatchWorkItem?
+    private var tapInstalled = false
+    private var active = false
+    private var generation = 0
+
+    init(recognizer: SFSpeechRecognizer, onWake: @escaping () -> Void) {
+        self.recognizer = recognizer
+        self.onWake = onWake
+    }
+
+    func start() {
+        guard !active else { return }
+        active = true
+        engine = AVAudioEngine()
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            fail("No microphone input available for wake word listening.")
+        }
+        installAudioTap(on: input, bufferSize: 1024, format: format) { [weak self] buffer in
+            guard let self else { return }
+            self.requestLock.lock()
+            let currentRequest = self.request
+            self.requestLock.unlock()
+            currentRequest?.append(buffer)
+        }
+        tapInstalled = true
+        engine.prepare()
+        do { try engine.start() } catch { fail("Can't start audio for wake word: \(error)") }
+        print("○ waiting for \"Jorah\"")
+        startTask()
+    }
+
+    func stop() {
+        active = false
+        generation += 1
+        restartTimer?.cancel()
+        restartTimer = nil
+        requestLock.lock()
+        let oldRequest = request
+        request = nil
+        requestLock.unlock()
+        oldRequest?.endAudio()
+        task?.cancel()
+        task = nil
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        engine.stop()
+    }
+
+    // Apple's recognition tasks stop after about a minute; roll over every 50s or when one ends.
+    private func startTask() {
+        guard active else { return }
+        guard recognizer.supportsOnDeviceRecognition else {
+            stop()
+            fail("On-device speech recognition is no longer available.")
+        }
+        generation += 1
+        let currentGen = generation
+        restartTimer?.cancel()
+
+        requestLock.lock()
+        let oldRequest = request
+        let newRequest = SFSpeechAudioBufferRecognitionRequest()
+        newRequest.requiresOnDeviceRecognition = true
+        newRequest.shouldReportPartialResults = true
+        request = newRequest
+        requestLock.unlock()
+
+        oldRequest?.endAudio()
+        task?.cancel()
+
+        let timer = DispatchWorkItem { [weak self] in
+            guard let self, self.active, self.generation == currentGen else { return }
+            self.startTask()
+        }
+        restartTimer = timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + 50, execute: timer)
+
+        task = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self, self.active, self.generation == currentGen else { return }
+                if let text = result?.bestTranscription.formattedString, isWakePhrase(text) {
+                    self.stop()
+                    NSSound(named: NSSound.Name("Tink"))?.play()
+                    print("● Jorah is listening")
+                    self.onWake()
+                    return
+                }
+                if error != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        guard let self, self.active, self.generation == currentGen else { return }
+                        self.startTask()
+                    }
+                } else if result?.isFinal == true {
+                    self.startTask()
+                }
+            }
+        }
+    }
+}
+
+func requestOnDeviceRecognizer(then ready: @escaping (SFSpeechRecognizer) -> Void) {
+    SFSpeechRecognizer.requestAuthorization { status in
+        DispatchQueue.main.async {
+            guard status == .authorized else {
+                fail("Speech recognition permission denied (\(status.rawValue)): enable it in System Settings > Privacy & Security > Speech Recognition.")
+            }
+            guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
+                fail("Can't create an en-US speech recognizer.")
+            }
+            guard recognizer.supportsOnDeviceRecognition else {
+                fail("On-device en-US speech recognition is not supported on this Mac.")
+            }
+            ready(recognizer)
         }
     }
 }
@@ -251,15 +456,57 @@ let options = parseOptions()
 guard hostIsPrivateTunnel(options.url) else {
     fail("Refusing \(options.url.host ?? "that host"): use the PC's .ts.net name or 100.x address, so audio stays inside the tailnet.")
 }
-let ear = Ear(options: options, token: readToken(options))
+let token = readToken(options)
+var currentEar: Ear?
+var wakeListener: WakeListener?
 
 signal(SIGINT, SIG_IGN)
 let interruptSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-interruptSource.setEventHandler { ear.shut("Ctrl-C") }
+interruptSource.setEventHandler {
+    if let ear = currentEar {
+        ear.shut("Ctrl-C")
+    } else {
+        wakeListener?.stop()
+        print("\n○ MIC CLOSED (Ctrl-C).")
+        exit(0)
+    }
+}
 interruptSource.resume()
 
-ear.start()
 Thread.detachNewThread {
-    while readLine() != nil { ear.interrupt() }
+    while readLine() != nil {
+        DispatchQueue.main.async { currentEar?.interrupt() }
+    }
+}
+
+if options.wake {
+    var consecutiveErrors = 0
+    requestOnDeviceRecognizer { recognizer in
+        let listener = WakeListener(recognizer: recognizer) {
+            let ear = Ear(options: options, token: token) { reason, isError in
+                currentEar = nil
+                if isError {
+                    consecutiveErrors += 1
+                    if consecutiveErrors >= 3 {
+                        fail("Giving up after \(consecutiveErrors) connection errors in a row: \(reason)")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        wakeListener?.start()
+                    }
+                } else {
+                    consecutiveErrors = 0
+                    wakeListener?.start()
+                }
+            }
+            currentEar = ear
+            ear.start()
+        }
+        wakeListener = listener
+        listener.start()
+    }
+} else {
+    let ear = Ear(options: options, token: token)
+    currentEar = ear
+    ear.start()
 }
 dispatchMain()

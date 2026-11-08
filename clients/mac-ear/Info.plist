@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>ai.jorah.mac-ear</string>
+	<key>CFBundleName</key>
+	<string>mac-ear</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>mac-ear listens on this Mac for the word Jorah, with on-device recognition only.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>mac-ear listens for the word Jorah and streams your voice to Jorah on your PC.</string>
+</dict>
+</plist>

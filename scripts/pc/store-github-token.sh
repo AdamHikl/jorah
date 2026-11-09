@@ -12,9 +12,10 @@ read -rsp "Paste Jorah's GitHub token (hidden), then Enter: " token; echo
 umask 077
 printf '%s' "$token" > "$dir/token"
 chmod 600 "$dir/token"
-headers="$(curl -sS -D - -o /dev/null -H "Authorization: Bearer $token" https://api.github.com/user)"
+# The token goes to curl on stdin, never on its command line.
+ask() { printf 'header = "Authorization: Bearer %s"\n' "$(cat "$dir/token")" | curl -sS -K - "$@" https://api.github.com/user; }
 unset token
-echo "$headers" | grep -iE "^HTTP/|^x-oauth-scopes:" | sed 's/^/  /'
-login="$(curl -sS -H "Authorization: Bearer $(cat "$dir/token")" https://api.github.com/user | python3 -c 'import json,sys; print(json.load(sys.stdin).get("login","unknown"))')"
+ask -D - -o /dev/null | grep -iE "^HTTP/|^x-oauth-scopes:" | sed 's/^/  /'
+login="$(ask | python3 -c 'import json,sys; print(json.load(sys.stdin).get("login","unknown"))')"
 echo "  account: $login"
 echo "Saved to $dir/token (mode 600)."

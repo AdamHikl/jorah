@@ -1,7 +1,7 @@
-// Jorah's GitHub push path (plugins/jorah-github), on Adam's decision of 2026-11-09 to bring the
-// jorah account forward from M3. Fill ACCOUNT and the repos before applying.
-// Each push and pull request waits for Adam's approval; rulesets on each repo
-// (scripts/github/protect-repo.sh) limit the account to jorah/** server-side.
+// Jorah's GitHub push path (plugins/jorah-github) through the jorah-bot GitHub App (ID 5686503),
+// on Adam's decision of 2026-11-09 to bring it forward from M3. Each push and pull request waits
+// for Adam's approval; rulesets on each repo (scripts/github/protect-repo.sh) limit the App to
+// jorah/** server-side. Add a repo: protect-repo.sh, tick it in the App's installation, add it here.
 // Merge patch: plugins.allow is the whole list as of 2026-11-09 plus the plugin.
 {
   plugins: {
@@ -22,10 +22,11 @@
     entries: {
       "jorah-github": {
         config: {
-          account: "ACCOUNT",
+          appId: "5686503",
+          keyFile: "/home/jorah/.config/jorah-github/app.pem",
           // Folder name under /home/jorah/work -> owner/repo. Only these can be pushed to.
           repos: {
-            // "example-project": "AdamHikl/example-project",
+            threadfolio: "AdamHikl/threadfolio",
           },
         },
       },

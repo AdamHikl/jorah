@@ -1,7 +1,7 @@
 // OpenClaw plugin: github_push_branch and github_open_pr for Jorah, each waiting for Adam's approval.
 // Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
 
-import { check, describe, mirrorBranch, openPullRequest, pushBranch, readToken, settings } from "./github.js";
+import { check, describe, mirrorBranch, openPullRequest, pushBranch, repoToken, settings } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -58,7 +58,7 @@ export default {
           const cfg = config();
           const target = check(cfg, p);
           const mirrored = await mirrorBranch(cfg, target);
-          const result = await pushBranch(cfg, mirrored ? { ...target, ...mirrored } : target, readToken(cfg.tokenFile));
+          const result = await pushBranch(cfg, { ...target, ...mirrored }, await repoToken(cfg, target.repo));
           api.logger.info(`jorah-github: pushed ${result.pushed} at ${mirrored.head.slice(0, 7)}`);
           return text(`Pushed ${target.branch} to ${target.repo} (${mirrored.head.slice(0, 7)}). Commits:\n${mirrored.log}`, { ok: true, ...result });
         } catch (error) {
@@ -81,7 +81,7 @@ export default {
         try {
           const cfg = config();
           const target = check(cfg, p);
-          const pr = await openPullRequest(cfg, target, p, readToken(cfg.tokenFile));
+          const pr = await openPullRequest(cfg, target, p, await repoToken(cfg, target.repo));
           api.logger.info(`jorah-github: opened PR #${pr.number} on ${target.repo}`);
           return text(`Opened draft pull request #${pr.number} on ${target.repo} into ${pr.base}: ${pr.url}`, { ok: true, ...pr });
         } catch (error) {

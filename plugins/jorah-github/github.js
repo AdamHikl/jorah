@@ -10,6 +10,7 @@
 // - GitHub rulesets on each repo enforce jorah/** server-side too (scripts/github/protect-repo.sh).
 
 import { execFile } from "node:child_process";
+import { createSign } from "node:crypto";
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -17,7 +18,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 export const DEFAULTS = Object.freeze({
-  tokenFile: "/home/jorah/.config/jorah-github/token",
+  keyFile: "/home/jorah/.config/jorah-github/app.pem",
   workDir: "/home/jorah/work",
   mirrorDir: "/home/jorah/.jorah-github/mirrors",
 });
@@ -31,9 +32,11 @@ export function settings(pluginConfig = {}) {
   for (const [project, repo] of Object.entries(repos)) {
     if (!PROJECT.test(project) || !REPO.test(repo)) throw new Error(`jorah-github: bad repos entry ${project}`);
   }
+  const appId = String(pluginConfig.appId ?? "");
+  if (appId && !/^[0-9]+$/.test(appId)) throw new Error("jorah-github: appId must be the App's number");
   return {
-    account: typeof pluginConfig.account === "string" ? pluginConfig.account : "",
-    tokenFile: pluginConfig.tokenFile ?? DEFAULTS.tokenFile,
+    appId,
+    keyFile: pluginConfig.keyFile ?? DEFAULTS.keyFile,
     workDir: pluginConfig.workDir ?? DEFAULTS.workDir,
     mirrorDir: pluginConfig.mirrorDir ?? DEFAULTS.mirrorDir,
     repos,
@@ -54,11 +57,43 @@ export function check(config, { project, branch }) {
   return { project, repo, branch, source };
 }
 
-export function readToken(path) {
-  if (statSync(path).mode & 0o077) throw new Error("token file must be readable by its owner only");
-  const token = readFileSync(path, "utf8").trim();
-  if (token.length < 20) throw new Error("token file holds no token");
-  return token;
+export function readKey(path) {
+  if (statSync(path).mode & 0o077) throw new Error("the App's key file must be readable by its owner only");
+  const key = readFileSync(path, "utf8");
+  if (!key.includes("PRIVATE KEY")) throw new Error("the App's key file holds no private key");
+  return key;
+}
+
+const b64url = (data) => Buffer.from(data).toString("base64url");
+
+/** A 9-minute JSON Web Token proving "I am this App", signed with its private key. */
+export function appJwt(appId, key, now = Date.now()) {
+  const iat = Math.floor(now / 1000) - 60;
+  const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const body = b64url(JSON.stringify({ iat, exp: iat + 540, iss: appId }));
+  const signature = createSign("RSA-SHA256").update(`${head}.${body}`).sign(key);
+  return `${head}.${body}.${b64url(signature)}`;
+}
+
+const API = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "jorah-github" };
+
+/** A 1-hour token for one repo, with only contents and pull requests. */
+export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!config.appId) throw new Error("the App's ID isn't set");
+  const jwt = appJwt(config.appId, readKey(config.keyFile), now);
+  const headers = { ...API, Authorization: `Bearer ${jwt}` };
+  const found = await fetchImpl(`https://api.github.com/repos/${repo}/installation`, { headers });
+  if (found.status === 404) throw new Error(`jorah-bot isn't installed on ${repo}`);
+  if (!found.ok) throw new Error(`GitHub said ${found.status} finding the App on ${repo}`);
+  const { id } = await found.json();
+  const res = await fetchImpl(`https://api.github.com/app/installations/${id}/access_tokens`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ repositories: [repo.split("/")[1]], permissions: { contents: "write", pull_requests: "write" } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) throw new Error(`GitHub said ${res.status} making a token: ${data.message ?? "no reason given"}`);
+  return data.token;
 }
 
 // Settings for every git call: ignore global and system config, no hooks, no prompts, no helpers.
@@ -99,13 +134,13 @@ export async function pushBranch(config, target, token, { gitImpl = git } = {}) 
   const askpass = join(config.mirrorDir, "askpass.sh");
   writeFileSync(askpass, '#!/bin/sh\ncase "$1" in Username*) printf %s "$JORAH_GH_USER";; *) printf %s "$JORAH_GH_TOKEN";; esac\n', { mode: 0o700 });
   await gitImpl(["--git-dir", mirror, "push", "--porcelain", "origin", `refs/heads/${target.branch}:refs/heads/${target.branch}`], {
-    env: { GIT_ASKPASS: askpass, JORAH_GH_USER: config.account || "x-access-token", JORAH_GH_TOKEN: token },
+    env: { GIT_ASKPASS: askpass, JORAH_GH_USER: "x-access-token", JORAH_GH_TOKEN: token },
   });
   return { pushed: `${target.repo}:${target.branch}` };
 }
 
 export async function openPullRequest(config, { repo, branch }, { title, body, base }, token, fetchImpl = fetch) {
-  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "jorah-github" };
+  const headers = { ...API, Authorization: `Bearer ${token}` };
   let target = base;
   if (!target) {
     const info = await fetchImpl(`https://api.github.com/repos/${repo}`, { headers });

@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check, describe, mirrorBranch, pushBranch, readToken, settings } from "../github.js";
+import { appJwt, check, describe, mirrorBranch, pushBranch, readKey, repoToken, settings } from "../github.js";
+import { generateKeyPairSync, createVerify } from "node:crypto";
 
 const g = (cwd, ...args) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
 
@@ -21,7 +22,7 @@ function world() {
   writeFileSync(join(project, "b.txt"), "b\n");
   g(project, "add", "b.txt");
   g(project, "commit", "-q", "-m", "add b");
-  const config = settings({ account: "jorah-bot", workDir: work, mirrorDir: join(root, "mirrors"), repos: { proj: "AdamHikl/proj" } });
+  const config = settings({ appId: "5686503", workDir: work, mirrorDir: join(root, "mirrors"), repos: { proj: "AdamHikl/proj" } });
   return { root, work, project, config };
 }
 
@@ -77,18 +78,60 @@ test("push names the exact branch, never forced, token only through askpass", as
   assert.ok(!seen.args.some((a) => a.startsWith("+") || a === "--force" || a === "-f"));
   assert.ok(!seen.args.join(" ").includes("fake-token"), "token in argv");
   assert.equal(seen.opts.env.JORAH_GH_TOKEN, "fake-token-for-tests-only");
-  assert.equal(seen.opts.env.JORAH_GH_USER, "jorah-bot");
+  assert.equal(seen.opts.env.JORAH_GH_USER, "x-access-token");
   const askpass = readFileSync(seen.opts.env.GIT_ASKPASS, "utf8");
   assert.ok(!askpass.includes("fake-token"), "token written to disk");
 });
 
-test("token file must be private", () => {
-  const dir = mkdtempSync(join(tmpdir(), "jorah-tok-"));
-  const f = join(dir, "token");
-  writeFileSync(f, "fake-token-for-tests-only\n", { mode: 0o644 });
-  assert.throws(() => readToken(f), /owner only/);
+function keyFile(mode = 0o600) {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const dir = mkdtempSync(join(tmpdir(), "jorah-key-"));
+  const f = join(dir, "app.pem");
+  writeFileSync(f, privateKey.export({ type: "pkcs1", format: "pem" }), { mode });
+  chmodSync(f, mode);
+  return { f, publicKey };
+}
+
+test("the App's key file must be private", () => {
+  const { f } = keyFile(0o644);
+  assert.throws(() => readKey(f), /owner only/);
   chmodSync(f, 0o600);
-  assert.equal(readToken(f), "fake-token-for-tests-only");
+  assert.match(readKey(f), /PRIVATE KEY/);
+});
+
+test("the JWT names the App, lasts under 10 minutes and verifies with the public key", () => {
+  const { f, publicKey } = keyFile();
+  const jwt = appJwt("5686503", readKey(f), Date.UTC(2026, 10, 9, 20, 0, 0));
+  const [head, body, sig] = jwt.split(".");
+  const claims = JSON.parse(Buffer.from(body, "base64url").toString());
+  assert.equal(claims.iss, "5686503");
+  assert.ok(claims.exp - claims.iat <= 600);
+  assert.ok(createVerify("RSA-SHA256").update(`${head}.${body}`).verify(publicKey, Buffer.from(sig, "base64url")));
+});
+
+test("the token is asked for one repo, contents and pull requests only", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, repos: { threadfolio: "AdamHikl/threadfolio" } });
+  const calls = [];
+  const fetchImpl = async (url, opts = {}) => {
+    calls.push({ url, opts });
+    if (url.endsWith("/installation")) return { ok: true, status: 200, json: async () => ({ id: 42 }) };
+    return { ok: true, status: 201, json: async () => ({ token: "fake-installation-token" }) };
+  };
+  assert.equal(await repoToken(config, "AdamHikl/threadfolio", { fetchImpl }), "fake-installation-token");
+  assert.equal(calls[0].url, "https://api.github.com/repos/AdamHikl/threadfolio/installation");
+  assert.equal(calls[1].url, "https://api.github.com/app/installations/42/access_tokens");
+  assert.deepEqual(JSON.parse(calls[1].opts.body), { repositories: ["threadfolio"], permissions: { contents: "write", pull_requests: "write" } });
+});
+
+test("a repo without the App says so", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, repos: {} });
+  await assert.rejects(repoToken(config, "AdamHikl/x", { fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }) }), /isn't installed on AdamHikl\/x/);
+});
+
+test("a non-numeric App ID is refused", () => {
+  assert.throws(() => settings({ appId: "jorah-bot" }), /App's number/);
 });
 
 test("approval text names repo and branch", () => {

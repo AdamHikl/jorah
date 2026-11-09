@@ -161,6 +161,14 @@ Built and pushed on Adam's yes ("build everything first and then test at once"),
 
 **Adam ran `apply-talk.sh` at 19:08** [measured]: both plugins loaded (Gateway lists 13 plugins), `talk.catalog` reports realtime ready with `jorah-local` active, audit 0 critical. `talk.session.create` from the PC returned a relay session at PCM16 24 kHz with brain `agent-consult` (the only brain the Gateway accepts for realtime relay; `none` is refused), and `jorah-voice` logged `session open`, so the Gateway, the plugin, the token and the 24 kHz hello work together. It closed at once because the CLI disconnects after the call. **The firewall step loaded the old file:** Claude's copy to `/opt/jorah` had left out `deploy/`. Fixed file copied at 19:15; it loads with `apply-talk.sh --firewall`.
 
+**Test pass, 2026-11-08 and 09** [measured]:
+
+- **Firewall:** Adam ran `--firewall`: rule loaded, Telegram reached (302), port 587 refused. It survived the distro restart of 2026-11-09 18:33, and its reject counter stayed at 0 through normal use and the turns below.
+- **Hook probe (2.1): passes.** Claude sent two turns to `main` from the PC, in a separate session (`agent:main:build-test-2026-11-09`, kept out of Adam's chat). The probe word was blocked: log `hook-probe: BLOCKED tool=tool_call agent=main`, and Jorah reported the block and didn't try to get around it. Ordinary calls logged as `saw` (`read` on `background`, `web_fetch` on `main`). **Finding for the P5 guard:** main reaches web search through the `tool_call` wrapper, so a hook sees `toolName: tool_call`, not `web_search`. A guard keyed on tool names must look inside `tool_call`'s arguments. Removing the probe (`apply-talk.sh --remove-hook-probe`) is Adam's step, because the build session's safety check refused it.
+- **Web through the firewall: passes.** The weather turn answered from `web_fetch` (wttr.in). Jorah used `web_fetch` because it took the earlier block to mean web search was off for that session.
+- **Restart, 2026-11-09 18:33** (not caused by Claude): the Gateway, `jorah-voice`, `jorah-voice-qwen` and the backup timer all came back on their own, with 0 Gateway restarts. **Bug found:** `jorah-voice` started 27 s before the Qwen service had loaded and fell back to Kokoro for the life of the process. Fixed: it now waits up to 120 s for Qwen (`--qwen-wait`).
+- **Talk relay from the PC:** see above. The browser and the iPhone are still to test.
+
 ### Test pass
 
 1. **Apply (Adam, a Terminal attached to no agent):**

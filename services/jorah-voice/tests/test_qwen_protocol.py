@@ -51,3 +51,34 @@ class QwenProtocolTest(unittest.TestCase):
     def test_no_service_raises_oserror(self):
         with self.assertRaises(OSError):
             QwenSpeaker(path=Path(tempfile.gettempdir()) / "no-such-jorah.sock", timeout=1)
+
+
+class WaitAtBoot(unittest.TestCase):
+    def test_waits_until_the_service_is_up(self):
+        from jorah_voice.qwen_protocol import wait_for_qwen
+        tries, now = [], [0.0]
+
+        def make():
+            tries.append(now[0])
+            if len(tries) < 4:
+                raise ConnectionRefusedError()
+            return "speaker"
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        self.assertEqual(wait_for_qwen(make, 120, sleep=sleep, clock=lambda: now[0]), "speaker")
+        self.assertEqual(len(tries), 4)
+
+    def test_gives_up_after_the_wait(self):
+        from jorah_voice.qwen_protocol import wait_for_qwen
+        now = [0.0]
+
+        def make():
+            raise ConnectionRefusedError()
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        self.assertIsNone(wait_for_qwen(make, 10, sleep=sleep, clock=lambda: now[0]))
+        self.assertGreaterEqual(now[0], 10)

@@ -49,6 +49,26 @@ def ask(request, path=SOCKET, timeout=120):
         return rate, _read_exact(sock, length)
 
 
+def wait_for_qwen(make, wait_seconds, sleep=None, clock=None):
+    """Build a QwenSpeaker, retrying while the service loads.
+
+    At boot jorah-voice starts before the Qwen service has loaded its model (about 30 s, measured
+    2026-11-09), and a speaker chosen then stays for the life of the process. Returns None if the
+    service is still down after `wait_seconds`.
+    """
+    import time
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    deadline = clock() + wait_seconds
+    while True:
+        try:
+            return make()
+        except OSError:
+            if clock() >= deadline:
+                return None
+            sleep(3)
+
+
 class QwenSpeaker:
     """Same interface as speech.Speaker, backed by the Qwen3-TTS service."""
 

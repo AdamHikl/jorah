@@ -64,6 +64,10 @@ cat > "$SETTINGS" <<EOF
     "GOMODCACHE": "$PROJECTS/.cache/go/mod",
     "GOCACHE": "$PROJECTS/.cache/go/build",
     "GOTOOLCHAIN": "local",
+    "GIT_AUTHOR_NAME": "Jorah",
+    "GIT_AUTHOR_EMAIL": "jorah@localhost",
+    "GIT_COMMITTER_NAME": "Jorah",
+    "GIT_COMMITTER_EMAIL": "jorah@localhost",
     "GOFLAGS": "-modcacherw"$cache_env
   },
   "permissions": {

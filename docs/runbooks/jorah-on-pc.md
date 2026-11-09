@@ -190,6 +190,24 @@ Built and pushed on Adam's yes ("build everything first and then test at once"),
 
 Then the two-week logs start: answers that should have gone to Opus (P5a.4), and the same recall questions to agentmemory and `memory-core` (P5b.4).
 
+## Claude Code sessions for coding, 2026-11-09
+
+Adam chose Claude Code sessions (ACP through the `acpx` plugin) over `background` for coding, on the **Max login**. Jorah's Claude Code (2.1.300, `~/.local/bin/claude`, `CLAUDE_CONFIG_DIR=~/.claude-jorah`) is still signed in from the cutover: `claude auth status` says `loggedIn: true`, `subscriptionType: max` [measured].
+
+**Who can start one:** only Adam's own conversation, `agent:main:main`, which runs outside the sandbox. OpenClaw refuses ACP from sandboxed sessions (`docs/tools/acp-agents/delivery.md`), and those are cron, heartbeat, `background` and `deep`. So "background only" isn't possible, and a coding job starts only when Adam asks, by text or voice. `workspace/AGENTS.md` ("Coding: Claude Code Sessions") tells Jorah when and how.
+
+**Sandbox check** [measured, Claude Code 2.1.300 run directly as `jorah` with the Gateway's environment, in `~/work/sandbox-check`]: `python3`, file writes, `git add` and `git commit` run without approval; `curl https://example.com` refused by the sandbox ("host is not on the allow list"); `~/.openclaw-jorah`, `~/.ssh` and `~/workspace` unreachable; `git push` denied. A commit through `git -c user.name=...` needed approval, which a background job can't give, so `scripts/pc/setup-permissions.sh` now sets Jorah's git identity through the environment (applied: only those 4 lines changed; backup `settings.json.pre-git-identity`). Claude Code never tried to get around a block.
+
+**Pinned adapter:** without a set command, acpx fetches `@agentclientprotocol/claude-agent-acp` with `npx`, unpinned. `scripts/pc/install-claude-acp.sh` installs `0.76.0` (what acpx 2026.10.9 asks for, released 2026-09-09, Apache-2.0) root-owned in `/opt/jorah-tools`, with dependencies as of 2026-11-02, then applies `config/pc/acp.patch.json5` (dry run: 5 updates validated). The adapter bundles Claude Code through the Agent SDK 0.3.257 (Anthropic's terms). **Adam's step**, a Terminal attached to no agent:
+
+```bash
+ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-claude-acp.sh
+```
+
+Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `acp.enabled: true`, the claude command under `/opt/jorah-tools`, and an audit summary with 0 critical. Undo: the same command with `--undo`. Then Claude copies the new `AGENTS.md` into the live workspace and runs one job through Jorah.
+
+**GitHub:** Jorah has no GitHub credential before M3. Adam puts a clone in `~/work/<project>`; Jorah's Claude Code commits on `jorah/<task>`; Adam pulls the branch over the tailnet and pushes it himself.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

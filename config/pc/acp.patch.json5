@@ -1,0 +1,29 @@
+// Claude Code sessions for coding jobs, on Adam's decision of 2026-11-09 (Max login). Reverses the
+// acp part of learning-guard.patch.json5, which turned ACP off because main's own chat runs outside
+// the sandbox and so could start one. That is now the intended route: only agent:main:main can start
+// a session, because OpenClaw refuses ACP from sandboxed requesters (cron, heartbeat, background, deep).
+// Every session runs under Claude Code's own sandbox (~/.claude-jorah/settings.json, tested
+// 2026-11-09: no network for commands, home unreadable except ~/work and ~/sandbox, push denied).
+// acpx is pointed at the root-owned, pinned adapter from scripts/pc/install-claude-acp.sh instead
+// of fetching it with npx. Undo: learning-guard.patch.json5.
+{
+  acp: {
+    enabled: true,
+    backend: "acpx",
+    defaultAgent: "claude",
+    allowedAgents: ["claude"],
+  },
+  plugins: {
+    entries: {
+      acpx: {
+        config: {
+          agents: {
+            claude: {
+              command: "/opt/jorah-tools/claude-agent-acp/node_modules/.bin/claude-agent-acp",
+            },
+          },
+        },
+      },
+    },
+  },
+}

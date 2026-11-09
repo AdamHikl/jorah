@@ -1,0 +1,93 @@
+// OpenClaw plugin: github_push_branch and github_open_pr for Jorah, each waiting for Adam's approval.
+// Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
+
+import { check, describe, mirrorBranch, openPullRequest, pushBranch, readToken, settings } from "./github.js";
+
+const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
+const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
+
+function targetTool(event) {
+  if (TOOLS.has(event?.toolName)) return { name: event.toolName, params: event.params };
+  // Calls can also come through a wrapper tool (seen 2026-11-09 as tool_call); look inside it.
+  let raw = "";
+  try { raw = JSON.stringify(event?.params ?? {}); } catch {}
+  for (const name of TOOLS) if (raw.includes(name)) return { name, params: event?.params?.arguments ?? event?.params?.input ?? event?.params };
+  return null;
+}
+
+export default {
+  id: "jorah-github",
+  name: "Jorah GitHub",
+  description: "Push jorah/* branches and open pull requests, on Adam's approval.",
+  register(api) {
+    const config = () => settings(api.pluginConfig ?? {});
+
+    // Every call waits for Adam. Fails closed: a hook error blocks the call.
+    api.on("before_tool_call", (event) => {
+      const hit = targetTool(event);
+      if (!hit) return undefined;
+      return {
+        requireApproval: {
+          title: hit.name === "github_open_pr" ? "Jorah wants to open a pull request" : "Jorah wants to push to GitHub",
+          description: describe(hit.name, hit.params, config()),
+          severity: "warning",
+          allowedDecisions: ["allow-once", "deny"],
+          timeoutMs: 10 * 60 * 1000,
+          pluginId: "jorah-github",
+        },
+      };
+    });
+
+    const params = {
+      type: "object",
+      additionalProperties: false,
+      required: ["project", "branch"],
+      properties: {
+        project: { type: "string", description: "Folder name under ~/work, e.g. mizyun-web" },
+        branch: { type: "string", description: "Local branch, must start with jorah/" },
+      },
+    };
+
+    api.registerTool({
+      name: "github_push_branch",
+      description: "Push a jorah/<task> branch from ~/work/<project> to its GitHub repo. Adam approves each push. Never pushes main or forces.",
+      catalogMode: "direct-only",
+      parameters: params,
+      async execute(_id, p) {
+        try {
+          const cfg = config();
+          const target = check(cfg, p);
+          const mirrored = await mirrorBranch(cfg, target);
+          const result = await pushBranch(cfg, mirrored ? { ...target, ...mirrored } : target, readToken(cfg.tokenFile));
+          api.logger.info(`jorah-github: pushed ${result.pushed} at ${mirrored.head.slice(0, 7)}`);
+          return text(`Pushed ${target.branch} to ${target.repo} (${mirrored.head.slice(0, 7)}). Commits:\n${mirrored.log}`, { ok: true, ...result });
+        } catch (error) {
+          api.logger.warn(`jorah-github: push refused or failed: ${String(error.message).split("\n")[0]}`);
+          return text(`Push didn't happen: ${String(error.message).split("\n")[0]}`, { ok: false });
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "github_open_pr",
+      description: "Open a draft pull request on GitHub from a jorah/<task> branch already pushed. Adam approves each one.",
+      catalogMode: "direct-only",
+      parameters: {
+        ...params,
+        required: ["project", "branch", "title"],
+        properties: { ...params.properties, title: { type: "string" }, body: { type: "string" }, base: { type: "string", description: "Target branch; the repo's default if left out" } },
+      },
+      async execute(_id, p) {
+        try {
+          const cfg = config();
+          const target = check(cfg, p);
+          const pr = await openPullRequest(cfg, target, p, readToken(cfg.tokenFile));
+          api.logger.info(`jorah-github: opened PR #${pr.number} on ${target.repo}`);
+          return text(`Opened draft pull request #${pr.number} on ${target.repo} into ${pr.base}: ${pr.url}`, { ok: true, ...pr });
+        } catch (error) {
+          return text(`Pull request not opened: ${String(error.message).split("\n")[0]}`, { ok: false });
+        }
+      },
+    });
+  },
+};

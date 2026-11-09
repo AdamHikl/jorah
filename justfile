@@ -15,7 +15,7 @@ guards:
     scripts/test-guards.sh
 
 shellcheck:
-    shellcheck scripts/*.sh scripts/pc/*.sh
+    shellcheck scripts/*.sh scripts/pc/*.sh scripts/github/*.sh
 
 licenses:
     scripts/check-licenses.sh
@@ -26,7 +26,7 @@ supply-chain:
 # Needs no install, model or network.
 unit:
     python3 -m unittest discover -s services/jorah-voice/tests
-    node --test plugins/jorah-voice-provider/test/
+    node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/
 
 # Mac only. Builds the mic and speaker client, and checks it against a stand-in server.
 mac-ear:

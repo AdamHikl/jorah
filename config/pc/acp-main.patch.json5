@@ -1,0 +1,11 @@
+// Lets Adam's own conversation start Claude Code sessions. OpenClaw refuses runtime "acp" when the
+// requester denies exec or process (ACP_UNSUPPORTED_INHERITED_TOOL_DENY in 2026.10.9), because the
+// harness would otherwise get around those denies. So this takes exec and process off main's deny
+// list again, undoing that half of learning-guard.patch.json5.
+// What stops main running a shell itself: tools.exec.host "sandbox", which fails closed outside a
+// sandbox, and agent:main:main is not sandboxed. Test after applying: ask main to run `echo hi`
+// with exec; expected: refused. If it runs, re-apply learning-guard.patch.json5 at once.
+// Undo: learning-guard.patch.json5.
+{
+  agents: { entries: { main: { tools: { deny: ["image_generate", "video_generate", "music_generate"] } } } },
+}

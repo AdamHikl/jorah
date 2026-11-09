@@ -208,6 +208,22 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 
 **GitHub:** Jorah has no GitHub credential before M3. Adam puts a clone in `~/work/<project>`; Jorah's Claude Code commits on `jorah/<task>`; Adam pulls the branch over the tailnet and pushes it himself.
 
+
+**Install applied by Adam, 2026-11-09** [measured]: adapter 0.76.0, Agent SDK 0.3.257 with the linux-x64 binary, `acp.enabled: true`, claude command under `/opt/jorah-tools`, audit 0 critical. Claude copied the new `AGENTS.md` into the live workspace (backup `AGENTS.md.pre-acp`).
+
+- **Sandboxed session refused** [measured]: in `agent:main:build-test-acp` the spawn tool offers only `runtime: "subagent"`, and nothing was created.
+- **Adam's conversation refused too** [measured]: OpenClaw 2026.10.9 refuses `runtime: "acp"` when the requester denies any of exec, process, read, write, edit or apply_patch, because the harness would get around those denies (`ACP_UNSUPPORTED_INHERITED_TOOL_DENY`). `learning-guard.patch.json5` denies exec and process to main. `config/pc/acp-main.patch.json5` takes those two off again (dry run: 1 update), relying on `tools.exec.host: "sandbox"` failing closed for `agent:main:main`, which runs direct. **Waits for Adam's yes**, then a test that main's own exec is refused.
+
+## Jorah's GitHub account, from 2026-11-09
+
+**Adam's decision, 2026-11-09:** bring the `jorah` GitHub account forward from M3 ("I want to do this now"). Recorded as a waived gate: M3's checks haven't run, so the limits below carry the weight. Unchanged: Jorah never gets write access to `AdamHikl/jorah`.
+
+- **Account:** a separate GitHub machine account Adam creates and owns, with 2FA. Token: a classic personal access token with `repo` scope (fine-grained tokens can't reach another user's repos as a collaborator), 90-day expiry. It reaches only repos where Adam adds the account.
+- **Server side, per repo** (`scripts/github/protect-repo.sh owner/repo account`, run by Adam on the Mac): ruleset "jorah: only jorah/**" refuses creating, updating, deleting or force-pushing every branch except `jorah/**`, with repository admins (Adam) bypassing; ruleset "jorah/**: no force, no delete"; then a collaborator invite with push. Refuses `AdamHikl/jorah`. Rulesets on private repos need GitHub Pro, which the Student Pack brings.
+- **On the PC** (`plugins/jorah-github`, 8 tests): tools `github_push_branch` and `github_open_pr`. Only projects in its config, only `jorah/<task>` branches, never forced; pull requests open as drafts. **Every call waits for Adam's approval** (a `before_tool_call` hook, which step 2.1 showed blocks on this runtime, and which also looks inside the `tool_call` wrapper). The work repo is treated as untrusted, because sandboxed Claude Code wrote it: the branch is fetched into a plugin-owned mirror, and the push runs from there with hooks off, global config ignored, no credential helper, and the token only in that process's environment through `GIT_ASKPASS`. Tested: hooks, `core.fsmonitor` and a redirecting `insteadOf` planted in the work repo have no effect.
+- **Token file:** `/home/jorah/.config/jorah-github/token`, mode 600, placed by Adam. Claude Code's sandbox can't read the home folder, `background` and `deep` are in Podman, and main's file tools stop at its workspace.
+- **Config:** `config/pc/github.patch.json5`, with the account name and the project-to-repo list filled in.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

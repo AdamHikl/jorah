@@ -1,0 +1,23 @@
+{
+  "id": "jorah-github",
+  "name": "Jorah GitHub",
+  "description": "Push a jorah/* branch from ~/work to a repo Adam named, and open a pull request. Every call waits for Adam's approval. The token never reaches the sandbox or the work repo.",
+  "categories": ["developer-tools"],
+  "contracts": { "tools": ["github_push_branch", "github_open_pr"] },
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "account": { "type": "string", "description": "Jorah's GitHub account name" },
+      "tokenFile": { "type": "string" },
+      "workDir": { "type": "string" },
+      "mirrorDir": { "type": "string" },
+      "repos": {
+        "type": "object",
+        "description": "Project folder name under workDir -> owner/repo",
+        "additionalProperties": { "type": "string" }
+      }
+    }
+  }
+}

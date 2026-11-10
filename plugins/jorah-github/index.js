@@ -2,11 +2,12 @@
 // clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
 // build or install.
 
-import { cloneFlow, describe, prFlow, pushFlow, settings, syncFlow } from "./github.js";
+import { changedFiles, check, cloneFlow, describe, describeWithFiles, prFlow, pushFlow, settings, syncFlow } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
 const firstLine = (error) => String(error?.message ?? error).split("\n")[0];
+const LIST_MS = 20000;
 
 // Only an exact call to one of these tools. A call through the tool-search wrapper (tool_call) runs
 // this hook again on the inner tool with its real name, so the wrapper itself is left alone; a
@@ -26,16 +27,39 @@ export default {
   register(api) {
     const config = () => settings(api.pluginConfig ?? {});
 
+    // The commit each push card showed, so the push sends exactly that (project + branch -> head).
+    const shown = new Map();
+
+    // The card lists the files the branch changes. Listing is best effort: if it fails, the card
+    // says why and still asks. Never longer than LIST_MS, so a slow disk can't stall the turn.
+    async function listing(name, p, cfg) {
+      try {
+        const target = check(cfg, p);
+        const work = changedFiles(cfg, target, { base: p.base, pushed: name === "github_open_pr" });
+        const late = new Promise((_, reject) => setTimeout(() => reject(new Error("took too long")), LIST_MS).unref?.());
+        return await Promise.race([work, late]);
+      } catch (error) {
+        return { error: firstLine(error) };
+      }
+    }
+
     // Every push and pull request waits for Adam. Fails closed: a hook error blocks the call.
-    api.on("before_tool_call", (event) => {
+    api.on("before_tool_call", async (event) => {
       const hit = targetTool(event);
       if (!hit) return undefined;
       // Never ask Adam to approve something the prompt can't describe.
       if (!complete(hit.params)) return { block: true, blockReason: "jorah-github: project and branch are required." };
+      const cfg = config();
+      const files = await listing(hit.name, hit.params, cfg);
+      const key = `${hit.params.project}\0${hit.params.branch}`;
+      if (hit.name === "github_push_branch") {
+        if (files.head) shown.set(key, files.head);
+        else shown.delete(key);
+      }
       return {
         requireApproval: {
           title: hit.name === "github_open_pr" ? "Jorah wants to open a pull request" : "Jorah wants to push to GitHub",
-          description: describe(hit.name, hit.params, config()),
+          description: describeWithFiles(describe(hit.name, hit.params, cfg), files),
           severity: "warning",
           allowedDecisions: ["allow-once", "deny"],
           timeoutMs: 10 * 60 * 1000,
@@ -86,7 +110,10 @@ export default {
       parameters: params,
       async execute(_id, p) {
         try {
-          const { target, mirrored, result } = await pushFlow(config(), p);
+          const key = `${p?.project}\0${p?.branch}`;
+          const approvedHead = shown.get(key);
+          shown.delete(key);
+          const { target, mirrored, result } = await pushFlow(config(), p, { approvedHead });
           api.logger.info(`jorah-github: pushed ${result.pushed} at ${mirrored.head.slice(0, 7)}`);
           return text(`Pushed ${target.branch} to ${target.repo} (${mirrored.head.slice(0, 7)}). Commits:\n${mirrored.log}`, { ok: true, ...result });
         } catch (error) {

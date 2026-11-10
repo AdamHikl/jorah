@@ -190,8 +190,65 @@ export async function syncMirror(config, { project, repo }, token, { gitImpl = g
     env: { GIT_ASKPASS: askpass, JORAH_GH_USER: "x-access-token", JORAH_GH_TOKEN: token },
     timeout: 10 * 60 * 1000,
   });
+  // Remember the default branch, so an approval card can list changed files without the network.
+  const head = await gitImpl(["--git-dir", mirror, "ls-remote", "--symref", "origin", "HEAD"], {
+    env: { GIT_ASKPASS: askpass, JORAH_GH_USER: "x-access-token", JORAH_GH_TOKEN: token },
+  });
+  const defaultName = String(head ?? "").match(/^ref: refs\/heads\/(\S+)\tHEAD$/m)?.[1];
+  if (defaultName) await gitImpl(["--git-dir", mirror, "config", "jorah.defaultBranch", defaultName]);
   const branches = await gitImpl(["--git-dir", mirror, "for-each-ref", "--format=%(refname:lstrip=3) %(objectname:short)", "refs/remotes/github/"]);
-  return { mirror, branches: String(branches ?? "").split("\n").filter(Boolean) };
+  return { mirror, branches: String(branches ?? "").split("\n").filter(Boolean), defaultBranch: defaultName };
+}
+
+const STATUS = { A: "added", M: "changed", D: "deleted", R: "renamed", C: "copied", T: "type changed" };
+
+/**
+ * What Adam is asked to approve: the branch's head and the files it changes against the base
+ * branch (three dots: since they parted). Push: the branch is first copied from the work repo into
+ * the mirror, the same safe fetch the push uses. Pull request: the copy already pushed, if any.
+ * Local only: the base is the mirror's copy of GitHub's branch from the last sync or clone.
+ */
+export async function changedFiles(config, target, { base, pushed = false, fetchImpl = fetch } = {}) {
+  const mirror = join(config.mirrorDir, `${target.project}.git`);
+  let head = null;
+  if (pushed && existsSync(mirror)) head = await git(["--git-dir", mirror, "rev-parse", "--verify", "-q", `refs/heads/${target.branch}`]).catch(() => null);
+  if (!head) head = (await mirrorBranch(config, target)).head;
+  let baseName = base;
+  if (!baseName) baseName = await git(["--git-dir", mirror, "config", "jorah.defaultBranch"]).catch(() => "");
+  if (!baseName) baseName = await defaultBranch(target.repo, await repoToken(config, target.repo, { fetchImpl, permissions: READ }), fetchImpl);
+  if (!BASE.test(baseName) || baseName.includes("..")) throw new Error("the base branch name looks wrong");
+  const baseRef = `refs/remotes/github/${baseName}`;
+  if (!(await git(["--git-dir", mirror, "rev-parse", "--verify", "-q", baseRef]).catch(() => ""))) throw new Error(`no copy of ${baseName} in the mirror; github_sync first`);
+  const out = await git(["--git-dir", mirror, "-c", "core.quotePath=false", "diff", "--name-status", "-M", `${baseRef}...${head}`]);
+  const files = out.split("\n").filter(Boolean).map((line) => {
+    const [code, a, b] = line.split("\t");
+    const status = STATUS[code[0]] ?? code;
+    return b ? { status, path: b, from: a } : { status, path: a };
+  });
+  return { head, base: baseName, files };
+}
+
+const BASE = /^[A-Za-z0-9][A-Za-z0-9._\/-]*$/;
+const DESCRIPTION_MAX = 512; // the Gateway's cap on an approval description
+
+/** The approval text plus as many changed files as fit, then "and N more". */
+export function describeWithFiles(first, listing) {
+  if (listing?.error) return clip(`${first}\n(Files not listed: ${listing.error})`);
+  const { head, base, files } = listing;
+  let text = `${first}\nAt ${head.slice(0, 7)}, ${files.length} file${files.length === 1 ? "" : "s"} changed against ${base}:`;
+  if (!files.length) return clip(text.replace(/:$/, "."));
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const line = `\n${f.status} ${f.from ? `${f.from} → ${f.path}` : f.path}`;
+    const more = i < files.length - 1 ? `\n…and ${files.length - i - 1} more` : "";
+    if ((text + line + more).length > DESCRIPTION_MAX) return clip(`${text}\n…and ${files.length - i} more`);
+    text += line;
+  }
+  return text;
+}
+
+function clip(t) {
+  return t.length <= DESCRIPTION_MAX ? t : `${t.slice(0, DESCRIPTION_MAX - 1)}…`;
 }
 
 /** Push from the mirror. Never forced: GitHub refuses anything that isn't a fast-forward. */
@@ -300,11 +357,15 @@ export function describe(toolName, params, config) {
 // `remoteBase` is a test seam only; nothing in the plugin's config can change it.
 
 /** github_push_branch: name and folder checks, live rule check, mirror, push. */
-export async function pushFlow(config, p, { fetchImpl = fetch, gitImpl, remoteBase } = {}) {
+export async function pushFlow(config, p, { fetchImpl = fetch, gitImpl, remoteBase, approvedHead } = {}) {
   const target = check(config, p);
   const token = await repoToken(config, target.repo, { fetchImpl });
   await checkRules(target.repo, token, { fetchImpl });
   const mirrored = await mirrorBranch(config, target, remoteBase ? { remoteBase } : {});
+  // Push exactly what Adam's card showed: a commit made after it means asking again.
+  if (approvedHead && mirrored.head !== approvedHead) {
+    throw new Error(`${target.branch} moved after Adam approved (approved ${approvedHead.slice(0, 7)}, now ${mirrored.head.slice(0, 7)}); ask again`);
+  }
   const result = await pushBranch(config, { ...target, ...mirrored }, token, gitImpl ? { gitImpl } : {});
   return { target, mirrored, result };
 }

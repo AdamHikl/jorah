@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, check, checkCloneName, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
+import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, changedFiles, check, checkCloneName, describeWithFiles, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
 import { generateKeyPairSync, createVerify } from "node:crypto";
 
 const g = (cwd, ...args) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
@@ -144,22 +144,23 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   const { default: plugin } = await import("../index.js");
   const hooks = {}, tools = {};
   plugin.register({ pluginConfig: { repos: { proj: "AdamHikl/proj" } }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool: (t) => (tools[t.name] = t) });
+  const hook = (e) => hooks.before_tool_call(e);
   assert.deepEqual(Object.keys(tools).sort(), ["github_clone", "github_open_pr", "github_push_branch", "github_sync"]);
-  assert.equal(hooks.before_tool_call({ toolName: "github_clone", params: { repo: "proj" } }), undefined, "clone only reads: no prompt");
-  assert.equal(hooks.before_tool_call({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
+  assert.equal(await hook({ toolName: "github_clone", params: { repo: "proj" } }), undefined, "clone only reads: no prompt");
+  assert.equal(await hook({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
   assert.equal(tools.github_push_branch.catalogMode, undefined, "must be findable through tool search");
-  const direct = hooks.before_tool_call({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
-  assert.equal(direct.requireApproval.description, "Push branch jorah/x from ~/work/proj to AdamHikl/proj");
+  const direct = await hook({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
+  assert.match(direct.requireApproval.description, /^Push branch jorah\/x from ~\/work\/proj to AdamHikl\/proj\n\(Files not listed: /);
   assert.deepEqual(direct.requireApproval.allowedDecisions, ["allow-once", "deny"]);
-  const pr = hooks.before_tool_call({ toolName: "github_open_pr", params: { project: "proj", branch: "jorah/x", title: "T" } });
+  const pr = await hook({ toolName: "github_open_pr", params: { project: "proj", branch: "jorah/x", title: "T" } });
   assert.match(pr.requireApproval.description, /draft pull request on AdamHikl\/proj/);
   // The wrapper and a search are not calls; the inner tool's own hook run asks for approval.
-  assert.equal(hooks.before_tool_call({ toolName: "tool_call", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
-  assert.equal(hooks.before_tool_call({ toolName: "tool_search", params: { query: "github_push_branch" } }), undefined);
-  assert.equal(hooks.before_tool_call({ toolName: "web_search", params: { q: "x" } }), undefined);
+  assert.equal(await hook({ toolName: "tool_call", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
+  assert.equal(await hook({ toolName: "tool_search", params: { query: "github_push_branch" } }), undefined);
+  assert.equal(await hook({ toolName: "web_search", params: { q: "x" } }), undefined);
   // Missing arguments: refused, never an empty prompt.
   for (const params of [{}, { project: "proj" }, { branch: "jorah/x" }, undefined]) {
-    const r = hooks.before_tool_call({ toolName: "github_push_branch", params });
+    const r = await hook({ toolName: "github_push_branch", params });
     assert.equal(r.block, true);
     assert.equal(r.requireApproval, undefined);
   }
@@ -283,6 +284,7 @@ function ownerWorld() {
   const origin = join(remoteBase, "AdamHikl", "proj.git");
   mkdirSync(join(remoteBase, "AdamHikl"), { recursive: true });
   g(w.root, "clone", "-q", "--bare", w.project, origin);
+  g(origin, "symbolic-ref", "HEAD", "refs/heads/main");
   g(origin, "branch", "-D", "jorah/task");
   const config = settings({ appId: "5686503", keyFile: f, owner: "AdamHikl", workDir: w.work, mirrorDir: join(w.root, "mirrors") });
   return { ...w, config, remoteBase, origin };
@@ -370,4 +372,69 @@ test("approval text works for any repo of the owner", () => {
   const config = settings({ owner: "AdamHikl" });
   assert.equal(describe("github_push_branch", { project: "robot_tour", branch: "jorah/x" }, config), "Push branch jorah/x from ~/work/robot_tour to AdamHikl/robot_tour");
   assert.match(describe("github_open_pr", { project: "robot_tour", branch: "jorah/x", title: "T" }, config), /draft pull request on AdamHikl\/robot_tour/);
+});
+
+// --- Changed files on the approval card (2026-11-10, Adam: "I also get the list of changed files") ---
+
+test("sync remembers the default branch, and the card lists the files the branch changes", async () => {
+  const { config, remoteBase, project } = ownerWorld();
+  writeFileSync(join(project, "a.txt"), "a2\n");
+  g(project, "mv", "b.txt", "c.txt");
+  g(project, "commit", "-q", "-am", "edit a, rename b");
+  const synced = await syncMirror(config, { project: "proj", repo: "AdamHikl/proj" }, "fake-token-for-tests-only", { remoteBase });
+  assert.equal(synced.defaultBranch, "main");
+  const target = check(config, { project: "proj", branch: "jorah/task" });
+  const listing = await changedFiles(config, target, { fetchImpl: async () => assert.fail("no network needed") });
+  assert.equal(listing.base, "main");
+  assert.equal(listing.head, g(project, "rev-parse", "jorah/task"));
+  assert.deepEqual(listing.files.map((f) => `${f.status} ${f.path}`).sort(), ["added c.txt", "changed a.txt"]);
+  const card = describeWithFiles("Push branch jorah/task from ~/work/proj to AdamHikl/proj", listing);
+  assert.match(card, /\nAt [0-9a-f]{7}, 2 files changed against main:\n/);
+  assert.match(card, /\nchanged a\.txt/);
+  // A pull request card uses the copy already pushed from the mirror, not newer local commits.
+  writeFileSync(join(project, "late.txt"), "x\n");
+  g(project, "add", "late.txt");
+  g(project, "commit", "-q", "-m", "late");
+  const pr = await changedFiles(config, target, { pushed: true });
+  assert.equal(pr.head, listing.head);
+  assert.ok(!pr.files.some((f) => f.path === "late.txt"));
+  // Never synced: the card says so instead of guessing.
+  const fresh = settings({ owner: "AdamHikl", workDir: config.workDir, mirrorDir: join(config.mirrorDir, "..", "other-mirrors") });
+  await assert.rejects(changedFiles(fresh, target, { base: "main" }), /no copy of main in the mirror; github_sync first/);
+});
+
+test("the card stays under the Gateway's 512 characters and says how many files it left out", () => {
+  const files = Array.from({ length: 80 }, (_, i) => ({ status: "changed", path: `src/some/deep/folder/file-${i}.ts` }));
+  const card = describeWithFiles("Push branch jorah/x from ~/work/p to AdamHikl/p", { head: "1234567890", base: "main", files });
+  assert.ok(card.length <= 512, String(card.length));
+  assert.match(card, /80 files changed against main/);
+  assert.match(card, /…and \d+ more$/);
+  const shown = (card.match(/\nchanged /g) ?? []).length;
+  assert.equal(Number(card.match(/and (\d+) more$/)[1]), 80 - shown);
+  assert.equal(describeWithFiles("X", { head: "1234567", base: "main", files: [{ status: "renamed", from: "a", path: "b" }] }), "X\nAt 1234567, 1 file changed against main:\nrenamed a → b");
+  assert.equal(describeWithFiles("X", { head: "1234567", base: "main", files: [] }), "X\nAt 1234567, 0 files changed against main.");
+  assert.equal(describeWithFiles("X", { error: "no copy of main" }), "X\n(Files not listed: no copy of main)");
+});
+
+test("the push sends exactly the commit Adam's card showed, or refuses", async () => {
+  const { config, remoteBase, origin, project } = ownerWorld();
+  const shownHead = g(project, "rev-parse", "jorah/task");
+  writeFileSync(join(project, "later.txt"), "x\n");
+  g(project, "add", "later.txt");
+  g(project, "commit", "-q", "-m", "after approval");
+  await assert.rejects(pushFlow(config, { project: "proj", branch: "jorah/task" }, { fetchImpl: fakeApi().fetchImpl, remoteBase, approvedHead: shownHead }), /moved after Adam approved.*ask again/);
+  assert.equal(g(origin, "branch", "--list", "jorah/task"), "");
+  const now = g(project, "rev-parse", "jorah/task");
+  await pushFlow(config, { project: "proj", branch: "jorah/task" }, { fetchImpl: fakeApi().fetchImpl, remoteBase, approvedHead: now });
+  assert.equal(g(origin, "rev-parse", "jorah/task"), now);
+});
+
+test("the hook lists files on a real card and remembers the head it showed", async () => {
+  const { config, remoteBase } = ownerWorld();
+  await syncMirror(config, { project: "proj", repo: "AdamHikl/proj" }, "fake-token-for-tests-only", { remoteBase });
+  const { default: plugin } = await import("../index.js");
+  const hooks = {};
+  plugin.register({ pluginConfig: { owner: "AdamHikl", workDir: config.workDir, mirrorDir: config.mirrorDir }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool() {} });
+  const card = await hooks.before_tool_call({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/task" } });
+  assert.match(card.requireApproval.description, /^Push branch jorah\/task from ~\/work\/proj to AdamHikl\/proj\nAt [0-9a-f]{7}, 1 file changed against main:\nadded b\.txt$/);
 });

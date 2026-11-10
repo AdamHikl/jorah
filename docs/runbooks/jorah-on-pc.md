@@ -287,6 +287,8 @@ Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gat
 
 **Still open:** the App is installed on all 42 repos (`repository_selection: all`), while only 7 have the rulesets. The plugin refuses the other 35, but GitHub wouldn't stop the App's key there. Adam's step: App installation → Only select repositories → the 7.
 
+**All repos protected, 2026-11-10** [measured]: on Adam's choice to keep the App on all repositories ("do 1."), the `jorah/**` rulesets now cover all 42 of Adam's repos (details in `docs/evidence/github-rulesets/2026-11-10.md`). A new repo needs `scripts/github/protect-repo.sh AdamHikl/<repo>`; until then the plugin's live check refuses pushes to it. The App's key can still read every repo.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

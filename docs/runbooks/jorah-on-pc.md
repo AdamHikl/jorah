@@ -268,6 +268,15 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 - **Allow list:** `github-tools.patch.json5` is the whole list with `github_clone` added, keeping `agentmemory__*`.
 - Tests: 23 in `plugins/jorah-github/test` (stand-in GitHub API and a local bare repo as GitHub).
 
+**Applied 2026-11-10 on Adam's yes** ("can't you run those commands in your terminal?") [measured]: files in `/opt/jorah` match `main` at `8da1b0d` (tests 23/23 on the PC too), `plugins enable jorah-github --accept-capabilities`, `github.patch.json5` (5 updates: config now `appId` and `owner: "AdamHikl"`, `repos` gone), `github-tools.patch.json5` (1 update: main's list ends `github_sync, github_clone, agentmemory__*`), Gateway restarted, health ok, audit 0 critical. Backup `openclaw.json.pre-github-all-repos`. New `AGENTS.md` live (backup `AGENTS.md.pre-github-all-repos`; the live copy matched the repo's previous version).
+
+**Tested through Jorah in `agent:main:main`, 2026-11-10** [measured]:
+
+- **Clone:** "clone robot_tour" → Jorah called `github_clone`, in 10 s: `~/work/robot_tour` on `main` at `bf37dde`, only remote `github` → `/home/jorah/.jorah-github/mirrors/robot_tour.git`, clean tree. No approval asked.
+- **Claude Code:** on Jorah's brief it committed `1baf634` "Add Jorah build test note to README" (`Jorah <jorah@localhost>`, one line in `README.md`) on `jorah/readme-jorah-note`.
+- **Refused on a repo without rulesets:** `robot_tour` had 0 rulesets. Jorah asked to push; after Adam's approval the tool answered "Push didn't happen: this repo isn't protected yet: AdamHikl/robot_tour has no "jorah: only jorah/**" ruleset (its main branch accepts updates), so Jorah can only sync it" (17:36:58). GitHub still shows only `main`. Jorah said it wouldn't try another route. The approval comes before the check, so Adam is asked once even for a repo that will refuse.
+- **Not tested yet:** push and draft pull request on a protected repo with the new code (waits for `robot_tour`'s rulesets).
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

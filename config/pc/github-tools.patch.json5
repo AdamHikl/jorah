@@ -1,0 +1,19 @@
+// Makes Jorah's GitHub tools reach main. OpenClaw offers a plugin's tools only when the agent's tool
+// allow list permits them (resolvePluginToolPluginIds in 2026.10.9), and main has an explicit list
+// from tools.patch.json5, so github_push_branch and github_open_pr were silently left out
+// (2026-11-10). Only these two names are added, not group:plugins. Each call still waits for
+// Adam's approval. Merge patch: the array is the whole list as of 2026-11-10 plus the two tools.
+// Undo: the same list without them.
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr",
+        ] } } },
+      },
+    },
+  },
+}

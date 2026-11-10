@@ -1,6 +1,9 @@
 import unittest
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # GitHub's runner has no numpy; the PC and the Mac do.
+    raise unittest.SkipTest("needs numpy, which jorah-voice installs on the PC")
 
 from jorah_voice import transcribe
 from jorah_voice.speech import MIC_RATE
@@ -20,9 +23,6 @@ class Pieces(unittest.TestCase):
         self.assertEqual(transcribe.main([]), 2)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class Speak(unittest.TestCase):
     def test_reply_is_cut_into_clean_sentences(self):
@@ -33,3 +33,7 @@ class Speak(unittest.TestCase):
     def test_usage_error(self):
         from jorah_voice import speak
         self.assertEqual(speak.main(["only-one-arg"]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

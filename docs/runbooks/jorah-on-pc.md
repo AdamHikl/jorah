@@ -234,6 +234,8 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 
 **First tries, 2026-11-09 and 10** [measured]: Adam ran the steps (key on the PC mode 600, Mac copy gone, plugin enabled). A push started from the PC's command line asked for approval in Telegram at 21:55 and timed out unanswered, so nothing was pushed (fail closed). From Telegram on 2026-11-10, Haiku couldn't find the tool: `catalogMode: "direct-only"` kept it out of tool search, and that turn didn't list it directly. And the hook matched any call whose arguments contained a tool name, so it asked Adam to approve a *search* ("Push branch undefined ... to a repo not on the list"); approving it pushed nothing. Fixed: the tools are in the search catalog, and the hook matches only an exact call (OpenClaw runs it again on the inner tool when called through `tool_call`, `wrapToolWithBeforeToolCallHook`), refusing without a prompt when project or branch is missing.
 
+**Still missing after that fix** [measured]: the plugin registered both tools with no diagnostics, but OpenClaw offers a plugin's tools only when the agent's tool allow list permits them (`resolvePluginToolPluginIds`), and main has an explicit list from `tools.patch.json5`. `config/pc/github-tools.patch.json5` adds just the two tool names; **applied 2026-11-10 on Adam's yes** ("Yes, add them"), backup `openclaw.json.pre-github-tools`. After it, the search catalog went from 23 to 25 tools and Jorah finds `github_push_branch` under `jorah-github`. Any future plugin tool for main needs the same step.
+
 Then Claude tests: a push of `jorah/test` through the plugin (Adam approves in chat) lands on GitHub; a push to `main` with the same token is refused by the ruleset.
 
 ## The distro

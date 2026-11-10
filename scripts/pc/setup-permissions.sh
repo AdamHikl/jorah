@@ -9,6 +9,7 @@
 #   temp folder, no home directory reads except sandbox/ and ~/work, no network. Fails closed
 #   if it can't start.
 # - WebFetch and WebSearch run outside the sandbox, so they are denied by rule.
+# - Model: Opus 5.5 at medium effort (Adam, 2026-11-10), for Jorah's coding sessions on his Max plan.
 # - Text deny rules are only a second line. The sandbox is what holds.
 #
 # JORAH_PACKAGE_NETWORK=1 also opens the npm and PyPI registries to sandboxed commands.
@@ -59,6 +60,8 @@ umask 077
 cat > "$SETTINGS" <<EOF
 {
   "disableClaudeAiConnectors": true,
+  "model": "claude-opus-5-5",
+  "effortLevel": "medium",
   "env": {
     "CLAUDE_CODE_TMPDIR": "$SANDBOX/.tmp",
     "GOMODCACHE": "$PROJECTS/.cache/go/mod",

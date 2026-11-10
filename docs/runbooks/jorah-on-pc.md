@@ -232,6 +232,8 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 3. A Terminal attached to no agent: `~/Documents/jorah/scripts/github/move-app-key.sh`. Expected: `saved: /home/jorah/.config/jorah-github/app.pem (mode 600)`, a fingerprint matching the one on the App's page, and the Mac copy deleted.
 4. Same Terminal: `ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-github.sh`. Expected: `jorah-github` listed as enabled, health ok, 0 critical.
 
+**First tries, 2026-11-09 and 10** [measured]: Adam ran the steps (key on the PC mode 600, Mac copy gone, plugin enabled). A push started from the PC's command line asked for approval in Telegram at 21:55 and timed out unanswered, so nothing was pushed (fail closed). From Telegram on 2026-11-10, Haiku couldn't find the tool: `catalogMode: "direct-only"` kept it out of tool search, and that turn didn't list it directly. And the hook matched any call whose arguments contained a tool name, so it asked Adam to approve a *search* ("Push branch undefined ... to a repo not on the list"); approving it pushed nothing. Fixed: the tools are in the search catalog, and the hook matches only an exact call (OpenClaw runs it again on the inner tool when called through `tool_call`, `wrapToolWithBeforeToolCallHook`), refusing without a prompt when project or branch is missing.
+
 Then Claude tests: a push of `jorah/test` through the plugin (Adam approves in chat) lands on GitHub; a push to `main` with the same token is refused by the ruleset.
 
 ## The distro

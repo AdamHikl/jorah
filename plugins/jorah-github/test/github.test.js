@@ -140,15 +140,25 @@ test("approval text names repo and branch", () => {
   assert.match(describe("github_push_branch", { project: "nope", branch: "jorah/x" }, config), /not on the list/);
 });
 
-test("every call to the tools waits for Adam, including through a wrapper", async () => {
+test("every call to the tools waits for Adam; searches and wrappers don't prompt", async () => {
   const { default: plugin } = await import("../index.js");
   const hooks = {}, tools = {};
   plugin.register({ pluginConfig: { repos: { proj: "AdamHikl/proj" } }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool: (t) => (tools[t.name] = t) });
   assert.deepEqual(Object.keys(tools).sort(), ["github_open_pr", "github_push_branch"]);
+  assert.equal(tools.github_push_branch.catalogMode, undefined, "must be findable through tool search");
   const direct = hooks.before_tool_call({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
   assert.equal(direct.requireApproval.description, "Push branch jorah/x from ~/work/proj to AdamHikl/proj");
   assert.deepEqual(direct.requireApproval.allowedDecisions, ["allow-once", "deny"]);
-  const wrapped = hooks.before_tool_call({ toolName: "tool_call", params: { name: "github_open_pr", arguments: { project: "proj", branch: "jorah/x", title: "T" } } });
-  assert.match(wrapped.requireApproval.description, /draft pull request on AdamHikl\/proj/);
+  const pr = hooks.before_tool_call({ toolName: "github_open_pr", params: { project: "proj", branch: "jorah/x", title: "T" } });
+  assert.match(pr.requireApproval.description, /draft pull request on AdamHikl\/proj/);
+  // The wrapper and a search are not calls; the inner tool's own hook run asks for approval.
+  assert.equal(hooks.before_tool_call({ toolName: "tool_call", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
+  assert.equal(hooks.before_tool_call({ toolName: "tool_search", params: { query: "github_push_branch" } }), undefined);
   assert.equal(hooks.before_tool_call({ toolName: "web_search", params: { q: "x" } }), undefined);
+  // Missing arguments: refused, never an empty prompt.
+  for (const params of [{}, { project: "proj" }, { branch: "jorah/x" }, undefined]) {
+    const r = hooks.before_tool_call({ toolName: "github_push_branch", params });
+    assert.equal(r.block, true);
+    assert.equal(r.requireApproval, undefined);
+  }
 });

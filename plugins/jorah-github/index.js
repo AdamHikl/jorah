@@ -6,13 +6,15 @@ import { check, describe, mirrorBranch, openPullRequest, pushBranch, repoToken, 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
 
+// Only an exact call to one of these tools. A call through the tool-search wrapper (tool_call) runs
+// this hook again on the inner tool with its real name, so the wrapper itself is left alone; a
+// search whose text mentions a tool name is not a call (2026-11-10: that produced an empty prompt).
 function targetTool(event) {
-  if (TOOLS.has(event?.toolName)) return { name: event.toolName, params: event.params };
-  // Calls can also come through a wrapper tool (seen 2026-11-09 as tool_call); look inside it.
-  let raw = "";
-  try { raw = JSON.stringify(event?.params ?? {}); } catch {}
-  for (const name of TOOLS) if (raw.includes(name)) return { name, params: event?.params?.arguments ?? event?.params?.input ?? event?.params };
-  return null;
+  return TOOLS.has(event?.toolName) ? { name: event.toolName, params: event.params ?? {} } : null;
+}
+
+function complete(params) {
+  return typeof params?.project === "string" && params.project.length > 0 && typeof params?.branch === "string" && params.branch.length > 0;
 }
 
 export default {
@@ -26,6 +28,8 @@ export default {
     api.on("before_tool_call", (event) => {
       const hit = targetTool(event);
       if (!hit) return undefined;
+      // Never ask Adam to approve something the prompt can't describe.
+      if (!complete(hit.params)) return { block: true, blockReason: "jorah-github: project and branch are required." };
       return {
         requireApproval: {
           title: hit.name === "github_open_pr" ? "Jorah wants to open a pull request" : "Jorah wants to push to GitHub",
@@ -51,7 +55,6 @@ export default {
     api.registerTool({
       name: "github_push_branch",
       description: "Push a jorah/<task> branch from ~/work/<project> to its GitHub repo. Adam approves each push. Never pushes main or forces.",
-      catalogMode: "direct-only",
       parameters: params,
       async execute(_id, p) {
         try {
@@ -71,7 +74,6 @@ export default {
     api.registerTool({
       name: "github_open_pr",
       description: "Open a draft pull request on GitHub from a jorah/<task> branch already pushed. Adam approves each one.",
-      catalogMode: "direct-only",
       parameters: {
         ...params,
         required: ["project", "branch", "title"],

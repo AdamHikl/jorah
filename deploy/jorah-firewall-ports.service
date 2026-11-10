@@ -1,0 +1,14 @@
+[Unit]
+Description=Jorah: let jorah's own ephemeral ports through the firewall (range moves per boot)
+Requires=nftables.service
+After=nftables.service
+PartOf=nftables.service
+Before=openclaw-gateway.service jorah-voice.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/jorah/scripts/pc/firewall-ports.sh
+
+[Install]
+WantedBy=multi-user.target nftables.service

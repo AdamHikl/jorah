@@ -14,18 +14,25 @@ table inet jorah_out {
     elements = { fc00::/7, fe80::/10, ff00::/8 }
   }
 
+  # Linux's own ephemeral range, which WSL sets under mirrored networking and which moves between
+  # boots (43255-47350 on 2026-11-06, 55540-59635 after the reboot of 2026-11-10). Claude Code's
+  # sandbox proxy and OpenClaw's tool bridge listen on random ports in it. This element is only
+  # the boot-time default: jorah-firewall-ports.service replaces it with the live range from
+  # net.ipv4.ip_local_port_range after every load of this file.
+  set ephemeral {
+    type inet_service; flags interval
+    elements = { 43255-47350 }
+  }
+
   chain output {
     type filter hook output priority filter; policy accept;
     meta skuid != 1000 accept
     ct state established,related accept
     # Mirrored networking sends all loopback TCP through this interface, whether it ends up
     # in this distro or on Windows, so only jorah's own ports are allowed.
-    # 43181-43199 is the Gateway and its derived ports, 43210 is speech.
-    # 43255-47350 is Linux's own ephemeral range, which WSL sets under mirrored networking
-    # (net.ipv4.ip_local_port_range, measured 2026-11-06). OpenClaw's tool bridge for Claude
-    # listens on a random port there, and no setting pins it. No Windows listener is in it, and
-    # Windows' own dynamic range starts at 49152. If WSL moves the range, tools fail closed.
-    oifname "loopback0" tcp dport { 43181-43199, 43210, 43255-47350 } accept
+    # 43181-43199 is the Gateway and its derived ports, 43210 is speech, 47300-47304 agentmemory.
+    oifname "loopback0" tcp dport { 43181-43199, 43210, 47300-47304 } accept
+    oifname "loopback0" tcp dport @ephemeral accept
     oifname "loopback0" counter reject
     # WSL's DNS stub, which sits inside 10.0.0.0/8.
     ip daddr 10.255.255.254 meta l4proto { tcp, udp } th dport 53 accept

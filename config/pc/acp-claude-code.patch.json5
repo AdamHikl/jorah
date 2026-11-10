@@ -1,0 +1,26 @@
+// Runs Jorah's Claude Code sessions on Claude Code 2.1.300 instead of the 2.1.257 bundled in the
+// ACP adapter, which refuses claude-opus-5-5 ([claude-code:unrecognized_model], 2026-11-10).
+// Adam set the default to Opus 5.5 at medium effort (setup-permissions.sh). The adapter honours
+// CLAUDE_CODE_EXECUTABLE; env(1) sets it for the adapter alone. The binary is a root-owned copy in
+// /opt/jorah-tools, so nothing Jorah runs can change it and it never auto-updates; its SHA-256
+// matched ~/.local/share/claude/versions/2.1.300 when copied.
+// Undo: acp.patch.json5 (the adapter alone).
+{
+  plugins: {
+    entries: {
+      acpx: {
+        config: {
+          agents: {
+            claude: {
+              command: "/usr/bin/env",
+              args: [
+                "CLAUDE_CODE_EXECUTABLE=/opt/jorah-tools/claude-code/2.1.300/claude",
+                "/opt/jorah-tools/claude-agent-acp/node_modules/.bin/claude-agent-acp",
+              ],
+            },
+          },
+        },
+      },
+    },
+  },
+}

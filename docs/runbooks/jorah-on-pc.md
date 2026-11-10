@@ -279,6 +279,10 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 
 **Changed files on the card, 2026-11-10 (Adam: "can you change it so that I also get the list of changed files")**: before asking, the hook copies the branch from the work repo into the plugin's mirror (the same safe fetch the push uses; a pull request uses the copy already pushed) and lists the files it changes against the default branch, three-dot, from the mirror's copy of GitHub (no network: `github_sync`/`github_clone` now remember the default branch in the mirror's `jorah.defaultBranch`; an older mirror asks the API once). The card reads e.g. "At 1baf634, 1 file changed against main:" then one line per file ("added", "changed", "deleted", "renamed a → b"), cut to the Gateway's 512-character cap with "…and N more". If listing fails or takes over 20 s, the card says "(Files not listed: …)" and still asks. **The push then sends exactly the commit the card showed**: if Claude Code committed after the card, it refuses with "moved after Adam approved … ask again". Tests: 27.
 
+Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gateway restarted, plugin enabled (no new consent: same tools). The plugin's own listing, run as `jorah` on `robot_tour`'s branch, gave "Push branch jorah/readme-jorah-note from ~/work/robot_tour to AdamHikl/robot_tour / At 1baf634, 1 file changed against main: / changed README.md" in 1.1 s (that mirror predates `jorah.defaultBranch`, so it asked the API once). Not yet seen on a real Telegram card.
+
+**Note:** `robot_tour` is not among the 7 repos protected on 2026-11-10 (`docs/evidence/github-rulesets/2026-11-10.md`), so it stays sync-only until Adam adds it.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

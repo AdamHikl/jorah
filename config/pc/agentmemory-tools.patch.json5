@@ -1,0 +1,20 @@
+// Makes agentmemory's tools reach main. Found 2026-11-10: the MCP server ran and `mcp probe` saw
+// its 8 tools, but main's explicit tool allow list (tools.patch.json5) left them out, so Jorah
+// never saw them and the two-week trial (roadmap P5b.4) wasn't really running. OpenClaw exposes
+// MCP tools as <server>__<tool>; only agentmemory's are added, not bundle-mcp or group:plugins.
+// Merge patch: the array is the whole list as of 2026-11-10 plus the glob.
+// Undo: github-tools.patch.json5 (the same list without it).
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync",
+          "agentmemory__*",
+        ] } } },
+      },
+    },
+  },
+}

@@ -283,6 +283,10 @@ Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gat
 
 **Note:** `robot_tour` is not among the 7 repos protected on 2026-11-10 (`docs/evidence/github-rulesets/2026-11-10.md`), so it stays sync-only until Adam adds it.
 
+**Draft pull request through Jorah, 2026-11-10** [measured], on `threadfolio` (protected; `robot_tour` isn't): Jorah synced, Claude Code committed `823b56b` "Add build test note to README" (`Jorah <jorah@localhost>`, +2 lines in `README.md`) on `jorah/pr-test-note` from `github/main`. Asked to push and open a draft, Jorah sent two Telegram cards, each listing the changed file; Adam approved both ("Approved both"). Tools answered "Pushed jorah/pr-test-note to AdamHikl/threadfolio (823b56b)" and "Opened draft pull request #1 on AdamHikl/threadfolio into main" (17:54-17:59). GitHub: branch at `823b56b`, [PR #1](https://github.com/AdamHikl/threadfolio/pull/1) open, draft, author `app/jorah-bot`, base `main`, 1 file (`README.md` +2 -0), body ends "Opened by Jorah, approved by Adam.", not merged; `main` unchanged at `ba67d31`. Safe to close without merging; only Adam can delete the branch.
+
+**Still open:** the App is installed on all 42 repos (`repository_selection: all`), while only 7 have the rulesets. The plugin refuses the other 35, but GitHub wouldn't stop the App's key there. Adam's step: App installation → Only select repositories → the 7.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

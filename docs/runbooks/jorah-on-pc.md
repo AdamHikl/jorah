@@ -242,7 +242,8 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 - **GitHub refuses the App outside `jorah/**`.** With a real installation token, a push creating `not-jorah-test` got `GH013: Repository rule violations`, and no such branch exists. `main` wasn't tried, because a broken rule would have put a test commit there; it falls under the same ruleset.
 - **Fail closed:** an unanswered approval (2026-11-09, 21:55) timed out and nothing was pushed.
 - `jorah/test` on GitHub is safe to delete; only Adam can, as the ruleset stops the App deleting branches.
-- **Not tested yet:** opening a draft pull request, and approvals for a push asked for by voice (voice turns can't show an approval; `approvals.plugin` forwarding to Telegram would fix that).
+- **Approvals forwarded to Telegram, 2026-11-10, on Adam's yes** [measured]: `config/pc/approvals.patch.json5` (`approvals.plugin`, mode `targets`, agent `main`, Adam's Telegram chat), applied by `scripts/pc/apply-approvals.sh --apply`, which fills the chat ID in from `channels.telegram.allowFrom` so it stays out of the repo (backup `openclaw.json.pre-approvals`). Test: a push asked from the PC's command line, the same position as a voice request, sent its approval card to Telegram at 14:20:01 and the (no-op) push ran at 14:20:26 after it was allowed. The log doesn't name the resolver; the card does.
+- **Not tested yet:** opening a draft pull request, and whether a request that starts in Telegram now shows two cards (native and forwarded).
 
 ## The distro
 

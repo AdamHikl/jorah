@@ -8,16 +8,15 @@
 # 2. Ruleset "jorah/**: no force, no delete": Jorah's branches can only move forward.
 # The App itself is given the repo in its installation settings (Install App -> Configure).
 # Rulesets on private repos need GitHub Pro (the Student Pack includes it); the API says so if not.
-# Never for AdamHikl/jorah: Jorah never gets write access to its own code (Adam, 2026-11-07).
+# All of Adam's repos, AdamHikl/jorah and the Mizyun repos included: on 2026-11-10 Adam decided
+# Jorah may open pull requests everywhere ("He can do this for all repos"), replacing the
+# 2026-11-07 rule that kept Jorah out of AdamHikl/jorah. These rulesets are what keep it to jorah/**.
 #
 # Undo: delete the two rulesets in Settings -> Rules -> Rulesets.
 set -euo pipefail
 
 repo="${1:-}"; mode="${2:-}"
 [[ "$repo" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || { echo "usage: $0 owner/repo [--dry-run]"; exit 2; }
-if [ "$(printf %s "$repo" | tr '[:upper:]' '[:lower:]')" = "adamhikl/jorah" ]; then
-  echo "Refused: Jorah never gets write access to AdamHikl/jorah."; exit 3
-fi
 
 only_jorah='{
   "name": "jorah: only jorah/**",

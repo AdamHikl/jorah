@@ -236,7 +236,13 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 
 **Still missing after that fix** [measured]: the plugin registered both tools with no diagnostics, but OpenClaw offers a plugin's tools only when the agent's tool allow list permits them (`resolvePluginToolPluginIds`), and main has an explicit list from `tools.patch.json5`. `config/pc/github-tools.patch.json5` adds just the two tool names; **applied 2026-11-10 on Adam's yes** ("Yes, add them"), backup `openclaw.json.pre-github-tools`. After it, the search catalog went from 23 to 25 tools and Jorah finds `github_push_branch` under `jorah-github`. Any future plugin tool for main needs the same step.
 
-Then Claude tests: a push of `jorah/test` through the plugin (Adam approves in chat) lands on GitHub; a push to `main` with the same token is refused by the ruleset.
+**Tested 2026-11-10** [measured]:
+
+- **Push through Jorah: works.** Adam asked in Telegram; the approval read "Push branch jorah/test from ~/work/threadfolio to AdamHikl/threadfolio"; Adam allowed it once; Jorah reported the push. GitHub shows `jorah/test` at `68ad9fd` (author `Jorah <jorah@localhost>`), branch created by `jorah-bot[bot]`; `main` unchanged at `ba67d31`.
+- **GitHub refuses the App outside `jorah/**`.** With a real installation token, a push creating `not-jorah-test` got `GH013: Repository rule violations`, and no such branch exists. `main` wasn't tried, because a broken rule would have put a test commit there; it falls under the same ruleset.
+- **Fail closed:** an unanswered approval (2026-11-09, 21:55) timed out and nothing was pushed.
+- `jorah/test` on GitHub is safe to delete; only Adam can, as the ruleset stops the App deleting branches.
+- **Not tested yet:** opening a draft pull request, and approvals for a push asked for by voice (voice turns can't show an approval; `approvals.plugin` forwarding to Telegram would fix that).
 
 ## The distro
 

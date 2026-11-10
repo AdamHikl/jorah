@@ -1,0 +1,16 @@
+// Sends every plugin approval for main (today: Jorah's GitHub push and pull request) to Adam's
+// Telegram chat, wherever the request started: voice, the command line or a chat. Without it, a
+// push asked for by voice has nowhere to show its approval and times out (2026-11-09).
+// Adam's yes, 2026-11-10. TELEGRAM_CHAT_ID is filled in on the PC from channels.telegram.allowFrom
+// by scripts/pc/apply-approvals.sh, so the chat ID never enters this public repo.
+// Undo: approvals.plugin.enabled false.
+{
+  approvals: {
+    plugin: {
+      enabled: true,
+      mode: "targets",
+      agentFilter: ["main"],
+      targets: [{ channel: "telegram", to: "TELEGRAM_CHAT_ID" }],
+    },
+  },
+}

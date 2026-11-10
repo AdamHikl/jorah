@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appJwt, check, describe, mirrorBranch, pushBranch, readKey, repoToken, settings } from "../github.js";
+import { READ, appJwt, check, describe, mirrorBranch, pushBranch, readKey, repoToken, settings, syncMirror } from "../github.js";
 import { generateKeyPairSync, createVerify } from "node:crypto";
 
 const g = (cwd, ...args) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
@@ -144,7 +144,8 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   const { default: plugin } = await import("../index.js");
   const hooks = {}, tools = {};
   plugin.register({ pluginConfig: { repos: { proj: "AdamHikl/proj" } }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool: (t) => (tools[t.name] = t) });
-  assert.deepEqual(Object.keys(tools).sort(), ["github_open_pr", "github_push_branch"]);
+  assert.deepEqual(Object.keys(tools).sort(), ["github_open_pr", "github_push_branch", "github_sync"]);
+  assert.equal(hooks.before_tool_call({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
   assert.equal(tools.github_push_branch.catalogMode, undefined, "must be findable through tool search");
   const direct = hooks.before_tool_call({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
   assert.equal(direct.requireApproval.description, "Push branch jorah/x from ~/work/proj to AdamHikl/proj");
@@ -161,4 +162,39 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
     assert.equal(r.block, true);
     assert.equal(r.requireApproval, undefined);
   }
+});
+
+test("sync fills github/* in the mirror, keeps waiting jorah/* branches, and the work repo can fetch it", async () => {
+  const { root, project, config } = world();
+  // A stand-in for GitHub: a bare repo with main and a feature branch.
+  const remoteBase = join(root, "gh") + "/";
+  const origin = join(remoteBase, "AdamHikl", "proj.git");
+  mkdirSync(join(remoteBase, "AdamHikl"), { recursive: true });
+  g(root, "clone", "-q", "--bare", project, origin);
+  // A jorah/ branch already waiting in the mirror must survive the sync.
+  const target = check(config, { project: "proj", branch: "jorah/task" });
+  const waiting = await mirrorBranch(config, target);
+  const result = await syncMirror(config, { project: "proj", repo: "AdamHikl/proj" }, "fake-token-for-tests-only", { remoteBase });
+  assert.ok(result.branches.some((b) => b.startsWith("main ")), result.branches.join(","));
+  const heads = execFileSync("git", ["--git-dir", result.mirror, "for-each-ref", "--format=%(refname)", "refs/heads/"], { encoding: "utf8" });
+  assert.match(heads, /refs\/heads\/jorah\/task/);
+  assert.equal(waiting.mirror, result.mirror);
+  // The work repo's remote "github" reads the mirror, as Claude Code does in its sandbox.
+  g(project, "remote", "add", "github", result.mirror);
+  g(project, "config", "remote.github.fetch", "+refs/remotes/github/*:refs/remotes/github/*");
+  g(project, "fetch", "-q", "github");
+  assert.match(g(project, "branch", "-r"), /github\/main/);
+});
+
+test("sync asks GitHub for a read-only token", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, repos: {} });
+  let body;
+  const fetchImpl = async (url, opts = {}) => {
+    if (url.endsWith("/installation")) return { ok: true, status: 200, json: async () => ({ id: 7 }) };
+    body = JSON.parse(opts.body);
+    return { ok: true, status: 201, json: async () => ({ token: "fake-installation-token" }) };
+  };
+  await repoToken(config, "AdamHikl/threadfolio", { fetchImpl, permissions: READ });
+  assert.deepEqual(body.permissions, { contents: "read" });
 });

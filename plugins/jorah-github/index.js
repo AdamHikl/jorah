@@ -1,7 +1,7 @@
 // OpenClaw plugin: github_push_branch and github_open_pr for Jorah, each waiting for Adam's approval.
 // Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
 
-import { check, describe, mirrorBranch, openPullRequest, pushBranch, repoToken, settings } from "./github.js";
+import { READ, check, checkProject, describe, mirrorBranch, openPullRequest, pushBranch, repoToken, settings, syncMirror } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -67,6 +67,28 @@ export default {
         } catch (error) {
           api.logger.warn(`jorah-github: push refused or failed: ${String(error.message).split("\n")[0]}`);
           return text(`Push didn't happen: ${String(error.message).split("\n")[0]}`, { ok: false });
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "github_sync",
+      description: "Fetch the latest branches of ~/work/<project>'s GitHub repo into Jorah's local mirror (read-only, no approval needed). Afterwards a Claude Code session in that project runs `git fetch github` and works from github/main.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["project"],
+        properties: { project: { type: "string", description: "Folder name under ~/work, e.g. threadfolio" } },
+      },
+      async execute(_id, p) {
+        try {
+          const cfg = config();
+          const target = checkProject(cfg, p?.project);
+          const result = await syncMirror(cfg, target, await repoToken(cfg, target.repo, { permissions: READ }));
+          api.logger.info(`jorah-github: synced ${target.repo} (${result.branches.length} branches)`);
+          return text(`Synced ${target.repo} into the mirror. Branches:\n${result.branches.join("\n")}\nIn ~/work/${target.project}, run \`git fetch github\` to get them.`, { ok: true, ...result });
+        } catch (error) {
+          return text(`Sync didn't happen: ${String(error.message).split("\n")[0]}`, { ok: false });
         }
       },
     });

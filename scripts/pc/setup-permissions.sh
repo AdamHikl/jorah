@@ -12,7 +12,10 @@
 # - Model: Opus 5.5 at medium effort (Adam, 2026-11-10), for Jorah's coding sessions on his Max plan.
 # - Text deny rules are only a second line. The sandbox is what holds.
 #
-# JORAH_PACKAGE_NETWORK=1 also opens the npm and PyPI registries to sandboxed commands.
+# Package registries: npm and PyPI are open to sandboxed commands by default (Adam, 2026-11-10),
+# so a job can run `npm ci` or `pip install` from a lockfile. JORAH_PACKAGE_NETWORK=0 closes them.
+# Mirrors: sandboxed commands may read ~/.jorah-github/mirrors, the jorah-github plugin's trusted
+# copies of GitHub, so a job can `git fetch github` without network or token.
 set -euo pipefail
 
 [ "$(id -un)" = jorah ] || { echo "Run this as jorah."; exit 3; }
@@ -44,7 +47,10 @@ for file in "${SECRET_FILES[@]}"; do
   read_denies+="      \"Read(/$HOME/$file)\","$'\n'
 done
 
-if [ "${JORAH_PACKAGE_NETWORK:-}" = "1" ]; then
+MIRRORS="$HOME/.jorah-github/mirrors"
+mkdir -p "$MIRRORS" && chmod 700 "$HOME/.jorah-github" "$MIRRORS"
+
+if [ "${JORAH_PACKAGE_NETWORK:-1}" = "1" ]; then
   allowed_domains='"registry.npmjs.org", "pypi.org", "files.pythonhosted.org"'
   cache_env=",
     \"npm_config_cache\": \"$SANDBOX/.cache/npm\",
@@ -119,7 +125,8 @@ $read_denies      "Bash(git push *)",
       ],
       "allowRead": [
         "$SANDBOX",
-        "$PROJECTS"
+        "$PROJECTS",
+        "$MIRRORS"
       ],
       "denyWrite": [
         "$WORKSPACE",

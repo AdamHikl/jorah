@@ -43,11 +43,17 @@ export function settings(pluginConfig = {}) {
   };
 }
 
-/** Checks a request. Returns {project, repo, branch, source} or throws with a reason Jorah can say. */
-export function check(config, { project, branch }) {
+/** Checks a project name. Returns {project, repo}. */
+export function checkProject(config, project) {
   if (typeof project !== "string" || !PROJECT.test(project)) throw new Error("project must be a folder name under ~/work");
   const repo = config.repos[project];
   if (!repo) throw new Error(`${project} isn't on Adam's list of repos Jorah may push to`);
+  return { project, repo };
+}
+
+/** Checks a request. Returns {project, repo, branch, source} or throws with a reason Jorah can say. */
+export function check(config, { project, branch }) {
+  const { repo } = checkProject(config, project);
   if (typeof branch !== "string" || !BRANCH.test(branch) || branch.includes("..") || branch.endsWith(".lock")) {
     throw new Error("only branches named jorah/<task> can be pushed");
   }
@@ -77,8 +83,11 @@ export function appJwt(appId, key, now = Date.now()) {
 
 const API = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "jorah-github" };
 
-/** A 1-hour token for one repo, with only contents and pull requests. */
-export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.now() } = {}) {
+export const WRITE = Object.freeze({ contents: "write", pull_requests: "write" });
+export const READ = Object.freeze({ contents: "read" });
+
+/** A 1-hour token for one repo, with only the given permissions (default: push and pull requests). */
+export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.now(), permissions = WRITE } = {}) {
   if (!config.appId) throw new Error("the App's ID isn't set");
   const jwt = appJwt(config.appId, readKey(config.keyFile), now);
   const headers = { ...API, Authorization: `Bearer ${jwt}` };
@@ -89,7 +98,7 @@ export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.no
   const res = await fetchImpl(`https://api.github.com/app/installations/${id}/access_tokens`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ repositories: [repo.split("/")[1]], permissions: { contents: "write", pull_requests: "write" } }),
+    body: JSON.stringify({ repositories: [repo.split("/")[1]], permissions }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.token) throw new Error(`GitHub said ${res.status} making a token: ${data.message ?? "no reason given"}`);
@@ -128,11 +137,35 @@ export async function mirrorBranch(config, { project, repo, branch, source }) {
   return { mirror, head, log };
 }
 
+function writeAskpass(config) {
+  const askpass = join(config.mirrorDir, "askpass.sh");
+  writeFileSync(askpass, '#!/bin/sh\ncase "$1" in Username*) printf %s "$JORAH_GH_USER";; *) printf %s "$JORAH_GH_TOKEN";; esac\n', { mode: 0o700 });
+  return askpass;
+}
+
+/**
+ * Refresh the mirror from GitHub: every branch lands under refs/remotes/github/*, apart from the
+ * refs/heads/jorah/* branches waiting to be pushed. The work repo then fetches from the mirror
+ * inside Claude Code's sandbox (remote "github"), with no network and no token.
+ */
+export async function syncMirror(config, { project, repo }, token, { gitImpl = git, remoteBase = "https://github.com/" } = {}) {
+  mkdirSync(config.mirrorDir, { recursive: true, mode: 0o700 });
+  const mirror = join(config.mirrorDir, `${project}.git`);
+  if (!existsSync(mirror)) await gitImpl(["init", "--bare", "--quiet", mirror]);
+  // remoteBase is a test seam only; nothing in the plugin's config can change it.
+  await gitImpl(["--git-dir", mirror, "config", "remote.origin.url", `${remoteBase}${repo}.git`]);
+  const askpass = writeAskpass(config);
+  await gitImpl(["--git-dir", mirror, "fetch", "--prune", "--no-tags", "--quiet", "origin", "+refs/heads/*:refs/remotes/github/*"], {
+    env: { GIT_ASKPASS: askpass, JORAH_GH_USER: "x-access-token", JORAH_GH_TOKEN: token },
+  });
+  const branches = await gitImpl(["--git-dir", mirror, "for-each-ref", "--format=%(refname:lstrip=3) %(objectname:short)", "refs/remotes/github/"]);
+  return { mirror, branches: String(branches ?? "").split("\n").filter(Boolean) };
+}
+
 /** Push from the mirror. Never forced: GitHub refuses anything that isn't a fast-forward. */
 export async function pushBranch(config, target, token, { gitImpl = git } = {}) {
   const { mirror } = target;
-  const askpass = join(config.mirrorDir, "askpass.sh");
-  writeFileSync(askpass, '#!/bin/sh\ncase "$1" in Username*) printf %s "$JORAH_GH_USER";; *) printf %s "$JORAH_GH_TOKEN";; esac\n', { mode: 0o700 });
+  const askpass = writeAskpass(config);
   await gitImpl(["--git-dir", mirror, "push", "--porcelain", "origin", `refs/heads/${target.branch}:refs/heads/${target.branch}`], {
     env: { GIT_ASKPASS: askpass, JORAH_GH_USER: "x-access-token", JORAH_GH_TOKEN: token },
   });

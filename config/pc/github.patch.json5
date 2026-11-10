@@ -1,8 +1,10 @@
-// Jorah's GitHub push path (plugins/jorah-github) through the jorah-bot GitHub App (ID 5686503),
-// on Adam's decision of 2026-11-09 to bring it forward from M3. Each push and pull request waits
-// for Adam's approval; rulesets on each repo (scripts/github/protect-repo.sh) limit the App to
-// jorah/** server-side. Add a repo: protect-repo.sh, tick it in the App's installation, add it here.
-// Merge patch: plugins.allow is the whole list as of 2026-11-09 plus the plugin.
+// Jorah's GitHub path (plugins/jorah-github) through the jorah-bot GitHub App (ID 5686503),
+// on Adam's decision of 2026-11-09 to bring it forward from M3, widened to all his repos on
+// 2026-11-10. Any repo of `owner` can be cloned and synced (read-only). Each push and pull request
+// waits for Adam's approval, and the plugin first checks live that the repo's rulesets
+// (scripts/github/protect-repo.sh) limit the App to jorah/**; a repo without them is sync-only.
+// Merge patch: plugins.allow is the whole list as of 2026-11-09 plus the plugin. `repos: null`
+// deletes the old fixed list (threadfolio), which `owner` now covers.
 {
   plugins: {
     allow: [
@@ -24,10 +26,10 @@
         config: {
           appId: "5686503",
           keyFile: "/home/jorah/.config/jorah-github/app.pem",
-          // Folder name under /home/jorah/work -> owner/repo. Only these can be pushed to.
-          repos: {
-            threadfolio: "AdamHikl/threadfolio",
-          },
+          // Folder name under /home/jorah/work = repo name under this account.
+          owner: "AdamHikl",
+          // Only for a folder named differently from its repo: { folder: "AdamHikl/repo" }.
+          repos: null,
         },
       },
     },

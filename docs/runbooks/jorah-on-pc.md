@@ -257,6 +257,17 @@ Expected: adapter `0.76.0`, agent sdk `0.3.257`, the linux-x64 binary present, `
 - **Approvals forwarded to Telegram, 2026-11-10, on Adam's yes** [measured]: `config/pc/approvals.patch.json5` (`approvals.plugin`, mode `targets`, agent `main`, Adam's Telegram chat), applied by `scripts/pc/apply-approvals.sh --apply`, which fills the chat ID in from `channels.telegram.allowFrom` so it stays out of the repo (backup `openclaw.json.pre-approvals`). Test: a push asked from the PC's command line, the same position as a voice request, sent its approval card to Telegram at 14:20:01 and the (no-op) push ran at 14:20:26 after Adam allowed it (Adam confirmed: "Yes, I allowed it").
 - **Not tested yet:** opening a draft pull request, and whether a request that starts in Telegram now shows two cards (native and forwarded).
 
+### All of Adam's repos, 2026-11-10
+
+**Adam's decision, 2026-11-10, replacing the 2026-11-07 one** (roadmap, "Two collaborators, one repo"): "I don't want the bot to never push on his own, just create pull requests and send them to me through telegram or other channel for me to confirm and then push. He can do this for all repos." Jorah may push `jorah/<task>` branches and open draft pull requests on **all** of Adam's repos, `AdamHikl/jorah` and the Mizyun repos included, each push and pull request only after Adam approves it in chat. Never `main`, never merging.
+
+- **Config:** `github.patch.json5` now says `owner: "AdamHikl"` and deletes the fixed `repos` list (`repos: null`). The folder under `~/work` is the repo's name; the optional `repos` map stays for a folder named differently, and every entry must be the owner's.
+- **`github_clone({ repo })`**, no approval: a read-only token syncs the repo into the plugin's mirror (`syncMirror`), then `~/work/<repo>` is made **from the mirror**, never from GitHub: remote `github` reads the mirror, the default branch (from the API) is checked out, and the sandbox placeholders go in `.git/info/exclude` (what `prepare-work-repo.sh` does). Refuses if the folder exists ("use github_sync"), and removes a half-made folder on failure.
+- **Live rule check before every push and pull request**, with the installation token: `GET /repos/{repo}/rules/branches/{default}` must include `update`, and `GET .../rules/branches/jorah-bot-rules-probe` (outside `jorah/**`) must include `creation` and `update`, which is the "jorah: only jorah/**" ruleset. Otherwise: "this repo isn't protected yet", nothing pushed. A failed read also refuses. A repo without the rulesets is sync-only.
+- Unchanged: Adam approves each push and pull request (exact tool names only), the push runs from the plugin's clean mirror, `jorah/<task>` only, never forced, pull requests are drafts.
+- **Allow list:** `github-tools.patch.json5` is the whole list with `github_clone` added, keeping `agentmemory__*`.
+- Tests: 23 in `plugins/jorah-github/test` (stand-in GitHub API and a local bare repo as GitHub).
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

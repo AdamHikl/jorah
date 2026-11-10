@@ -1,22 +1,49 @@
 {
   "id": "jorah-github",
   "name": "Jorah GitHub",
-  "description": "Push a jorah/* branch from ~/work to a repo Adam named, and open a pull request. Every call waits for Adam's approval. Uses the jorah-bot GitHub App; its key and tokens never reach the sandbox or the work repo.",
-  "categories": ["developer-tools"],
-  "contracts": { "tools": ["github_push_branch", "github_open_pr", "github_sync"] },
-  "activation": { "onStartup": true },
+  "description": "Clone and sync Adam's repos, push a jorah/* branch from ~/work and open a draft pull request. Push and pull request wait for Adam's approval and a live check of the repo's rulesets. Uses the jorah-bot GitHub App; its key and tokens never reach the sandbox or the work repo.",
+  "categories": [
+    "developer-tools"
+  ],
+  "contracts": {
+    "tools": [
+      "github_push_branch",
+      "github_open_pr",
+      "github_sync",
+      "github_clone"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "appId": { "type": "string", "description": "The jorah-bot GitHub App's ID" },
-      "keyFile": { "type": "string", "description": "The App's private key, mode 600" },
-      "workDir": { "type": "string" },
-      "mirrorDir": { "type": "string" },
+      "appId": {
+        "type": "string",
+        "description": "The jorah-bot GitHub App's ID"
+      },
+      "keyFile": {
+        "type": "string",
+        "description": "The App's private key, mode 600"
+      },
+      "workDir": {
+        "type": "string"
+      },
+      "mirrorDir": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string",
+        "description": "GitHub account whose repos Jorah may clone and work on; the folder name under workDir is the repo name"
+      },
       "repos": {
         "type": "object",
-        "description": "Project folder name under workDir -> owner/repo",
-        "additionalProperties": { "type": "string" }
+        "description": "Optional: project folder name under workDir -> owner/repo, for a folder named differently from its repo",
+        "additionalProperties": {
+          "type": "string"
+        }
       }
     }
   }

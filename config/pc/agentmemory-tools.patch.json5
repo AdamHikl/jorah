@@ -3,7 +3,7 @@
 // never saw them and the two-week trial (roadmap P5b.4) wasn't really running. OpenClaw exposes
 // MCP tools as <server>__<tool>; only agentmemory's are added, not bundle-mcp or group:plugins.
 // Merge patch: the array is the whole list as of 2026-11-10 plus the glob.
-// Undo: github-tools.patch.json5 (the same list without it).
+// Undo: the same list without it. Superseded by github-tools.patch.json5 (2026-11-10), which keeps it.
 {
   agents: {
     entries: {

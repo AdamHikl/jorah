@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-push guard: refuses a push to main without JORAH_ALLOW_MAIN=1, set by Claude Code build sessions (CLAUDE.md, 2026-11-07); Jorah never pushes.
+# Pre-push guard: refuses a push to main without JORAH_ALLOW_MAIN=1, set by Claude Code build sessions (CLAUDE.md, 2026-11-07); Jorah never pushes main.
 # Stops mistakes, not `--no-verify` (docs/plan/09-engineering-and-ops.md 4.3).
 # Git passes one "<local ref> <local sha> <remote ref> <remote sha>" line per ref.
 set -euo pipefail

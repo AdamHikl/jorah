@@ -1,10 +1,12 @@
-// OpenClaw plugin: github_push_branch and github_open_pr for Jorah, each waiting for Adam's approval.
-// Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
+// OpenClaw plugin: Jorah's GitHub tools. Push and pull request wait for Adam's approval; sync and
+// clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
+// build or install.
 
-import { READ, check, checkProject, describe, mirrorBranch, openPullRequest, pushBranch, repoToken, settings, syncMirror } from "./github.js";
+import { cloneFlow, describe, prFlow, pushFlow, settings, syncFlow } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
+const firstLine = (error) => String(error?.message ?? error).split("\n")[0];
 
 // Only an exact call to one of these tools. A call through the tool-search wrapper (tool_call) runs
 // this hook again on the inner tool with its real name, so the wrapper itself is left alone; a
@@ -20,11 +22,11 @@ function complete(params) {
 export default {
   id: "jorah-github",
   name: "Jorah GitHub",
-  description: "Push jorah/* branches and open pull requests, on Adam's approval.",
+  description: "Clone and sync Adam's repos; push jorah/* branches and open draft pull requests, on Adam's approval.",
   register(api) {
     const config = () => settings(api.pluginConfig ?? {});
 
-    // Every call waits for Adam. Fails closed: a hook error blocks the call.
+    // Every push and pull request waits for Adam. Fails closed: a hook error blocks the call.
     api.on("before_tool_call", (event) => {
       const hit = targetTool(event);
       if (!hit) return undefined;
@@ -47,26 +49,49 @@ export default {
       additionalProperties: false,
       required: ["project", "branch"],
       properties: {
-        project: { type: "string", description: "Folder name under ~/work, e.g. mizyun-web" },
+        project: { type: "string", description: "Folder name under ~/work, which is the repo's name, e.g. robot_tour" },
         branch: { type: "string", description: "Local branch, must start with jorah/" },
       },
     };
 
     api.registerTool({
+      name: "github_clone",
+      description: "Clone one of Adam's GitHub repos into ~/work/<repo> (read-only, no approval needed), with remote `github` set up for Claude Code. Refuses if the folder exists: use github_sync then.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["repo"],
+        properties: { repo: { type: "string", description: "Repo name, e.g. robot_tour (or AdamHikl/robot_tour)" } },
+      },
+      async execute(_id, p) {
+        try {
+          const { target, synced, cloned } = await cloneFlow(config(), p?.repo);
+          api.logger.info(`jorah-github: cloned ${target.repo} into ~/work/${target.project}`);
+          return text(
+            `Cloned ${target.repo} into ~/work/${target.project}, on ${cloned.branch} at ${cloned.head}. ` +
+              `Remote \`github\` reads Jorah's mirror (${synced.branches.length} branches). ` +
+              `Claude Code works there on a new jorah/<task> branch from github/${cloned.branch}.`,
+            { ok: true, path: cloned.path, branch: cloned.branch, branches: synced.branches },
+          );
+        } catch (error) {
+          api.logger.warn(`jorah-github: clone refused or failed: ${firstLine(error)}`);
+          return text(`Clone didn't happen: ${firstLine(error)}`, { ok: false });
+        }
+      },
+    });
+
+    api.registerTool({
       name: "github_push_branch",
-      description: "Push a jorah/<task> branch from ~/work/<project> to its GitHub repo. Adam approves each push. Never pushes main or forces.",
+      description: "Push a jorah/<task> branch from ~/work/<project> to its GitHub repo. Adam approves each push. Never pushes main or forces; refuses a repo whose rulesets aren't set up yet.",
       parameters: params,
       async execute(_id, p) {
         try {
-          const cfg = config();
-          const target = check(cfg, p);
-          const mirrored = await mirrorBranch(cfg, target);
-          const result = await pushBranch(cfg, { ...target, ...mirrored }, await repoToken(cfg, target.repo));
+          const { target, mirrored, result } = await pushFlow(config(), p);
           api.logger.info(`jorah-github: pushed ${result.pushed} at ${mirrored.head.slice(0, 7)}`);
           return text(`Pushed ${target.branch} to ${target.repo} (${mirrored.head.slice(0, 7)}). Commits:\n${mirrored.log}`, { ok: true, ...result });
         } catch (error) {
-          api.logger.warn(`jorah-github: push refused or failed: ${String(error.message).split("\n")[0]}`);
-          return text(`Push didn't happen: ${String(error.message).split("\n")[0]}`, { ok: false });
+          api.logger.warn(`jorah-github: push refused or failed: ${firstLine(error)}`);
+          return text(`Push didn't happen: ${firstLine(error)}`, { ok: false });
         }
       },
     });
@@ -82,20 +107,18 @@ export default {
       },
       async execute(_id, p) {
         try {
-          const cfg = config();
-          const target = checkProject(cfg, p?.project);
-          const result = await syncMirror(cfg, target, await repoToken(cfg, target.repo, { permissions: READ }));
-          api.logger.info(`jorah-github: synced ${target.repo} (${result.branches.length} branches)`);
-          return text(`Synced ${target.repo} into the mirror. Branches:\n${result.branches.join("\n")}\nIn ~/work/${target.project}, run \`git fetch github\` to get them.`, { ok: true, ...result });
+          const { target, synced } = await syncFlow(config(), p?.project);
+          api.logger.info(`jorah-github: synced ${target.repo} (${synced.branches.length} branches)`);
+          return text(`Synced ${target.repo} into the mirror. Branches:\n${synced.branches.join("\n")}\nIn ~/work/${target.project}, run \`git fetch github\` to get them.`, { ok: true, ...synced });
         } catch (error) {
-          return text(`Sync didn't happen: ${String(error.message).split("\n")[0]}`, { ok: false });
+          return text(`Sync didn't happen: ${firstLine(error)}`, { ok: false });
         }
       },
     });
 
     api.registerTool({
       name: "github_open_pr",
-      description: "Open a draft pull request on GitHub from a jorah/<task> branch already pushed. Adam approves each one.",
+      description: "Open a draft pull request on GitHub from a jorah/<task> branch already pushed. Adam approves each one. Jorah never merges.",
       parameters: {
         ...params,
         required: ["project", "branch", "title"],
@@ -103,13 +126,12 @@ export default {
       },
       async execute(_id, p) {
         try {
-          const cfg = config();
-          const target = check(cfg, p);
-          const pr = await openPullRequest(cfg, target, p, await repoToken(cfg, target.repo));
+          const { target, pr } = await prFlow(config(), p);
           api.logger.info(`jorah-github: opened PR #${pr.number} on ${target.repo}`);
           return text(`Opened draft pull request #${pr.number} on ${target.repo} into ${pr.base}: ${pr.url}`, { ok: true, ...pr });
         } catch (error) {
-          return text(`Pull request not opened: ${String(error.message).split("\n")[0]}`, { ok: false });
+          api.logger.warn(`jorah-github: pull request refused or failed: ${firstLine(error)}`);
+          return text(`Pull request not opened: ${firstLine(error)}`, { ok: false });
         }
       },
     });

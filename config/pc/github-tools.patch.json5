@@ -2,8 +2,10 @@
 // allow list permits them (resolvePluginToolPluginIds in 2026.10.9), and main has an explicit list
 // from tools.patch.json5, so the plugin's tools were silently left out (2026-11-10). Only these
 // names are added, not group:plugins. Push and pull request still wait for Adam's approval;
-// github_sync (added 2026-11-10) only reads. Merge patch: the array is the whole list plus the tools.
-// Undo: the same list without them.
+// github_sync and github_clone (both added 2026-11-10) only read.
+// Merge patch: the array is the WHOLE list, so it keeps agentmemory__* from
+// agentmemory-tools.patch.json5; leaving an entry out removes that tool from main.
+// Undo: agentmemory-tools.patch.json5 (the same list without github_clone).
 {
   agents: {
     entries: {
@@ -11,7 +13,8 @@
         tools: { sandbox: { tools: { alsoAllow: [
           "group:memory", "group:web", "browser", "message",
           "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
-          "github_push_branch", "github_open_pr", "github_sync",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone",
+          "agentmemory__*",
         ] } } },
       },
     },

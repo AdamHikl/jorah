@@ -398,7 +398,7 @@ Claude Code on the Mac is Adam's. Claude Code on the PC is Jorah's. They work li
 **How a session runs** [track: `09-engineering-and-ops.md` 11]:
 
 - One issue, one session, one worktree, one PR. Each session named below fits one Claude Code session, and is split further if it runs long.
-- **At most 2 sessions at once** until a week of `/usage` is measured, because builds, Jorah and Mizyun share one Claude account [measured via `research/brain.md` 2].
+- **At most 5 sessions at once** (Adam's decision of 2026-11-11, replacing "at most 2 until a week of `/usage` is measured"). Builds, Jorah and Mizyun still share one Claude account [measured via `research/brain.md` 2], so check usage before starting several.
 - **Only one session touches the live Gateway.**
 - **From step 1.7 on, every live command goes through one helper, `ops/bin/oj`,** because a bare `openclaw --profile jorah` run as `adam` would read and write `~adam/.openclaw-jorah`, and its `config get` would still pass:
   ```sh

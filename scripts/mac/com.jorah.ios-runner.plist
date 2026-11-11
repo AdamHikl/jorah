@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Jorah iOS runner (ADR 0002, route 2; contract docs/contracts/jorah-ios-v1.md).
+  Installed root:wheel 0644 in /Library/LaunchAgents by scripts/mac/setup-jorah-build.sh
+  --install-runner, so the build user cannot change it. A LaunchAgent in /Library loads in every
+  user's login session; the wrapper exits 0 at once for anyone but jorah-build, and launchd does
+  not restart a clean exit. It runs inside jorah-build's login session so its login keychain,
+  which holds the Development key, is unlocked (docs/runbooks/ios-builds.md 3.4).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jorah.ios-runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/libexec/jorah/ios-runner-agent</string>
+  </array>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Umask</key>
+  <integer>63</integer>
+</dict>
+</plist>

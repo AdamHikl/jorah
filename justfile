@@ -15,7 +15,7 @@ guards:
     scripts/test-guards.sh
 
 shellcheck:
-    shellcheck scripts/*.sh scripts/pc/*.sh scripts/github/*.sh
+    shellcheck scripts/*.sh scripts/pc/*.sh scripts/github/*.sh scripts/mac/*.sh
 
 licenses:
     scripts/check-licenses.sh

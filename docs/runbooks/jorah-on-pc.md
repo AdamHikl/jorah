@@ -179,6 +179,8 @@ Adam's first iPhone Talk with AirPods [measured, `journalctl -u jorah-voice`]: 2
 
 **Fix** (source and unit tests, 2026-11-11): the bridge's hello sends `client_ends: true` instead of `follow_up: true`. jorah-voice then never closes from its side except at the 30-minute limit; goodbye and thanks go to standby. The app no longer sees a dropped line, so it has no reason to fall back. Not fixed: if the relay does drop (Wi-Fi, a Gateway restart), the app can still fall back. Routing the Gateway's `talk.speak` to the Qwen voice through a speech-provider plugin would make that fallback sound like Jorah, but Apple would still hear it.
 
+**Deployed 2026-11-11 on Adam's yes** [measured]: the six changed files copied to `/opt/jorah` (SHA-256 match `c0f9dd3`), `jorah-voice` and `openclaw-gateway` restarted, all three services active, `Speaking with Qwen3-TTS (Jorah's voice)`, Gateway health answers, `jorah-voice-provider` enabled. Not yet tried on the iPhone.
+
 **If Talk has fallen back** (the `Talk Mode active` prefix in Chat, or the system voice): tap the Talk control to stop it and force-quit the app. The next start tries realtime again.
 
 ### Test pass

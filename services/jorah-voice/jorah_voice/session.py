@@ -11,6 +11,13 @@ BYTES_PER_SAMPLE = 2
 FAILURE_LINE = "I can't reach my brain right now."
 EMPTY_LINE = "I didn't get an answer. Try me again."
 STAY_LINE = "I'm here."
+# Said once when no reply text has come for a while, which mostly means Jorah is using a tool
+# (2026-11-11: GitHub turns took 7 to 21 s to the first word), so the quiet isn't a dead line.
+FILLER_LINE = "One moment."
+
+
+class Filler(str):
+    """A line Jorah says while waiting: not the reply, so it isn't timed or joined to it."""
 STAY_WARNING = "I'll stop listening in half a minute."
 
 
@@ -22,7 +29,7 @@ class VoiceSession:
     def __init__(self, ears, listener, speaker, brain, send_json, send_audio, on_close, *,
                  barge_in=False, idle_seconds=60, max_seconds=1800,
                  clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None,
-                 follow_up=False, input_rate=16000):
+                 follow_up=False, input_rate=16000, filler_seconds=None):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -48,6 +55,7 @@ class VoiceSession:
         # Short windows from voice plan 04 5.3, for clients that open per conversation.
         self._follow_up = FollowUp(clock()) if follow_up else None
         self._resampler = Resampler(input_rate)
+        self._filler_seconds = filler_seconds
         self.closed = False
         self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_audio": []}
 
@@ -200,10 +208,21 @@ class VoiceSession:
         speaking = asyncio.create_task(self._speak_queue(sentences, heard_at, record=True))
         chunker = SentenceChunker()
         reply = []
+        got_text = asyncio.Event()
+
+        async def filler():
+            await self._sleep(self._filler_seconds)
+            if not got_text.is_set():
+                sentences.put_nowait(Filler(FILLER_LINE))
+
+        waiting = asyncio.create_task(filler()) if self._filler_seconds else None
         try:
             first_token = None
             async for delta in self._stream(text):
                 if first_token is None:
+                    got_text.set()
+                    if waiting:
+                        waiting.cancel()
                     first_token = self._clock()
                     self.numbers["first_token"].append(first_token - heard_at)
                 reply.append(delta)
@@ -223,6 +242,8 @@ class VoiceSession:
             await speaking
             return FAILURE_LINE
         except asyncio.CancelledError:
+            if waiting:
+                waiting.cancel()
             speaking.cancel()
             await asyncio.gather(speaking, return_exceptions=True)
             raise
@@ -264,6 +285,10 @@ class VoiceSession:
             sentence = await sentences.get()
             if sentence is None:
                 break
+            if isinstance(sentence, Filler):
+                await self._send_json({"type": "reply", "text": str(sentence)})
+                await self._send_paced(await asyncio.to_thread(self._speaker.synthesize, str(sentence)))
+                continue
             if not first:
                 # Kokoro shapes tone within one piece of text only, so sentences that are already
                 # waiting are spoken together. The first stays alone, to start speaking sooner.

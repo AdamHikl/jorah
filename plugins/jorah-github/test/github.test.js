@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, changedFiles, check, checkCloneName, describeWithFiles, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
+import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, listRepos, changedFiles, check, checkCloneName, describeWithFiles, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
 import { generateKeyPairSync, createVerify } from "node:crypto";
 
 const g = (cwd, ...args) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
@@ -127,7 +127,7 @@ test("the token is asked for one repo, contents and pull requests only", async (
 test("a repo without the App says so", async () => {
   const { f } = keyFile();
   const config = settings({ appId: "5686503", keyFile: f, repos: {} });
-  await assert.rejects(repoToken(config, "AdamHikl/x", { fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }) }), /isn't installed on AdamHikl\/x/);
+  await assert.rejects(repoToken(config, "AdamHikl/x", { fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }) }), /no repo named AdamHikl\/x/);
 });
 
 test("a non-numeric App ID is refused", () => {
@@ -145,7 +145,7 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   const hooks = {}, tools = {};
   plugin.register({ pluginConfig: { repos: { proj: "AdamHikl/proj" } }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool: (t) => (tools[t.name] = t) });
   const hook = (e) => hooks.before_tool_call(e);
-  assert.deepEqual(Object.keys(tools).sort(), ["github_clone", "github_open_pr", "github_push_branch", "github_sync"]);
+  assert.deepEqual(Object.keys(tools).sort(), ["github_clone", "github_list_repos", "github_open_pr", "github_push_branch", "github_sync"]);
   assert.equal(await hook({ toolName: "github_clone", params: { repo: "proj" } }), undefined, "clone only reads: no prompt");
   assert.equal(await hook({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
   assert.equal(tools.github_push_branch.catalogMode, undefined, "must be findable through tool search");
@@ -224,7 +224,7 @@ test("clone names: the bare repo name or owner/name, nothing else", () => {
 const RULESET = ["creation", "update", "deletion", "non_fast_forward"];
 
 /** A stand-in for GitHub's API. `rules` maps a branch name to its rule types. */
-function fakeApi({ rules = { main: RULESET, [PROBE_BRANCH]: RULESET }, defaultBranch = "main", status = {} } = {}) {
+function fakeApi({ rules = { main: RULESET, [PROBE_BRANCH]: RULESET }, defaultBranch = "main", status = {}, exactName } = {}) {
   const calls = [];
   const fetchImpl = async (url, opts = {}) => {
     calls.push({ url, opts, body: opts.body ? JSON.parse(opts.body) : undefined });
@@ -238,7 +238,8 @@ function fakeApi({ rules = { main: RULESET, [PROBE_BRANCH]: RULESET }, defaultBr
       return reply(200, (rules[branch] ?? []).map((type) => ({ type, ruleset_source_type: "Repository", ruleset_id: 1 })));
     }
     if (url.endsWith("/pulls")) return reply(201, { html_url: "https://github.com/AdamHikl/proj/pull/7", number: 7 });
-    if (/\/repos\/[^/]+\/[^/]+$/.test(url)) return reply(status.repo ?? 200, { default_branch: defaultBranch });
+    const repoUrl = url.match(/\/repos\/[^/]+\/([^/]+)$/);
+    if (repoUrl) return reply(status.repo ?? 200, { default_branch: defaultBranch, name: exactName ?? repoUrl[1] });
     return reply(404, {});
   };
   return { fetchImpl, calls };
@@ -437,4 +438,41 @@ test("the hook lists files on a real card and remembers the head it showed", asy
   plugin.register({ pluginConfig: { owner: "AdamHikl", workDir: config.workDir, mirrorDir: config.mirrorDir }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool() {} });
   const card = await hooks.before_tool_call({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/task" } });
   assert.match(card.requireApproval.description, /^Push branch jorah\/task from ~\/work\/proj to AdamHikl\/proj\nAt [0-9a-f]{7}, 1 file changed against main:\nadded b\.txt$/);
+});
+
+test("clone uses GitHub's exact spelling for the folder", async () => {
+  const { root, config, remoteBase, origin, work } = ownerWorld();
+  g(root, "clone", "-q", "--bare", origin, join(remoteBase, "AdamHikl", "partaci.git"));
+  const { target, cloned } = await cloneFlow(config, "Partaci", { fetchImpl: fakeApi({ exactName: "partaci" }).fetchImpl, remoteBase });
+  assert.equal(target.project, "partaci");
+  assert.equal(target.repo, "AdamHikl/partaci");
+  assert.equal(cloned.path, join(work, "partaci"));
+});
+
+test("a misspelt repo name says so, not that the App is missing", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, owner: "AdamHikl" });
+  const fetchImpl = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  await assert.rejects(repoToken(config, "AdamHikl/Partatsy", { fetchImpl }), /no repo named AdamHikl\/Partatsy.*check the spelling.*github_list_repos/);
+});
+
+test("listing repos: the owner's only, newest first, with a metadata-only token", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, owner: "AdamHikl" });
+  const calls = [];
+  const fetchImpl = async (url, opts = {}) => {
+    calls.push({ url, body: opts.body ? JSON.parse(opts.body) : undefined });
+    const reply = (data) => ({ ok: true, status: 200, json: async () => data });
+    if (url.endsWith("/users/AdamHikl/installation")) return reply({ id: 9 });
+    if (url.endsWith("/access_tokens")) return reply({ token: "fake-installation-token" });
+    return reply({ repositories: [
+      { name: "partaci", description: "Students looking for flatmates", private: true, pushed_at: "2026-11-10T10:00:00Z", owner: { login: "AdamHikl" } },
+      { name: "robot_tour", description: null, private: false, pushed_at: "2026-01-28T10:00:00Z", owner: { login: "AdamHikl" } },
+      { name: "other", description: "not Adam's", private: false, pushed_at: "2026-11-11T10:00:00Z", owner: { login: "someone" } },
+    ] });
+  };
+  const repos = await listRepos(config, { fetchImpl });
+  assert.deepEqual(repos.map((r) => r.name), ["partaci", "robot_tour"]);
+  assert.equal(repos[0].description, "Students looking for flatmates");
+  assert.deepEqual(calls[1].body, { permissions: { metadata: "read" } });
 });

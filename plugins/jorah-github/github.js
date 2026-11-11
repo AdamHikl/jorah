@@ -123,7 +123,8 @@ export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.no
   const jwt = appJwt(config.appId, readKey(config.keyFile), now);
   const headers = { ...API, Authorization: `Bearer ${jwt}` };
   const found = await fetchImpl(`https://api.github.com/repos/${repo}/installation`, { headers });
-  if (found.status === 404) throw new Error(`jorah-bot isn't installed on ${repo}`);
+  // 404 here mostly means a misspelt or misheard name (2026-11-11: "Partatsy" for partaci).
+  if (found.status === 404) throw new Error(`there's no repo named ${repo} that jorah-bot can see; check the spelling (github_list_repos lists Adam's repos)`);
   if (!found.ok) throw new Error(`GitHub said ${found.status} finding the App on ${repo}`);
   const { id } = await found.json();
   const res = await fetchImpl(`https://api.github.com/app/installations/${id}/access_tokens`, {
@@ -262,6 +263,17 @@ export async function pushBranch(config, target, token, { gitImpl = git } = {}) 
   return { pushed: `${target.repo}:${target.branch}` };
 }
 
+/** The repo's exact name (GitHub's spelling and case) and default branch, from the API. */
+export async function repoInfo(repo, token, fetchImpl = fetch) {
+  const info = await fetchImpl(`https://api.github.com/repos/${repo}`, { headers: { ...API, Authorization: `Bearer ${token}` } });
+  if (!info.ok) throw new Error(`GitHub said ${info.status} reading ${repo}`);
+  const data = await info.json();
+  const name = data.default_branch;
+  if (typeof name !== "string" || !name || name.startsWith("-") || name.includes("..")) throw new Error(`GitHub gave no usable default branch for ${repo}`);
+  const exact = typeof data.name === "string" && PROJECT.test(data.name) ? data.name : repo.split("/")[1];
+  return { name: exact, defaultBranch: name };
+}
+
 /** The repo's default branch, from the API. */
 export async function defaultBranch(repo, token, fetchImpl = fetch) {
   const info = await fetchImpl(`https://api.github.com/repos/${repo}`, { headers: { ...API, Authorization: `Bearer ${token}` } });
@@ -387,11 +399,50 @@ export async function syncFlow(config, project, { fetchImpl = fetch, remoteBase 
 
 /** github_clone: read-only token, sync the mirror, then make ~/work/<repo> from the mirror. */
 export async function cloneFlow(config, name, { fetchImpl = fetch, remoteBase } = {}) {
-  const target = checkCloneName(config, name);
+  let target = checkCloneName(config, name);
   if (lexists(join(config.workDir, target.project))) throw new Error(`~/work/${target.project} already exists; use github_sync to update it`);
   const token = await repoToken(config, target.repo, { fetchImpl, permissions: READ });
-  const branch = await defaultBranch(target.repo, token, fetchImpl);
+  // Use GitHub's own spelling for the folder, so "Partaci" and "partaci" can't become two copies.
+  const info = await repoInfo(target.repo, token, fetchImpl);
+  if (!config.repos[target.project] && info.name !== target.project) {
+    target = checkProject(config, info.name);
+  }
+  if (lexists(join(config.workDir, target.project))) throw new Error(`~/work/${target.project} already exists; use github_sync to update it`);
+  const branch = info.defaultBranch;
   const synced = await syncMirror(config, target, token, remoteBase ? { remoteBase } : {});
   const cloned = await cloneFromMirror(config, target, { mirror: synced.mirror, branch });
   return { target, synced, cloned };
+}
+
+/**
+ * github_list_repos: every repo of the owner that jorah-bot can see, with its description, so
+ * Jorah can find one by what it's about or match a misheard name. Read-only (metadata).
+ */
+export async function listRepos(config, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!config.appId) throw new Error("the App's ID isn't set");
+  if (!config.owner) throw new Error("no owner is configured");
+  const jwt = appJwt(config.appId, readKey(config.keyFile), now);
+  const headers = { ...API, Authorization: `Bearer ${jwt}` };
+  const found = await fetchImpl(`https://api.github.com/users/${config.owner}/installation`, { headers });
+  if (!found.ok) throw new Error(`GitHub said ${found.status} finding jorah-bot on ${config.owner}'s account`);
+  const { id } = await found.json();
+  const res = await fetchImpl(`https://api.github.com/app/installations/${id}/access_tokens`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ permissions: { metadata: "read" } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) throw new Error(`GitHub said ${res.status} making a token: ${data.message ?? "no reason given"}`);
+  const repos = [];
+  for (let page = 1; page <= 10; page++) {
+    const r = await fetchImpl(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, { headers: { ...API, Authorization: `Bearer ${data.token}` } });
+    if (!r.ok) throw new Error(`GitHub said ${r.status} listing repos`);
+    const body = await r.json();
+    for (const x of body.repositories ?? []) {
+      if (x?.owner?.login?.toLowerCase() !== config.owner.toLowerCase()) continue;
+      repos.push({ name: x.name, description: x.description ?? "", private: Boolean(x.private), pushedAt: x.pushed_at ?? "" });
+    }
+    if ((body.repositories ?? []).length < 100) break;
+  }
+  return repos.sort((a, b) => (b.pushedAt || "").localeCompare(a.pushedAt || ""));
 }

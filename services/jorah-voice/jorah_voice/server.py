@@ -79,6 +79,7 @@ async def serve(args):
                 turn_end=turn_end,
                 follow_up=hello["follow_up"],
                 input_rate=hello["input_rate"],
+                filler_seconds=args.filler,
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())
@@ -115,6 +116,7 @@ def main():
     parser.add_argument("--speed", type=float, default=models.DEFAULT_SPEED)
     parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")
     parser.add_argument("--gateway-token-file", default=os.path.expanduser("~/.config/jorah-voice/gateway-token"))
+    parser.add_argument("--filler", type=float, default=2.5, help="seconds without reply text before saying 'One moment.' once; 0 turns it off")
     parser.add_argument("--idle", type=int, default=60, help="seconds of quiet before the session closes")
     parser.add_argument("--early-pause", type=float, default=EARLY_PAUSE,
                         help="seconds of quiet before transcribing starts, so the text is ready when the turn ends")

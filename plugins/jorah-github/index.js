@@ -2,7 +2,7 @@
 // clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
 // build or install.
 
-import { changedFiles, check, cloneFlow, describe, describeWithFiles, prFlow, pushFlow, settings, syncFlow } from "./github.js";
+import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, prFlow, pushFlow, settings, syncFlow } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -77,6 +77,21 @@ export default {
         branch: { type: "string", description: "Local branch, must start with jorah/" },
       },
     };
+
+    api.registerTool({
+      name: "github_list_repos",
+      description: "List Adam's GitHub repos (name, description, private or public), most recently changed first. Read-only, no approval. Use it to find a repo by what it's about, or to match a misheard or misspelt name before github_clone.",
+      parameters: { type: "object", additionalProperties: false, properties: {} },
+      async execute() {
+        try {
+          const repos = await listRepos(config());
+          const lines = repos.map((r) => `${r.name}${r.private ? " (private)" : ""}${r.description ? ` - ${r.description}` : ""}`);
+          return text(`${repos.length} repos:\n${lines.join("\n")}`, { ok: true, repos });
+        } catch (error) {
+          return text(`Couldn't list repos: ${firstLine(error)}`, { ok: false });
+        }
+      },
+    });
 
     api.registerTool({
       name: "github_clone",

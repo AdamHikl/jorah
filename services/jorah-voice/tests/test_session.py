@@ -96,9 +96,10 @@ class Harness:
             await asyncio.sleep(0)
 
         self.listener = FakeListener(text)
+        sleep = options.pop("sleep", no_wait)
         self.session = VoiceSession(
             self.ears, self.listener, self.speaker, self.brain,
-            send_json, send_audio, on_close, sleep=no_wait, **options,
+            send_json, send_audio, on_close, sleep=sleep, **options,
         )
 
     async def say(self, segment="segment"):
@@ -313,6 +314,45 @@ class Closing(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_samples_read_as_none_not_zero(self):
         self.assertIsNone(Harness().session.summary()["first_audio"]["median"])
+
+
+class SlowBrain(FakeBrain):
+    """First text only after `delay` real seconds, as when Jorah uses a tool first."""
+
+    def __init__(self, delay, deltas):
+        super().__init__(deltas)
+        self.delay = delay
+
+    def stream(self, prompt):
+        import time
+        time.sleep(self.delay)
+        yield from super().stream(prompt)
+
+
+async def short_sleep(seconds):
+    await asyncio.sleep(min(seconds, 0.05))
+
+
+class OneMoment(unittest.IsolatedAsyncioTestCase):
+    async def test_a_slow_reply_gets_one_moment_first(self):
+        h = Harness(brain=SlowBrain(0.4, ["Done. ", "It's cloned."]), filler_seconds=2.5, sleep=short_sleep)
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["One moment.", "Done.", "It's cloned."])
+        # The filler isn't the reply: first audio is still timed from the real answer.
+        self.assertEqual(len(h.session.numbers["first_audio"]), 1)
+
+    async def test_a_quick_reply_gets_no_filler(self):
+        h = Harness(filler_seconds=2.5, sleep=short_sleep)
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["Hi Adam.", "All good."])
+
+    async def test_off_by_default(self):
+        h = Harness(brain=SlowBrain(0.2, ["Done."]), sleep=short_sleep)
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["Done."])
 
 
 class ShortWindows(unittest.IsolatedAsyncioTestCase):

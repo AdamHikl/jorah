@@ -225,7 +225,7 @@ As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to
 
 ### P5. Bridge and the hard gate (M2b-C, M2b-D, M3)
 
-BR-S1 to S7, `jorah-guard` v0, `ask_main` and jobs on the API lane (2.38 to 2.45), with SEC-T25, T37, T38. **Then M3 in full, on the PC.** Step 3.2's question about `sbx` on macOS becomes K10b on Windows Home, where `sbx` is `[unverified]` and Hyper-V doesn't exist. **If it fails, Adam decides:** Pro, Ubuntu, or no Lab yet. Step 3.3's table is re-read for WSL. Step 3.0 changes: `main` stays on Max.
+**Re-scoped 2026-11-11 to Jorah as it runs today: `docs/plan/p5-plan.md`, which wins over this paragraph and M3's text for P5** (one agent, so no bridge; `jorah-guard` v0 enforces taint, write cards and a URL rule because `main` has web; the gate tests the guard against a hijacked model). Original text: BR-S1 to S7, `jorah-guard` v0, `ask_main` and jobs on the API lane (2.38 to 2.45), with SEC-T25, T37, T38. **Then M3 in full, on the PC.** Step 3.2's question about `sbx` on macOS becomes K10b on Windows Home, where `sbx` is `[unverified]` and Hyper-V doesn't exist. **If it fails, Adam decides:** Pro, Ubuntu, or no Lab yet. Step 3.3's table is re-read for WSL. Step 3.0 changes: `main` stays on Max.
 
 ### P5a. Typed Haiku pilot (new, Adam approved adding it on 2026-11-04)
 

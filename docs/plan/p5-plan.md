@@ -114,6 +114,8 @@ A separate plugin, `plugins/jorah-guard`, next to `jorah-github`. It does not re
 | `x_search` | Allow, taint | As `web_search` |
 | `browser` evaluate (`act:evaluate`, `wait --fn`) | Off: `browser.evaluateEnabled: false` (G-S0 finding F2, Adam's yes) | Off. Until the config changes, the guard blocks it in tainted sessions, because page JavaScript can send requests past the URL rule |
 | `sessions_send` | Only to `main`'s own children | Block |
+| `tool_search`, `tool_describe`, `sessions_yield`, `sessions_list`, `session_status` | Allow | Allow |
+| `tool_call` (the search wrapper) | Decided on the inner call, which the hook sees again under its real name (G-S2) | Same |
 | `sessions_history`, `sessions_search` | Allow, taint | Allow, taint |
 | `personal_instructions` writes | As `USER.md` | As `USER.md` |
 | `apply_patch` | As the write rows for its target paths (`event.derivedPaths`, missing means block) | Same |
@@ -140,15 +142,16 @@ Rules:
 - **Known limit, accepted by Adam:** a recording or a clone of Adam's voice passes the speaker check. That is why anything that leaves the PC also needs the code. This changes `03` section 8 ("speaker recognition is a hint, never an approval") for this setup, as Adam's written decision.
 - **How it is wired is open:** G-S8 picks the speaker model and measures it; G-S9 decides how `jorah-voice` hands a verified confirmation to the guard (likely: it answers the pending plugin approval through the Gateway with a token scoped to approvals only, after the speaker check and, where needed, the code match).
 - **If G-S1 shows the hook can't tell a voice turn from a typed one** in `agent:main:main`, voice turns get their own session key `agent:main:voice-*`, sharing memory but not chat history.
+- **G-S1 result (2026-11-11):** a voice turn reaches the hook as `channel: "webchat"`, owner, no sender id; the Control UI's chat also says `webchat`. So P5.3 first tests a marker the voice service sets (Chat Completions' `user` field reaching `requester.senderId`, or its own device token). Until one passes, the guard treats every `webchat` turn as voice.
 - **If G-S8 misses its bar,** voice confirmation stays off and every confirmation is a tap, until a better model passes.
 
 ### 4.4 Memory provenance
 
-`memory-core` and agentmemory have no provenance field. v0 marks lines itself: a write whose text is Adam's own (typed, or spoken and speaker-verified) gets an `adam-said <date>` tag; a write Jorah chose itself and Adam confirmed after outside text gets `unverified <date> <source host>`. A recall hit without `adam-said` taints the session. Dreaming runs outside tool calls, so the guard cannot see it: spike G-S6 checks whether Dreaming can exclude tainted sessions, and if not, Dreaming's nightly promotions are reviewed by diff until it can (Adam decides, D8).
+`memory-core` and agentmemory have no provenance field. v0 marks lines itself: a write whose text is Adam's own (typed, or spoken and speaker-verified) gets an `adam-said <date>` tag; a write Jorah chose itself and Adam confirmed after outside text gets `unverified <date> <source host>`. A recall hit without `adam-said` taints the session. Dreaming runs outside tool calls, so the guard cannot see it. **G-S6 (docs):** Dreaming already drops candidates whose provenance is `untrusted`, so raw web text isn't promoted; it can't exclude by taint. The open path is Jorah writing planted text into its own notes, which the write rule above covers. Each `MEMORY.md` rewrite is kept in plugin state and listed in `DREAMS.md`, so P5.6 adds a short nightly change summary for Adam (D8).
 
 ### 4.5 Outbound filter
 
-On `message_sending` and `reply_payload_sending` [docs-only: `plugins/hooks/messages.md`]: in a tainted session, strip any URL not seen before, and replace it with "[link removed: not from a source you gave me]". `linkPreview: false` checked live (SEC-T40).
+On `message_sending` and `reply_payload_sending` [docs-only: `plugins/hooks/messages.md`]: in a tainted session, strip any URL not seen before, and replace it with "[link removed: not from a source you gave me]". `linkPreview: false` checked live (SEC-T40). **G-S3 (2026-11-11): these hooks don't fire for voice (Chat Completions), CLI or `chat.send` replies, so the filter covers Telegram only;** spoken replies carry no clickable link.
 
 ### 4.6 Kill switch, status and audit
 
@@ -168,7 +171,7 @@ On `message_sending` and `reply_payload_sending` [docs-only: `plugins/hooks/mess
 
 ## 5. Spikes before building
 
-Each ends in a short note in `docs/evidence/p5/`. All on `jorah-dev` except G-S0.
+Each ends in a short note in `docs/evidence/p5/`. All on `jorah-dev` except G-S0. **G-S0 to G-S7 ran on 2026-11-11:** `docs/evidence/p5/2026-11-11-g-s0.md` and `2026-11-11-spikes-g-s1-to-g-s7.md`. G-S7 failed: the Gateway won't start from a config Jorah's user can't change, so W3.8's fallback (a hash check under another account, a schedule on Adam's yes) replaces it.
 
 | ID | Question | Decides |
 |---|---|---|
@@ -302,12 +305,12 @@ A model that gives in but is blocked still passes. A model that is never tested 
 |---|---|---|---|
 | P5.0 This plan | Claude | Read and answer section 10 | Source |
 | P5.1 G-S0, read-only on live. **Done 2026-11-11:** `docs/evidence/p5/2026-11-11-g-s0.md`, findings F1 to F7 | Claude | No (read-only, no secrets) | Live read |
-| P5.2 G-S1 to G-S7 on `jorah-dev` | Claude; Adam gives `jorah-dev` an API key profile at a terminal | **Yes:** starting `jorah-dev` with a key, and the spike plugins on it | Tests on scratch |
+| P5.2 G-S1 to G-S7 on `jorah-dev`. **Done 2026-11-11**, except G-S8 and G-S9 | Claude; Adam gives `jorah-dev` an API key profile at a terminal | **Yes:** starting `jorah-dev` with a key, and the spike plugins on it | Tests on scratch |
 | P5.2b G-S8 and G-S9: speaker model, enrolment, false-accept runs | Claude; Adam enrols and answers | **Yes:** the model download (licence and source shown first) | Tests on the PC, outside the live service |
 | P5.3 Build `plugins/jorah-guard`, the matrix, the corpus, `scripts/pc/apply-guard.sh`, `scripts/pc/guard-unfreeze.sh`; unit tests; `/security-review` | Claude | No (source); push to `main` after `just check` | Source, unit tests |
 | P5.4 Install on `jorah-dev`, run 6.1 and 6.3 there | Claude | **Yes:** the install on `jorah-dev` | Tests on scratch |
 | P5.5 Live install: guard plugin, `config/pc/guard.patch.json5`, remove the hook probe | Adam runs the root script; Claude previews | **Yes:** plugin consent, config patch, after coordinating with the other sessions | Install, launch |
-| P5.6 Live runs; G-S7's root-owned config if it passed on scratch | Claude and Adam | **Yes** for the config move | Live |
+| P5.6 Live runs; the config hash check that replaces G-S7 (W3.8 fallback) | Claude and Adam | **Yes** for the hash check's schedule | Live |
 | P5.7 3.12a review | Claude prints, Adam signs | Adam signs | Live |
 | P5.8 Verdict in `docs/evidence/p5/gate.md`, trust report v0, roadmap and runbook updated | Claude | Adam reads | Done |
 

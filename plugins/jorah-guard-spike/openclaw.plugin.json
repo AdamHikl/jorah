@@ -1,0 +1,15 @@
+{
+  "id": "jorah-guard-spike",
+  "name": "Jorah guard spike",
+  "description": "P5 spikes G-S1 to G-S5, jorah-dev only: records what the hooks see (context fields, tool names, parameter keys, result shapes) to a JSONL file. Never blocks, and never records argument or message values unless logValues is on.",
+  "categories": ["other"],
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logFile": { "type": "string", "description": "JSONL output; default ~/.openclaw-jorah-dev/spike/hooks.jsonl" },
+      "logValues": { "type": "boolean", "description": "Also record short argument values (scratch profiles only)" }
+    }
+  }
+}

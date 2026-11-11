@@ -1,0 +1,49 @@
+// jorah-dev mirrors the live Jorah for P5's tests (docs/plan/p5-plan.md section 7), with these differences:
+// no Telegram (the block and its stored bot token go), no jorah-voice-provider (it would reach the live
+// voice service), no acpx or ACP yet (Claude Code jobs need their own config dir, P5.4), no jorah-github
+// yet (a stand-in GitHub comes in P5.4), no agentmemory yet (its own instance on other ports, P5.4), and
+// no approvals route (an approval with no route is refused, which the tests rely on).
+// Applied after `agents add background` and `agents add deep` on jorah-dev. Scratch only, never live.
+{
+  channels: { telegram: null },
+  plugins: {
+    allow: ["anthropic", "memory-core", "active-memory", "memory-wiki", "device-pair", "talk-voice",
+            "browser", "duckduckgo", "jorah-guard-spike"],
+    entries: { "llama-cpp": null, acpx: null, codex: null },
+  },
+  acp: { enabled: false },
+  browser: { evaluateEnabled: false },
+  session: { reset: { mode: "daily", atHour: 4, idleMinutes: 240 } },
+  skills: { workshop: { autonomous: { mode: "auto" } } },
+  agents: {
+    entries: {
+      main: {
+        model: { primary: "anthropic/claude-haiku-5-5", fallbacks: [] },
+        sandbox: { mode: "non-main" },
+        subagents: { allowAgents: ["background", "deep"] },
+        tools: {
+          deny: ["image_generate", "video_generate", "music_generate"],
+          sandbox: { tools: { alsoAllow: ["group:memory", "group:web", "browser", "message", "heartbeat_respond",
+                                          "cron", "automations", "skill_workshop", "agents_list"] } },
+        },
+      },
+      background: {
+        models: {
+          "anthropic/claude-sonnet-5-5": { agentRuntime: { id: "openclaw" } },
+          "anthropic/claude-haiku-5-5": { agentRuntime: { id: "openclaw" } },
+        },
+        model: { primary: "anthropic/claude-sonnet-5-5", fallbacks: [] },
+        identity: { name: "Jorah (background)" },
+        tools: { deny: ["image_generate", "video_generate", "music_generate", "message"],
+                 sandbox: { tools: { alsoAllow: ["group:web"] } } },
+      },
+      deep: {
+        models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "openclaw" } } },
+        model: { primary: "anthropic/claude-opus-5-5", fallbacks: [] },
+        identity: { name: "Jorah (deep)" },
+        tools: { deny: ["image_generate", "video_generate", "music_generate", "message"],
+                 sandbox: { tools: { alsoAllow: ["group:web"] } } },
+      },
+    },
+  },
+}

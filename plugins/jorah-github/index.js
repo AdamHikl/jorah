@@ -80,6 +80,9 @@ export default {
 
     api.registerTool({
       name: "github_list_repos",
+      // Visible to the model directly, not behind tool search: saves a search step and a failed
+      // direct try per GitHub turn (measured 2026-11-11). Needs main's allow list entry.
+      catalogMode: "direct-only",
       description: "List Adam's GitHub repos (name, description, private or public), most recently changed first. Read-only, no approval. Use it to find a repo by what it's about, or to match a misheard or misspelt name before github_clone.",
       parameters: { type: "object", additionalProperties: false, properties: {} },
       async execute() {
@@ -95,6 +98,9 @@ export default {
 
     api.registerTool({
       name: "github_clone",
+      // Visible to the model directly, not behind tool search: saves a search step and a failed
+      // direct try per GitHub turn (measured 2026-11-11). Needs main's allow list entry.
+      catalogMode: "direct-only",
       description: "Clone one of Adam's GitHub repos into ~/work/<repo> (read-only, no approval needed), with remote `github` set up for Claude Code. Refuses if the folder exists: use github_sync then.",
       parameters: {
         type: "object",
@@ -121,6 +127,9 @@ export default {
 
     api.registerTool({
       name: "github_push_branch",
+      // Visible to the model directly, not behind tool search: saves a search step and a failed
+      // direct try per GitHub turn (measured 2026-11-11). Needs main's allow list entry.
+      catalogMode: "direct-only",
       description: "Push a jorah/<task> branch from ~/work/<project> to its GitHub repo. Adam approves each push. Never pushes main or forces; refuses a repo whose rulesets aren't set up yet.",
       parameters: params,
       async execute(_id, p) {
@@ -140,6 +149,9 @@ export default {
 
     api.registerTool({
       name: "github_sync",
+      // Visible to the model directly, not behind tool search: saves a search step and a failed
+      // direct try per GitHub turn (measured 2026-11-11). Needs main's allow list entry.
+      catalogMode: "direct-only",
       description: "Fetch the latest branches of ~/work/<project>'s GitHub repo into Jorah's local mirror (read-only, no approval needed). Afterwards a Claude Code session in that project runs `git fetch github` and works from github/main.",
       parameters: {
         type: "object",
@@ -160,6 +172,9 @@ export default {
 
     api.registerTool({
       name: "github_open_pr",
+      // Visible to the model directly, not behind tool search: saves a search step and a failed
+      // direct try per GitHub turn (measured 2026-11-11). Needs main's allow list entry.
+      catalogMode: "direct-only",
       description: "Open a draft pull request on GitHub from a jorah/<task> branch already pushed. Adam approves each one. Jorah never merges.",
       parameters: {
         ...params,

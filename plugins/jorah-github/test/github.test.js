@@ -148,7 +148,7 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   assert.deepEqual(Object.keys(tools).sort(), ["github_clone", "github_list_repos", "github_open_pr", "github_push_branch", "github_sync"]);
   assert.equal(await hook({ toolName: "github_clone", params: { repo: "proj" } }), undefined, "clone only reads: no prompt");
   assert.equal(await hook({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
-  assert.equal(tools.github_push_branch.catalogMode, undefined, "must be findable through tool search");
+  for (const t of Object.values(tools)) assert.equal(t.catalogMode, "direct-only", `${t.name} must be visible directly (2026-11-11)`);
   const direct = await hook({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
   assert.match(direct.requireApproval.description, /^Push branch jorah\/x from ~\/work\/proj to AdamHikl\/proj\n\(Files not listed: /);
   assert.deepEqual(direct.requireApproval.allowedDecisions, ["allow-once", "deny"]);

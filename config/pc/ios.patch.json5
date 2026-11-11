@@ -1,0 +1,65 @@
+// DRAFT. Not applied. Route 2 of docs/adr/0002-ios-builds-on-the-mac.md: Jorah's iOS tools
+// (plugins/jorah-ios, issue 9) call the runner on the Mac (services/ios-runner, issue 8) over the
+// tailnet, under contract docs/contracts/jorah-ios-v1.md. Apply only after Adam answers ADR 0002's
+// D1 (route 2) and D2 (waiver accepted), and after issue 9's plugin is installed on the PC.
+//
+// gateway.nodes is deliberately NOT here: no node, pluginTools.enabled stays false, system.run
+// stays denied. If a dry run shows any gateway.nodes update, stop.
+//
+// Dry run: not run. It can't be yet: the plugin isn't installed, so plugins.entries.jorah-ios
+// would fail validation, and this session doesn't touch the live Gateway. On the PC, after issue 9:
+//   openclaw --profile jorah config patch --file /opt/jorah/config/pc/ios.patch.json5 --dry-run
+// Expected: "Dry run successful" with updates only under plugins.allow, plugins.entries.jorah-ios
+// and agents.entries.main.tools.sandbox.tools.alsoAllow; nothing under gateway.*. Plugin config
+// reloads without a Gateway restart (docs gateway/configuration/hot-reload.md, "Plugin config").
+//
+// Merge patch: arrays are replaced whole. Both lists below are copied from main at b3dc2f2
+// (plugins.allow from github.patch.json5, alsoAllow from github-tools.patch.json5) plus the new
+// entries. Before the dry run, compare each with `config get plugins.allow` and
+// `config get agents.entries.main.tools.sandbox.tools.alsoAllow` on the PC, and add anything
+// applied since; leaving an entry out removes it.
+// Undo: github.patch.json5, github-tools.patch.json5, and `plugins.entries.jorah-ios: null`.
+{
+  plugins: {
+    allow: [
+      "anthropic",
+      "telegram",
+      "acpx",
+      "memory-core",
+      "active-memory",
+      "memory-wiki",
+      "device-pair",
+      "talk-voice",
+      "browser",
+      "duckduckgo",
+      "jorah-voice-provider",
+      "jorah-github",
+      "jorah-ios",
+    ],
+    entries: {
+      "jorah-ios": {
+        config: {
+          // The Mac's MagicDNS name, filled on the PC. Tailnet TCP 47820, forwarded by Serve.
+          runnerUrl: "http://<mac MagicDNS name>:47820",
+          // Shared HMAC key, mode 600, made by Adam (contract section 4). Never the key itself.
+          keyFile: "/home/jorah/.config/jorah-ios/runner.key",
+          // For early refusal and card text only. The runner's own allowlist decides.
+          projects: ["threadfolio", "mizyun"],
+        },
+      },
+    },
+  },
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
+          "ios_build", "ios_install", "ios_status",
+          "agentmemory__*",
+        ] } } },
+      },
+    },
+  },
+}

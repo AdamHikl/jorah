@@ -1539,7 +1539,7 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 
 **Session M19-A. Adam and Claude. iOS.**
 
-- [ ] **19.1 Adam, Claude drafts.** TOPO-B5 dock test, 24 hours. Create `jorah-build`, wrappers in `/usr/local/libexec/jorah` root-owned, headless node, explicit allowlist, or typed MCP if K10a chose it. **Typed MCP is the only route.** `gateway.nodes.commands.deny` is one Gateway-wide list with no per-node form [docs-only: `nodes/command-policy.md`], so taking `system.run` off it opens that layer on `jorah-desk`, `jorah-lab`, the Pi and any other node, leaving only their approvals. If K10a fails, that means **no remote builds**, unless Adam accepts the wider change in writing. `[L]`
+- [ ] **19.1 Adam, Claude drafts.** TOPO-B5 dock test, 24 hours. Create `jorah-build`, wrappers in `/usr/local/libexec/jorah` root-owned, headless node, explicit allowlist, or typed MCP if K10a chose it. **Typed MCP is the only route.** `gateway.nodes.commands.deny` is one Gateway-wide list with no per-node form [docs-only: `nodes/command-policy.md`], so taking `system.run` off it opens that layer on `jorah-desk`, `jorah-lab`, the Pi and any other node, leaving only their approvals. If K10a fails, that means **no remote builds**, unless Adam accepts the wider change in writing. `[L]` **2026-11-11:** ADR 0002 proposes route 2 instead (Gateway plugin plus a Mac runner, no node), pending Adam's decisions D1 to D4 there.
 - [ ] **19.2 Claude.** TOPO-S4, S6: `xcodebuild`, `simctl`, `devicectl`. `[L]`
 
 **Session M19-B. Adam and Claude. Fusion, on the PC under `jorah-desk` with a console lease (`05` row 10, `02` 5.7), the Mac only as fallback. Parallel with M19-A.**

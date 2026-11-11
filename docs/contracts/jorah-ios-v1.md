@@ -25,7 +25,7 @@ Starts a build on the Mac. **Card first.** Returns at once with a `run_id`; the 
 |---|---|---|---|
 | `project` | string, a key in the allowlist (`^[a-z0-9][a-z0-9-]{0,39}$`) | yes | e.g. `threadfolio`, `mizyun` |
 | `kind` | `"simulator"` \| `"device"` \| `"archive"` | yes | Simulator build, device build signed for Development, or an `.xcarchive` |
-| `ref` | string: a branch name (`^[A-Za-z0-9._/-]{1,100}$`, no `..`) or a 40-hex commit | no, default the repo's default branch | What to build |
+| `ref` | string: `main` or `jorah/<task>`, where `<task>` matches `^[a-z0-9][a-z0-9._-]{0,62}$`, has no `..` and doesn't end in `.` or `.lock` | no, default `main` | What to build. Amended 2026-11-11 (issue 8): only these two forms, the limit from issue 8, so Jorah can build `main` or its own branches and nothing else. Proposed default, waiting for Adam |
 | `configuration` | `"Debug"` \| `"Release"` | no, default `"Debug"` | |
 
 Card text (title "Jorah wants to build an iOS app"): project, repo, `ref` and the exact commit it resolved to, kind, configuration, signing team (device and archive), and "Development certificate. Nothing is uploaded." The plugin resolves the commit by calling runner `sync` inside the hook; if that fails, the call is blocked and the card is not shown, because the card must not ask about a commit it can't name. After `allow-once`, the plugin calls `build-sim`, `build-device` or `archive` with that exact `commit`.
@@ -59,7 +59,7 @@ Jorah polls a running build with `ios_status { run_id, wait_seconds: 120 }`.
 
 ## 2. Result JSON
 
-Every tool returns a text summary for the chat plus this object as `details`. The runner returns the same object (`run` below) in its HTTP body, and the plugin adds only `error` codes of its own (`MAC_UNREACHABLE`, `AUTH_FAILED`, `DENIED`, `CONTRACT_MISMATCH`).
+Every tool returns a text summary for the chat plus this object as `details`. The runner returns the same object (`run` below) in its HTTP body, and the plugin adds only `error` codes of its own (`MAC_UNREACHABLE`, `AUTH_FAILED`, `DENIED`, `CONTRACT_MISMATCH`). Replies that carry no run (`sync`, `log`, `devices`, `status` without `run_id`) put their fields beside `ok`: `{ contract, ok, commit, repo, default_branch, error }` and so on.
 
 ```json
 {
@@ -97,7 +97,7 @@ Every tool returns a text summary for the chat plus this object as `details`. Th
 | `state` | `queued`, `running`, `succeeded`, `failed`, `cancelled`, `unknown` | `unknown` when the runner lost track (restart, Mac slept). Never guessed |
 | `tier` | `none`, `build`, `install`, `launch` | **The highest step that finished and was checked.** See below |
 | `tier_note` | one sentence | Says what the tier does not prove |
-| `artifact.kind` | `app`, `xcarchive` | `null` until a build succeeds. `path` is on the Mac. `bytes` and `sha256` from the file, never estimated |
+| `artifact.kind` | `app`, `xcarchive` | `null` until a build succeeds. `path` is on the Mac, in `<handoff>/<run-id>/`. `bytes` and `sha256` from the files, never estimated. Both kinds are folders: `bytes` is the sum of their files, and `sha256` is SHA-256 over one line per entry, sorted by relative path: `<path>\0file\0<sha256 of the file>`, `<path>\0link\0<target>` or `<path>\0dir` (amended 2026-11-11, issue 8) |
 | `device` | `{ "alias", "model", "os_version" }` or `null` | Install runs only |
 | `summary` | counts from the build result, `first_errors` at most 5 strings of at most 300 characters | A count that couldn't be read is `null`, never `0` |
 | `log.tail` | the last 16 KiB of the log, UTF-8, cut at a line start | Marked untrusted by the plugin (section 5) |
@@ -122,7 +122,8 @@ A failed install after a good build is `state: "failed"` with `tier: "build"` on
 |---|---|---|---|
 | `MAC_UNREACHABLE` | No TCP connection in 5 s, or the Mac is asleep or off the tailnet. Jorah says "waiting for the Mac" | yes | plugin |
 | `AUTH_FAILED` | Runner rejected the signature, time or nonce | no | plugin, from runner 401 |
-| `CONTRACT_MISMATCH` | Runner speaks another major version | no | plugin |
+| `CONTRACT_MISMATCH` | Runner speaks another major version | no | plugin; also the runner, with HTTP 400, to a signed request whose `X-Jorah-Contract` it doesn't speak |
+| `TREE_DIRTY` | The runner's clone has uncommitted or untracked changes. The runner never resets or stashes; Adam looks (added 2026-11-11, issue 8) | no | runner |
 | `DENIED` | Adam denied the card, or it timed out (10 minutes) | no | plugin |
 | `BAD_ARGUMENT` | A field fails the schema or the runner's own check | no | both |
 | `PROJECT_NOT_ALLOWED` | `project` is not in the allowlist | no | both |
@@ -159,7 +160,7 @@ A failed install after a good build is `state: "failed"` with `tier: "build"` on
 | `devices` | `POST /v1/devices` | `{}` → `{ devices: [{ alias, model, os_version, connected }] }` | `ios_status` with `devices` |
 | (health) | `GET /v1/health` | → `{ contract, runner_version, busy }`, unsigned, nothing private | plugin before each call |
 
-Build verbs take a `commit`, never a branch: the plugin always passes the commit the card showed. Build verbs answer within 2 s with `state: "queued"` or `"running"`; `install-device` waits for its result. Unknown fields and unknown routes are `BAD_ARGUMENT`.
+Build verbs take a `commit`, never a branch: the plugin always passes the commit the card showed. Build verbs answer within 2 s with `state: "queued"` or `"running"`; `install-device` waits for its result. Unknown fields and unknown routes are `BAD_ARGUMENT`. HTTP status: 200 for every JSON reply, `ok` true or false; 401 with an empty body for any auth failure; 404 unknown route, 411 no length, 413 over 8 KiB, 415 not JSON, 400 unreadable JSON or contract mismatch, each with a `BAD_ARGUMENT` (or `CONTRACT_MISMATCH`) body.
 
 **Key.** One random 32-byte key, the same on both machines, never in config, a chat, an environment variable or the repo:
 - PC: `/home/jorah/.config/jorah-ios/runner.key`, owner `jorah`, mode 600. The plugin reads it per call, as `jorah-github` reads its App key.
@@ -180,7 +181,7 @@ The runner rejects, with 401 and no detail: a missing header, a time more than 6
 
 ## 5. Logs, including over 16 MiB
 
-- The full log stays on the Mac in the run's handoff folder. Nothing large crosses to the PC, and there is no 16 MiB `file.fetch` cap on this route because it uses no node.
+- The full log stays on the Mac in the runner's state folder (`<stateDir>/runs/<run-id>/run.log`), not the handoff folder, so the runner can rotate old logs without touching Adam's artifacts (amended 2026-11-11, issue 8). It is capped at `maxLogBytes` (default 64 MiB): the first three quarters and the last quarter are kept, the middle is dropped with a note, and `log.complete` is then `false`. Error and warning counts in `summary` cover every line, dropped ones included. Nothing large crosses to the PC, and there is no 16 MiB `file.fetch` cap on this route because it uses no node.
 - Every `run` carries `log.tail` (last 16 KiB) and `summary.first_errors`. That answers most questions.
 - For more, `ios_status { run_id, log: { offset, max_bytes } }` returns one page of at most 256 KiB. A log of any size is read page by page; Jorah should read from the end back, or around `first_errors`, rather than all of it.
 - `text` is UTF-8 with invalid bytes replaced; pages are cut on byte offsets and the plugin trims to whole lines.
@@ -188,22 +189,32 @@ The runner rejects, with 401 and no detail: a missing header, a time more than 6
 
 ## 6. Allowlists (runner side, decides)
 
-Owned by an admin, readable by `jorah-build`, not writable by it. Issue 11 fills it. Shape:
+Owned by an admin, readable by `jorah-build`, not writable by it. Issue 11 fills it. Plain JSON, not JSON5, because the runner uses the Python standard library only (amended 2026-11-11, issue 8). The runner refuses to start on a file that group or others can write, on unknown keys, or on any field that fails its check. Full shape, with placeholders: `services/ios-runner/projects.example.json`; every key is described in `services/ios-runner/README.md`. In short:
 
-```json5
+```json
 {
-  contract: "jorah-ios/1",
-  installAllowed: true,                 // ADR D4
-  team: "<Apple team ID>",              // ADR D3
-  projects: {
-    threadfolio: { repo: "AdamHikl/threadfolio", workspace: "Threadfolio.xcodeproj", scheme: "Threadfolio", bundleId: "<id>" },
+  "contract": "jorah-ios/1",
+  "installAllowed": false,
+  "team": "<Apple team ID>",
+  "projects": {
+    "threadfolio": {
+      "repo": "AdamHikl/threadfolio", "path": "/Users/jorah-build/src/threadfolio",
+      "workspace": "ios/ThreadfolioDev.xcworkspace", "scheme": "ThreadfolioDev", "bundleId": "com.threadfolio.dev",
+      "prepare": ["npm-ci", "expo-prebuild-npx", "pod-install"], "restore": ["package.json"],
+      "env": { "THREADFOLIO_APP_VARIANT": "dev" },
+      "signing": { "style": "manual", "profiles": { "ThreadfolioDev": "Jorah com.threadfolio.dev" } }
+    }
   },
-  devices: { "adam-iphone": { udid: "<udid>" } },
+  "devices": { "adam-iphone": { "udid": "<udid>" } }
 }
 ```
+
+`installAllowed` is ADR D4 and `team` is D3. `env` holds fixed, non-secret values only: names that look like secrets (containing `TOKEN`, `SECRET`, `PASSWORD`, `PRIVATE`, `CREDENTIAL` or `API_KEY`), and names that change what runs (`PATH`, `DYLD_*`, `GIT_*`, `NODE_OPTIONS` and others), are refused. Manual signing writes one `-xcconfig` per run with `CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY = Apple Development`, the team, and `PROVISIONING_PROFILE_SPECIFIER = $(JORAH_PROFILE_$(TARGET_NAME))`, so each target gets its own profile (`docs/runbooks/ios-builds.md` 3.1). `allowProvisioningUpdates` is per project, off by default, and can't work in `jorah-build`, which has no Apple Account (same runbook).
 
 The plugin's config carries only `runnerUrl`, `keyFile` and the project names for early refusal.
 
 ## 7. What the runner session (issue 8) keeps compatible
 
 Its verbs map one to one onto the routes in section 4. It adds the HTTP and HMAC layer in front of them. Its `install-device` takes `launch`. Its results use section 2's object and section 3's codes.
+
+Done on 2026-11-11 (runner 2.0.0): `jorah-ios-runner serve` is the HTTP front end, and `jorah-ios-runner call <verb> '<json>'` runs the same checks without HTTP, for hand runs. What is still open is listed in `docs/evidence/issue-8/README.md`.

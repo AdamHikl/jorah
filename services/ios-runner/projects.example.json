@@ -1,31 +1,39 @@
 {
-  "schema": 1,
-  "state_dir": "~/Library/Application Support/jorah-ios-runner",
-  "handoff_dir": "/Users/Shared/jorah-handoff",
+  "contract": "jorah-ios/1",
+  "installAllowed": false,
+  "team": "ABCDE12345",
+  "stateDir": "~/Library/Application Support/jorah-ios-runner",
+  "handoffDir": "/Users/Shared/jorah-handoff",
+  "keyFile": "~/.config/jorah-ios/runner.key",
+  "listen": { "host": "127.0.0.1", "port": 47820 },
   "path": ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/homebrew/bin"],
-  "developer_dir": null,
-  "max_log_bytes": 8388608,
-  "keep_runs": 100,
+  "developerDir": null,
+  "maxLogBytes": 67108864,
+  "keepRuns": 200,
   "timeouts": {
     "git": 300,
     "prepare": 1800,
-    "build": 3600,
-    "archive": 3600,
-    "export": 900,
-    "install": 600,
+    "build": 2700,
+    "install": 300,
     "launch": 120,
     "devices": 60,
     "codesign": 60
   },
   "projects": {
     "example-app": {
+      "repo": "example-owner/example-app",
       "path": "/Users/jorah-build/src/example-app",
       "workspace": "ios/ExampleApp.xcworkspace",
       "scheme": "ExampleApp",
-      "configuration": "Debug",
-      "bundle_id": "com.example.placeholder",
-      "team_id": "ABCDE12345",
-      "prepare": ["pnpm-install", "pod-install"]
+      "bundleId": "com.example.placeholder",
+      "prepare": ["pnpm-install", { "step": "expo-prebuild", "dir": "." }, "pod-install"],
+      "restore": ["package.json"],
+      "env": { "EXAMPLE_APP_VARIANT": "dev" },
+      "signing": {
+        "style": "manual",
+        "profiles": { "ExampleApp": "Jorah com.example.placeholder" },
+        "allowProvisioningUpdates": false
+      }
     }
   },
   "devices": {

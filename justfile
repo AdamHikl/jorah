@@ -26,6 +26,7 @@ supply-chain:
 # Needs no install, model or network.
 unit:
     python3 -m unittest discover -s services/jorah-voice/tests
+    python3 -m unittest discover -s services/ios-runner/tests
     node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-guard-spike/test/ plugins/jorah-guard/test/
 
 # Mac only. Builds the mic and speaker client, and checks it against a stand-in server.
@@ -34,3 +35,21 @@ mac-ear:
     swiftc -O -swift-version 5 -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker clients/mac-ear/Info.plist clients/mac-ear/main.swift -o build/mac-ear
     build/mac-ear --self-test-wake
     python3 clients/mac-ear/test_fake_server.py build/mac-ear
+
+# Mac only, needs Xcode. A real build-sim of the fixture app, as the current user, with state in a temp folder.
+ios-runner-sample:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="$(mktemp -d -t jorah-ios-runner)"
+    python3 - "$dir" "$PWD/services/ios-runner/tests/fixtures/Sample" <<'PY'
+    import json, os, sys
+    state, fixture = sys.argv[1:]
+    config = {"schema": 1, "state_dir": state + "/state", "handoff_dir": state + "/handoff",
+              "path": ["/usr/bin", "/bin", "/usr/sbin", "/sbin"],
+              "projects": {"sample": {"path": fixture, "project": "Sample.xcodeproj", "scheme": "Sample",
+                                      "configuration": "Debug", "bundle_id": "dev.jorah.fixture.sample"}}}
+    with open(state + "/projects.json", "w") as f:
+        json.dump(config, f)
+    os.chmod(state + "/projects.json", 0o600)
+    PY
+    JORAH_IOS_RUNNER_CONFIG="$dir/projects.json" services/ios-runner/bin/jorah-ios-runner build-sim sample

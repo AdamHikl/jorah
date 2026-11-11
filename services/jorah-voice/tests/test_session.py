@@ -454,6 +454,71 @@ class ShortWindows(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m for m in h.sent if m["type"] == "closed"], [])
 
 
+class ClientEnds(unittest.IsolatedAsyncioTestCase):
+    """iPhone Talk: a session closed from the PC makes the app fall back to Apple speech (2026-11-11)."""
+
+    def harness(self, text="Hello there", **options):
+        self.now = [0.0]
+        return Harness(text=text, clock=lambda: self.now[0], client_ends=True, **options)
+
+    async def watch_once(self, h):
+        task = asyncio.create_task(h.session.watch())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        if not h.session.closed:
+            h.session.closed = True
+        await asyncio.wait_for(task, 2)
+        h.session.closed = False
+
+    def closes(self, h):
+        return [m for m in h.sent if m["type"] == "closed"]
+
+    async def test_minutes_of_quiet_after_a_reply_keep_it_open(self):
+        h = self.harness()
+        await h.say()
+        await h.settle()
+        self.now[0] += 180
+        await self.watch_once(h)
+        self.assertEqual(self.closes(h), [])
+        self.assertFalse(h.session.standby)
+
+    async def test_a_question_three_minutes_later_is_answered(self):
+        h = self.harness()
+        await h.say()
+        await h.settle()
+        self.now[0] += 180
+        await self.watch_once(h)
+        await h.say()
+        await h.settle()
+        self.assertEqual(len(h.brain.prompts), 2)
+
+    async def test_thanks_goes_on_standby_without_closing(self):
+        h = self.harness(text="Thanks.")
+        await h.say()
+        await h.settle()
+        self.assertTrue(h.session.standby)
+        self.assertEqual(self.closes(h), [])
+        self.assertEqual([m.get("reason") for m in h.sent if m["type"] == "standby"], ["said thanks"])
+
+    async def test_on_standby_nothing_is_heard(self):
+        h = self.harness(text="Goodbye.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["Talk soon."])
+        h.listener.text = "What's the weather?"
+        heard = len(h.listener.heard)
+        await h.say()
+        await h.settle()
+        self.assertEqual(len(h.listener.heard), heard)
+        self.assertEqual(h.brain.prompts, [])
+
+    async def test_the_hard_limit_still_closes(self):
+        h = self.harness()
+        self.now[0] = 1800
+        await self.watch_once(h)
+        self.assertEqual([m["reason"] for m in self.closes(h)], ["30 minute limit"])
+
+
 class Rates(unittest.TestCase):
     def test_24_khz_becomes_16_khz(self):
         from array import array
@@ -475,13 +540,13 @@ class Hello(unittest.TestCase):
         return json.dumps({"type": "hello", **fields})
 
     def test_right_token(self):
-        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False}
+        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False, "client_ends": False}
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN), self.TOKEN), plain)
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN, barge_in=True), self.TOKEN), {**plain, "barge_in": True})
 
     def test_the_talk_relay_options(self):
-        hello = parse_hello(self.hello(token=self.TOKEN, input_rate=24000, follow_up=True), self.TOKEN)
-        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": True})
+        hello = parse_hello(self.hello(token=self.TOKEN, input_rate=24000, client_ends=True), self.TOKEN)
+        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": False, "client_ends": True})
 
     def test_an_unknown_rate_is_refused(self):
         self.assertIsNone(parse_hello(self.hello(token=self.TOKEN, input_rate=44100), self.TOKEN))

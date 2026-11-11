@@ -296,4 +296,8 @@ def parse_hello(message, expected_token):
         "input_rate": rate,
         # Short windows (04 5.3) for clients that open per conversation, such as the iPhone's Talk.
         "follow_up": hello.get("follow_up") is True,
+        # Only the client ends the session, apart from the hard limit: the iPhone's Talk takes a
+        # session closed from here for a dropped line, retries, then falls back to Apple speech
+        # and the system voice (2026-11-11). Windows and goodbyes put it on standby instead.
+        "client_ends": hello.get("client_ends") is True,
     }

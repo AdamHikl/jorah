@@ -86,13 +86,14 @@ export function createJorahBridge(req, { WebSocketImpl = globalThis.WebSocket, r
         req.onResponseDone?.({ status: "cancelled", reason: "barge-in" });
         break;
       case "state":
-        if (message.state === "listening" && replying) {
+        if ((message.state === "listening" || message.state === "standby") && replying) {
           replying = false;
           req.onResponseDone?.({ status: "completed" });
         }
         break;
       case "closed":
-        // jorah-voice ended the call: goodbye, thanks, or a quiet window ran out.
+        // jorah-voice ended the call: only its 30-minute limit, since Talk sends client_ends.
+        // Goodbye and thanks put it on standby instead, until Talk hangs up.
         closing = true;
         finish("completed");
         break;
@@ -119,7 +120,9 @@ export function createJorahBridge(req, { WebSocketImpl = globalThis.WebSocket, r
         ws = new WebSocketImpl(config.url);
         ws.binaryType = "arraybuffer";
         ws.addEventListener("open", () => {
-          ws.send(JSON.stringify({ type: "hello", token, barge_in: true, input_rate: RATE, follow_up: true }));
+          // client_ends: only Talk hangs up. The iPhone app takes a session closed from the PC for a
+          // dropped line, retries, then falls back to Apple speech and the system voice (2026-11-11).
+          ws.send(JSON.stringify({ type: "hello", token, barge_in: true, input_rate: RATE, client_ends: true }));
         });
         ws.addEventListener("message", (event) => {
           if (!ready) {

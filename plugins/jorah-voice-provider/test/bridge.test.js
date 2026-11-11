@@ -44,10 +44,22 @@ async function connected() {
   return h;
 }
 
-test("hello asks for 24 kHz in, barge-in and the short windows", async () => {
+test("hello asks for 24 kHz in, barge-in, and that only Talk hangs up", async () => {
   await connected();
   const hello = JSON.parse(FakeSocket.last.sent[0]);
-  assert.deepEqual(hello, { type: "hello", token: "t".repeat(40), barge_in: true, input_rate: 24000, follow_up: true });
+  assert.deepEqual(hello, { type: "hello", token: "t".repeat(40), barge_in: true, input_rate: 24000, client_ends: true });
+});
+
+test("standby after a reply completes the response and keeps the call open", async () => {
+  const { bridge, calls } = await connected();
+  FakeSocket.last.serverSays({ type: "reply", text: "Talk soon." });
+  FakeSocket.last.serverSays({ type: "standby", reason: "said goodbye" });
+  FakeSocket.last.serverSays({ type: "state", state: "standby" });
+  assert.deepEqual(calls.slice(1), [
+    ["transcript", "assistant", "Talk soon.", false],
+    ["done", "completed"],
+  ]);
+  assert.equal(bridge.isConnected(), true);
 });
 
 test("audio flows both ways once ready", async () => {

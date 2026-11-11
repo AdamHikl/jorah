@@ -29,7 +29,7 @@ class VoiceSession:
     def __init__(self, ears, listener, speaker, brain, send_json, send_audio, on_close, *,
                  barge_in=False, idle_seconds=60, max_seconds=1800,
                  clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None,
-                 follow_up=False, input_rate=16000, filler_seconds=None):
+                 follow_up=False, input_rate=16000, filler_seconds=None, client_ends=False):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -56,6 +56,9 @@ class VoiceSession:
         self._follow_up = FollowUp(clock()) if follow_up else None
         self._resampler = Resampler(input_rate)
         self._filler_seconds = filler_seconds
+        self._client_ends = client_ends
+        # On standby, audio is dropped unheard until the client hangs up.
+        self.standby = False
         self.closed = False
         self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_audio": []}
 
@@ -64,7 +67,7 @@ class VoiceSession:
 
     async def feed(self, pcm):
         """Take mic audio. While Jorah is busy it is ignored, unless talking over him is switched on."""
-        if self.closed:
+        if self.closed or self.standby:
             return
         if self.busy() and not self._barge_in:
             self._idle.touch()
@@ -129,16 +132,31 @@ class VoiceSession:
             if self._clock() - self._started >= self._max_seconds:
                 await self.interrupt(quiet=True)
                 await self.close(f"{self._max_seconds // 60} minute limit")
-            elif self.busy() or self._held:
+            elif self.busy() or self._held or self.standby or self._client_ends:
+                # A client that ends the session itself keeps it open through quiet:
+                # Adam ends Talk with its control, or by saying goodbye or thanks.
                 continue
             elif self._follow_up:
                 verdict = self._follow_up.check(self._clock())
                 if verdict and verdict[0] == "close":
-                    await self.close(verdict[1])
+                    await self.end(verdict[1])
                 elif verdict:
                     self._turn = asyncio.create_task(self._say_only(STAY_WARNING))
             elif self._idle.expired():
-                await self.close(f"{self._idle_seconds}s of quiet")
+                await self.end(f"{self._idle_seconds}s of quiet")
+
+    async def end(self, reason):
+        """End the conversation: close it, or go on standby if only the client may close it."""
+        if not self._client_ends:
+            await self.close(reason)
+            return
+        if self.standby or self.closed:
+            return
+        self.standby = True
+        self._held, self._heard = [], None
+        self._version += 1
+        await self._send_json({"type": "standby", "reason": reason})
+        await self._state("standby")
 
     async def close(self, reason):
         if self.closed:
@@ -175,10 +193,10 @@ class VoiceSession:
             return
         if kind == "end":
             await self._speak_lines(["Talk soon."], heard_at, record=False)
-            await self.close("said goodbye")
+            await self.end("said goodbye")
             return
         if kind == "end_quietly":
-            await self.close("said thanks")
+            await self.end("said thanks")
             return
         if kind == "stay":
             if self._follow_up:

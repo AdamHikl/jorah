@@ -1,0 +1,13 @@
+{
+  "name": "@jorah/openclaw-jorah-ios",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lets Jorah build Adam's iOS apps on his Mac and install them on his iPhone, each on Adam's approval",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": { "pluginApi": ">=2026.10.9", "minGatewayVersion": "2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9", "pluginSdkVersion": "2026.10.9" }
+  }
+}

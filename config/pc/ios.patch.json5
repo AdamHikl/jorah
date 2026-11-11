@@ -1,24 +1,31 @@
 // DRAFT. Not applied. Route 2 of docs/adr/0002-ios-builds-on-the-mac.md: Jorah's iOS tools
 // (plugins/jorah-ios, issue 9) call the runner on the Mac (services/ios-runner, issue 8) over the
 // tailnet, under contract docs/contracts/jorah-ios-v1.md. Apply only after Adam answers ADR 0002's
-// D1 (route 2) and D2 (waiver accepted), and after issue 9's plugin is installed on the PC.
+// D1 (route 2) and D2 (waiver accepted), and after the plugin is installed on the PC
+// (`plugins install --link /opt/jorah/plugins/jorah-ios`, the way scripts/pc/install-github.sh
+// installs jorah-github). Main's tool allow list is the separate ios-tools.patch.json5, applied after this.
 //
 // gateway.nodes is deliberately NOT here: no node, pluginTools.enabled stays false, system.run
 // stays denied. If a dry run shows any gateway.nodes update, stop.
 //
 // Dry run: not run. It can't be yet: the plugin isn't installed, so plugins.entries.jorah-ios
-// would fail validation, and this session doesn't touch the live Gateway. On the PC, after issue 9:
+// would fail validation, and this session doesn't touch the live Gateway. On the PC:
 //   openclaw --profile jorah config patch --file /opt/jorah/config/pc/ios.patch.json5 --dry-run
-// Expected: "Dry run successful" with updates only under plugins.allow, plugins.entries.jorah-ios
-// and agents.entries.main.tools.sandbox.tools.alsoAllow; nothing under gateway.*. Plugin config
-// reloads without a Gateway restart (docs gateway/configuration/hot-reload.md, "Plugin config").
+// Expected: "Dry run successful" with updates only under plugins.allow and
+// plugins.entries.jorah-ios; nothing under gateway.* or agents.*. Plugin config reloads without a
+// Gateway restart (docs gateway/configuration/hot-reload.md, "Plugin config").
 //
-// Merge patch: arrays are replaced whole. Both lists below are copied from main at b3dc2f2
-// (plugins.allow from github.patch.json5, alsoAllow from github-tools.patch.json5) plus the new
-// entries. Before the dry run, compare each with `config get plugins.allow` and
-// `config get agents.entries.main.tools.sandbox.tools.alsoAllow` on the PC, and add anything
-// applied since; leaving an entry out removes it.
-// Undo: github.patch.json5, github-tools.patch.json5, and `plugins.entries.jorah-ios: null`.
+// Merge patch: arrays are replaced whole. plugins.allow is copied from github.patch.json5 on main
+// plus jorah-ios. Before the dry run, compare it with `config get plugins.allow` on the PC and add
+// anything applied since (jorah-guard, if P5 has enabled it by then); leaving an entry out
+// removes that plugin.
+//
+// jorah-guard (P5) blocks every tool that isn't in config/permission-matrix.json. Before the tools
+// can run, the matrix needs ios_build, ios_install and ios_status under "taintRead" (their results
+// repeat repo content; still blocked while Jorah is frozen; the card comes from this plugin, so the
+// guard adds none). That edit belongs to the P5 owner of the matrix.
+//
+// Undo: github.patch.json5 (plugins.allow without jorah-ios) and `plugins.entries.jorah-ios: null`.
 {
   plugins: {
     allow: [
@@ -41,24 +48,11 @@
         config: {
           // The Mac's MagicDNS name, filled on the PC. Tailnet TCP 47820, forwarded by Serve.
           runnerUrl: "http://<mac MagicDNS name>:47820",
-          // Shared HMAC key, mode 600, made by Adam (contract section 4). Never the key itself.
+          // Shared HMAC key, mode 600, made by Adam (contract section 4). Read per call. Never the key itself.
           keyFile: "/home/jorah/.config/jorah-ios/runner.key",
           // For early refusal and card text only. The runner's own allowlist decides.
           projects: ["threadfolio", "mizyun"],
         },
-      },
-    },
-  },
-  agents: {
-    entries: {
-      main: {
-        tools: { sandbox: { tools: { alsoAllow: [
-          "group:memory", "group:web", "browser", "message",
-          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
-          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
-          "ios_build", "ios_install", "ios_status",
-          "agentmemory__*",
-        ] } } },
       },
     },
   },

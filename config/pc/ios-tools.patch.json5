@@ -1,0 +1,29 @@
+// DRAFT. Not applied. Makes Jorah's iOS tools (plugins/jorah-ios, issue 9) reach main, the same way
+// github-tools.patch.json5 did for the GitHub tools: OpenClaw offers a plugin's tools only when the
+// agent's tool allow list permits them, and main has an explicit list. Only these three names are
+// added, not group:plugins. ios_build and ios_install still wait for Adam's card; ios_status reads.
+// Apply after ios.patch.json5 (the plugin must be installed and enabled first).
+//
+// Dry run: not run (the plugin isn't installed and this session doesn't touch the Gateway). On the PC:
+//   openclaw --profile jorah config patch --file /opt/jorah/config/pc/ios-tools.patch.json5 --dry-run
+// Expected: "Dry run successful" with one update, agents.entries.main.tools.sandbox.tools.alsoAllow.
+//
+// Merge patch: the array is the WHOLE list, copied from github-tools.patch.json5 on main (2026-11-11)
+// plus the three tools. Compare with `config get agents.entries.main.tools.sandbox.tools.alsoAllow`
+// on the PC first and add anything applied since; leaving an entry out removes that tool from main.
+// Undo: github-tools.patch.json5 (the same list without the ios_* tools).
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
+          "ios_build", "ios_install", "ios_status",
+          "agentmemory__*",
+        ] } } },
+      },
+    },
+  },
+}

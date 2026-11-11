@@ -476,3 +476,25 @@ test("listing repos: the owner's only, newest first, with a metadata-only token"
   assert.equal(repos[0].description, "Students looking for flatmates");
   assert.deepEqual(calls[1].body, { permissions: { metadata: "read" } });
 });
+
+test("tokens are reused per repo and permission until 10 minutes before they expire", async () => {
+  const { f } = keyFile();
+  const config = settings({ appId: "5686503", keyFile: f, owner: "AdamHikl" });
+  const t0 = Date.UTC(2026, 10, 11, 17, 0, 0);
+  let minted = 0;
+  const fetchImpl = async (url) => {
+    const reply = (data) => ({ ok: true, status: 200, json: async () => data });
+    if (url.endsWith("/installation")) return reply({ id: 42 });
+    minted += 1;
+    return reply({ token: `fake-installation-token-${minted}`, expires_at: new Date(t0 + 60 * 60 * 1000).toISOString() });
+  };
+  const a = await repoToken(config, "AdamHikl/proj", { fetchImpl, now: t0 });
+  const b = await repoToken(config, "AdamHikl/Proj", { fetchImpl, now: t0 + 30 * 60 * 1000 });
+  assert.equal(a, b, "same repo and permissions within the window: reused");
+  assert.equal(minted, 1);
+  const read = await repoToken(config, "AdamHikl/proj", { fetchImpl, now: t0, permissions: READ });
+  assert.notEqual(read, a, "a different permission set gets its own token");
+  const late = await repoToken(config, "AdamHikl/proj", { fetchImpl, now: t0 + 51 * 60 * 1000 });
+  assert.notEqual(late, a, "within 10 minutes of expiry: a fresh one");
+  assert.equal(minted, 3);
+});

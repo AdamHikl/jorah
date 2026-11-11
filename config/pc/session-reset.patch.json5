@@ -1,0 +1,16 @@
+// Fresh conversations for Jorah, on Adam's yes of 2026-11-11 ("yes do both"). Before this, one
+// session ran for days across Telegram, voice, the iPhone and the browser, and 30 stale thinking
+// blocks in it broke Anthropic's prompt cache on every call: answer calls took 2-3 s or more
+// instead of about 0.8 s (measured 2026-11-11). A new session starts daily at 04:00 (after
+// Dreaming at 03:00) or after 4 hours without Adam, whichever comes first. Durable facts live in
+// memory files, agentmemory and Dreaming, which a reset doesn't touch. /new resets by hand.
+// Undo: session.reset.mode "none".
+{
+  session: {
+    reset: {
+      mode: "daily",
+      atHour: 4,
+      idleMinutes: 240,
+    },
+  },
+}

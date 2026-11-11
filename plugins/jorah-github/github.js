@@ -118,8 +118,24 @@ export const WRITE = Object.freeze({ contents: "write", pull_requests: "write" }
 export const READ = Object.freeze({ contents: "read" });
 
 /** A 1-hour token for one repo, with only the given permissions (default: push and pull requests). */
+// Installation tokens last an hour. Reuse each one, per repo and permission set, until 10 minutes
+// before it expires: minting a fresh one cost about a second per GitHub action (measured
+// 2026-11-11). Kept in the Gateway's memory only, never on disk. One cache per fetch function, so
+// tests with their own stand-in GitHub never share tokens.
+const TOKEN_MARGIN_MS = 10 * 60 * 1000;
+const tokenCaches = new WeakMap();
+function tokenCache(fetchImpl) {
+  let cache = tokenCaches.get(fetchImpl);
+  if (!cache) tokenCaches.set(fetchImpl, (cache = new Map()));
+  return cache;
+}
+
 export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.now(), permissions = WRITE } = {}) {
   if (!config.appId) throw new Error("the App's ID isn't set");
+  const key = `${config.appId}|${config.keyFile}|${repo.toLowerCase()}|${JSON.stringify(permissions)}`;
+  const cache = tokenCache(fetchImpl);
+  const hit = cache.get(key);
+  if (hit && now < hit.expiresAt - TOKEN_MARGIN_MS) return hit.token;
   const jwt = appJwt(config.appId, readKey(config.keyFile), now);
   const headers = { ...API, Authorization: `Bearer ${jwt}` };
   const found = await fetchImpl(`https://api.github.com/repos/${repo}/installation`, { headers });
@@ -134,6 +150,8 @@ export async function repoToken(config, repo, { fetchImpl = fetch, now = Date.no
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.token) throw new Error(`GitHub said ${res.status} making a token: ${data.message ?? "no reason given"}`);
+  const expires = Date.parse(data.expires_at ?? "");
+  cache.set(key, { token: data.token, expiresAt: Number.isFinite(expires) ? expires : now + 60 * 60 * 1000 });
   return data.token;
 }
 
@@ -421,8 +439,14 @@ export async function cloneFlow(config, name, { fetchImpl = fetch, remoteBase } 
 export async function listRepos(config, { fetchImpl = fetch, now = Date.now() } = {}) {
   if (!config.appId) throw new Error("the App's ID isn't set");
   if (!config.owner) throw new Error("no owner is configured");
-  const jwt = appJwt(config.appId, readKey(config.keyFile), now);
+  const listKey = `${config.appId}|${config.keyFile}|list:${config.owner.toLowerCase()}`;
+  const cache = tokenCache(fetchImpl);
+  let listToken = cache.get(listKey);
+  if (!listToken || now >= listToken.expiresAt - TOKEN_MARGIN_MS) listToken = undefined;
+  const jwt = listToken ? "" : appJwt(config.appId, readKey(config.keyFile), now);
   const headers = { ...API, Authorization: `Bearer ${jwt}` };
+  const data = listToken ? { token: listToken.token } : await mintListToken();
+  async function mintListToken() {
   const found = await fetchImpl(`https://api.github.com/users/${config.owner}/installation`, { headers });
   if (!found.ok) throw new Error(`GitHub said ${found.status} finding jorah-bot on ${config.owner}'s account`);
   const { id } = await found.json();
@@ -431,8 +455,12 @@ export async function listRepos(config, { fetchImpl = fetch, now = Date.now() } 
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({ permissions: { metadata: "read" } }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.token) throw new Error(`GitHub said ${res.status} making a token: ${data.message ?? "no reason given"}`);
+  const minted = await res.json().catch(() => ({}));
+  if (!res.ok || !minted.token) throw new Error(`GitHub said ${res.status} making a token: ${minted.message ?? "no reason given"}`);
+  const expires = Date.parse(minted.expires_at ?? "");
+  cache.set(listKey, { token: minted.token, expiresAt: Number.isFinite(expires) ? expires : now + 60 * 60 * 1000 });
+  return minted;
+  }
   const repos = [];
   for (let page = 1; page <= 10; page++) {
     const r = await fetchImpl(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, { headers: { ...API, Authorization: `Bearer ${data.token}` } });

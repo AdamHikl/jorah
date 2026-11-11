@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "about": "jorah-guard v0 tool classes (docs/plan/p5-plan.md 4.2). A tool in no class is blocked. Edit only by commit and Adam's yes.",
+  "read": [
+    "read", "ls", "view_image", "memory_search", "memory_get", "sessions_list", "session_status", "sessions_yield",
+    "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos",
+    "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
+    "agentmemory__memory_diagnose"
+  ],
+  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync"],
+  "search": ["web_search", "x_search"],
+  "url": ["web_fetch", "browser"],
+  "fileWrite": ["write", "edit", "apply_patch"],
+  "memoryWrite": [
+    "agentmemory__memory_save", "agentmemory__memory_lesson_save", "agentmemory__memory_consolidate",
+    "agentmemory__memory_reflect", "personal_instructions"
+  ],
+  "skill": ["skill_workshop"],
+  "schedule": ["cron", "automations"],
+  "spawn": ["sessions_spawn"],
+  "github": ["github_push_branch", "github_open_pr"],
+  "message": ["message"],
+  "sandboxShell": ["exec", "process"],
+  "blocked": ["sessions_send", "gateway", "nodes", "computer"],
+  "readActions": ["list", "view", "get", "status", "runs", "show", "describe", "search"],
+  "memoryFiles": ["MEMORY.md", "USER.md", "DREAMS.md", "memory/"],
+  "rulesFiles": ["AGENTS.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.md", "BOOTSTRAP.md", "TOOLS.md", "skills/"],
+  "selfRepos": ["jorah"],
+  "siteAllowlist": ["wttr.in", "en.wikipedia.org", "sk.wikipedia.org", "github.com/AdamHikl", "docs.openclaw.ai"],
+  "searchQueryMaxChars": 200,
+  "acpSpawnsPerHourWithoutConfirm": 3
+}

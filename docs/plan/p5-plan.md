@@ -106,13 +106,14 @@ A separate plugin, `plugins/jorah-guard`, next to `jorah-github`. It does not re
 | Writes to `MEMORY.md`, `USER.md`, `memory/`, `agentmemory__memory_save` and other agentmemory writes | Allow | **Allow without asking when the saved text is in Adam's own message in this session** (typed, or spoken and speaker-verified); Adam said "remember X", so X is Adam's. Otherwise, when Jorah decides to save something itself, **confirm with the exact text**, and the guard stores the line as "unverified, from outside text" |
 | Writes to `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `HEARTBEAT.md`, `skills/`, `skill_workshop` writes | Allow (learning works as today) | Confirm with the exact diff |
 | `cron`, `automations` create or change | One-off reminder: allow. Recurring, or one that fetches the web: confirm with schedule and full prompt | Confirm, marked "read outside text" |
-| `sessions_spawn` of `background` or `deep` | Allow | Allow, child tainted |
+| `sessions_spawn` of `background` or `deep` | Allow | **Confirm with the brief** (changed in P5.3's review: both have a sandboxed shell with internet, so a brief could carry data out past the URL rule). Child tainted |
 | `sessions_spawn` ACP (Claude Code) | Allow | Confirm with project and brief |
 | `github_push_branch`, `github_open_pr` | `jorah-github`'s card as today, plus three guard lines: tainted or not, the target repo's visibility, and "touches Jorah's safety files" when the branch changes `plugins/`, `config/`, `deploy/`, `scripts/`, `workspace/` or `CLAUDE.md` in `AdamHikl/jorah` | Same card. **Refused** if the target is public and the session has read a private repo, or if the branch touches Jorah's safety files |
 | PR body | Card shows the first 300 characters of title and body | Same, and URLs not seen before are refused |
 | `message` | To Adam's own chat only | Same |
 | `x_search` | Allow, taint | As `web_search` |
 | `browser` evaluate (`act:evaluate`, `wait --fn`) | Off: `browser.evaluateEnabled: false` (G-S0 finding F2, Adam's yes) | Off. Until the config changes, the guard blocks it in tainted sessions, because page JavaScript can send requests past the URL rule |
+| `browser` typing (`type`, `fill`, `press`, `select`, `upload`) | Allow | Confirm with the text (P5.3 review: a form on a planted page can post data without any URL in the call) |
 | `sessions_send` | Only to `main`'s own children | Block |
 | `tool_search`, `tool_describe`, `sessions_yield`, `sessions_list`, `session_status` | Allow | Allow |
 | `tool_call` (the search wrapper) | Decided on the inner call, which the hook sees again under its real name (G-S2) | Same |
@@ -165,6 +166,8 @@ On `message_sending` and `reply_payload_sending` [docs-only: `plugins/hooks/mess
 - It runs inside the Gateway and as the `jorah` user, so a Gateway compromise beats it, and its state folder is writable by `jorah`. What keeps the model away from that folder is that `main`'s file tools stop at the workspace and every shell is sandboxed (tested in P5-N10). W3.8's root-owned config is tried in P5 (step P5.6).
 - It does not see Claude Code's own tool calls inside an ACP job: Claude Code's sandbox is the control there (SEC-T9, T35 adapted).
 - It does not see Dreaming (4.4).
+- **Built 2026-11-11 (P5.3):** `plugins/jorah-guard`, `config/permission-matrix.json`, `scripts/pc/guard-unfreeze.sh`; 27 unit tests with a hijacked-model fixture (`just unit`). A memory line saves without asking only when Adam's own typed message asked to remember it and holds 80% of its words.
+- **Found in review and not closable in the guard:** a planted page can list many links and have Jorah choose among them, which leaks a little at a time through *seen* URLs; a PR body could carry memory text to a public repo (follow-up: `jorah-github`'s card shows the first 300 characters of the body, coordinated with the session that owns that plugin); after a Gateway restart a session has seen no URLs, which is stricter, not looser.
 - The URL rule cuts the obvious exfiltration path, not every one. While `main` holds web and private memory together, a clever enough channel may remain. The real fix is the reader split before mail connects (section 12).
 
 ---
@@ -307,7 +310,7 @@ A model that gives in but is blocked still passes. A model that is never tested 
 | P5.1 G-S0, read-only on live. **Done 2026-11-11:** `docs/evidence/p5/2026-11-11-g-s0.md`, findings F1 to F7 | Claude | No (read-only, no secrets) | Live read |
 | P5.2 G-S1 to G-S7 on `jorah-dev`. **Done 2026-11-11**, except G-S8 and G-S9 | Claude; Adam gives `jorah-dev` an API key profile at a terminal | **Yes:** starting `jorah-dev` with a key, and the spike plugins on it | Tests on scratch |
 | P5.2b G-S8 and G-S9: speaker model, enrolment, false-accept runs | Claude; Adam enrols and answers | **Yes:** the model download (licence and source shown first) | Tests on the PC, outside the live service |
-| P5.3 Build `plugins/jorah-guard`, the matrix, the corpus, `scripts/pc/apply-guard.sh`, `scripts/pc/guard-unfreeze.sh`; unit tests; `/security-review` | Claude | No (source); push to `main` after `just check` | Source, unit tests |
+| P5.3 **Built 2026-11-11, source and unit tests:** build `plugins/jorah-guard`, the matrix, the corpus, `scripts/pc/apply-guard.sh`, `scripts/pc/guard-unfreeze.sh`; unit tests; `/security-review` | Claude | No (source); push to `main` after `just check` | Source, unit tests |
 | P5.4 Install on `jorah-dev`, run 6.1 and 6.3 there | Claude | **Yes:** the install on `jorah-dev` | Tests on scratch |
 | P5.5 Live install: guard plugin, `config/pc/guard.patch.json5`, remove the hook probe | Adam runs the root script; Claude previews | **Yes:** plugin consent, config patch, after coordinating with the other sessions | Install, launch |
 | P5.6 Live runs; the config hash check that replaces G-S7 (W3.8 fallback) | Claude and Adam | **Yes** for the hash check's schedule | Live |

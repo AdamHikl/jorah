@@ -26,7 +26,7 @@ supply-chain:
 # Needs no install, model or network.
 unit:
     python3 -m unittest discover -s services/jorah-voice/tests
-    node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-guard-spike/test/
+    node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-guard-spike/test/ plugins/jorah-guard/test/
 
 # Mac only. Builds the mic and speaker client, and checks it against a stand-in server.
 mac-ear:

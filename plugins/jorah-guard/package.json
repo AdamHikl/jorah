@@ -1,0 +1,13 @@
+{
+  "name": "@jorah/openclaw-jorah-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "jorah-guard v0: P5's tool guard for Jorah",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": { "pluginApi": ">=2026.10.9", "minGatewayVersion": "2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9", "pluginSdkVersion": "2026.10.9" }
+  }
+}

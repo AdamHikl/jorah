@@ -1,0 +1,46 @@
+{
+  "id": "jorah-guard",
+  "name": "Jorah guard",
+  "description": "jorah-guard v0 (P5): marks chats that have read outside text, asks Adam before memory, rules, skill, schedule and coding-job changes from them, limits web addresses to ones already seen, treats voice as needing confirmation, and can freeze Jorah. Fails closed.",
+  "categories": [
+    "other"
+  ],
+  "activation": {
+    "onStartup": true
+  },
+  "commandAliases": [
+    {
+      "name": "jorah-freeze",
+      "kind": "runtime-slash"
+    },
+    {
+      "name": "jorah-status",
+      "kind": "runtime-slash"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "matrixFile": {
+        "type": "string",
+        "description": "config/permission-matrix.json; unreadable means every tool is blocked"
+      },
+      "stateDir": {
+        "type": "string",
+        "description": "Taint state, freeze flag and decision log, mode 700"
+      },
+      "workspace": {
+        "type": "string",
+        "description": "main's workspace, for classifying file writes"
+      },
+      "cleanSessionKeys": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Session keys that can be clean (Adam's own chat)"
+      }
+    }
+  }
+}

@@ -6,12 +6,14 @@ import Foundation
 import Speech
 
 let usage = """
-usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43211 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path] [--wake]
+usage: mac-ear --url ws://<pc>.<tailnet>.ts.net:43211 [--barge-in] [--max-minutes 30] [--no-mic] [--token-file path] [--wake] [--wake-debug]
 
 The token comes from the Keychain: service "jorah-voice", account "adam".
 --barge-in   talk over Jorah to cut him off, with echo cancellation on
 --no-mic     play sound only, for testing
 --wake       wait on-device for "Jorah" or "hey Jorah" before opening the connection
+--wake-debug with --wake: show the mic level and what the recogniser hears while waiting,
+             on this screen only (never stored or sent), to see why the name isn't caught
 """
 
 struct Options {
@@ -19,6 +21,7 @@ struct Options {
     var bargeIn = false
     var noMic = false
     var wake = false
+    var wakeDebug = false
     var maxMinutes = 30.0
     var tokenFile: String?
 }
@@ -86,6 +89,7 @@ func parseOptions() -> Options {
         case "--barge-in": options.bargeIn = true
         case "--no-mic": options.noMic = true
         case "--wake": options.wake = true
+        case "--wake-debug": options.wake = true; options.wakeDebug = true
         case "--max-minutes" where !args.isEmpty: options.maxMinutes = Double(args.removeFirst()) ?? 30
         case "--token-file" where !args.isEmpty: options.tokenFile = args.removeFirst()
         default: fail(usage)
@@ -334,10 +338,33 @@ final class WakeListener {
     private var tapInstalled = false
     private var active = false
     private var generation = 0
+    private let debug: Bool
+    private var lastError = ""
+    private var peak: Float = 0
+    private var lastLevelPrint = Date()
+    private var lastHeard = ""
 
-    init(recognizer: SFSpeechRecognizer, onWake: @escaping () -> Void) {
+    init(recognizer: SFSpeechRecognizer, debug: Bool = false, onWake: @escaping () -> Void) {
         self.recognizer = recognizer
+        self.debug = debug
         self.onWake = onWake
+    }
+
+    // Debug only: the loudest sample in the last 2 seconds, so a silent mic (no permission) shows.
+    private func meter(_ buffer: AVAudioPCMBuffer) {
+        guard debug, let data = buffer.floatChannelData else { return }
+        let n = Int(buffer.frameLength)
+        var m: Float = 0
+        for i in 0..<n { m = max(m, abs(data[0][i])) }
+        DispatchQueue.main.async {
+            self.peak = max(self.peak, m)
+            if Date().timeIntervalSince(self.lastLevelPrint) >= 2 {
+                let bars = String(repeating: "#", count: min(30, Int(self.peak * 60)))
+                print("  [debug] mic level \(String(format: "%.3f", self.peak)) \(bars)\(self.peak < 0.002 ? "  (silent: check Microphone permission for Terminal)" : "")")
+                self.peak = 0
+                self.lastLevelPrint = Date()
+            }
+        }
     }
 
     func start() {
@@ -355,6 +382,7 @@ final class WakeListener {
             let currentRequest = self.request
             self.requestLock.unlock()
             currentRequest?.append(buffer)
+            self.meter(buffer)
         }
         tapInstalled = true
         engine.prepare()
@@ -398,6 +426,8 @@ final class WakeListener {
         let newRequest = SFSpeechAudioBufferRecognitionRequest()
         newRequest.requiresOnDeviceRecognition = true
         newRequest.shouldReportPartialResults = true
+        // An unusual name: tell the recogniser to expect it.
+        newRequest.contextualStrings = ["Jorah", "hey Jorah"]
         request = newRequest
         requestLock.unlock()
 
@@ -414,6 +444,11 @@ final class WakeListener {
         task = recognizer.recognitionTask(with: newRequest) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self, self.active, self.generation == currentGen else { return }
+                if self.debug, let text = result?.bestTranscription.formattedString, text != self.lastHeard {
+                    self.lastHeard = text
+                    let tail = text.split(separator: " ").suffix(6).joined(separator: " ")
+                    print("  [debug] heard: \"\(tail)\"\(isWakePhrase(text) ? "  -> wake" : "")")
+                }
                 if let text = result?.bestTranscription.formattedString, isWakePhrase(text) {
                     self.stop()
                     NSSound(named: NSSound.Name("Tink"))?.play()
@@ -421,7 +456,14 @@ final class WakeListener {
                     self.onWake()
                     return
                 }
-                if error != nil {
+                if let error {
+                    // Say why once (for example Dictation off, or no permission); a normal
+                    // end-of-task error repeats silently.
+                    let reason = "\(error.localizedDescription) [\((error as NSError).domain) \((error as NSError).code)]"
+                    if reason != self.lastError {
+                        self.lastError = reason
+                        print("  speech recognition stopped: \(reason); retrying")
+                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         guard let self, self.active, self.generation == currentGen else { return }
                         self.startTask()
@@ -482,7 +524,7 @@ Thread.detachNewThread {
 if options.wake {
     var consecutiveErrors = 0
     requestOnDeviceRecognizer { recognizer in
-        let listener = WakeListener(recognizer: recognizer) {
+        let listener = WakeListener(recognizer: recognizer, debug: options.wakeDebug) {
             let ear = Ear(options: options, token: token) { reason, isError in
                 currentEar = nil
                 if isError {

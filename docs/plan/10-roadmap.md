@@ -263,6 +263,7 @@ As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to
 | Max on an always-on PC | **Adam's accepted risk,** with typed chat on Max and machine-started work on the API. Anthropic isn't being asked in writing. SEC-T21's tested switch is the exit. Delegated coding jobs are tested on the API on `jorah-dev`, and stay on Max until that works |
 | Hosted voice | None unless P3's numbers lead Adam to it |
 | Keys | One new Jorah-only key, never shared with Mizyun or Cognio |
+| Voice confirmation | **Adam, 2026-11-11:** "I want to be able to confirm commands and requests via voice". With local speaker verification on the PC: voice alone confirms actions that stay on the PC and can be undone, voice plus the Telegram card's 4-digit code confirms anything that leaves it, and a tap always works. Changes `03` section 8 and section 16 rule 9 for this setup. Details and tests: `p5-plan.md` 4.3 |
 
 ### Two collaborators, one repo
 

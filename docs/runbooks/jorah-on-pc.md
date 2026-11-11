@@ -293,6 +293,10 @@ Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gat
 
 **Speed, 2026-11-11** [measured, trajectory exports]: slow tool turns came from Anthropic's prompt cache missing on every call in Adam's long-running chat: 30 stale thinking blocks ("replayed thinking dropped … prefix_binding_mismatch", 12 warnings that day) changed the prompt from message 33 on, and turns re-read 250,000-480,000 tokens. Fixes, on Adam's yes: `config/pc/session-reset.patch.json5` (a new session daily at 04:00 or after 4 h idle; Adam sent `/new` once; 0 warnings since), installation tokens reused up to 50 minutes in `jorah-github`, and the GitHub tools made `direct-only` (visible without tool search; thinking stays at medium, Adam's choice). Same question in a fresh session: 9.0 s before, 4.9 s after (tool called directly at 2.0 s); a follow-up with a warm cache 1.9 s (5.2 s before). Cleanup the same day: test PR #1 on `threadfolio` closed unmerged, branches `jorah/test` and `jorah/pr-test-note` deleted on GitHub, three test branches removed on the PC.
 
+## P5 baseline fixes, 2026-11-11
+
+From P5.1's read-only baseline (`docs/evidence/p5/2026-11-11-g-s0.md`), applied on Adam's "fix everything" [measured]: the disabled `llama-cpp` plugin's folder moved to `~/backups/removed/` and its config entry removed, so `security audit --deep` is back to 0 critical; `browser.evaluateEnabled: false` (`config/pc/p5-fixes.patch.json5`, Gateway restarted 19:56, health ok), so the Control UI's Inspect, scrolling and back/forward on agent browser tabs no longer work; the Mac-era admin `cli` device removed. **Correction to this runbook:** the iPhone has been paired since 2026-11-08 14:13, as a node with operator scopes including approvals; device commands stay denied. Paired now: `Jorah HUD`, the Mac's Control UI, the iPhone.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

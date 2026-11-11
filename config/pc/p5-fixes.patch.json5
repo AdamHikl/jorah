@@ -1,0 +1,10 @@
+// P5.1 findings F1 and F2 (docs/evidence/p5/2026-11-11-g-s0.md), applied on Adam's "fix everything", 2026-11-11.
+// F1: the disabled llama-cpp plugin's leftover entry. Its folder moves out of extensions/ by hand,
+//     because `plugins uninstall` finds no install record for it.
+// F2: no page JavaScript from Jorah's browser (03 7.5). The Control UI's Inspect, wheel scrolling and
+//     back/forward on agent browser tabs stop working.
+// Undo: config set browser.evaluateEnabled true; move the folder back from ~/backups/removed/.
+{
+  browser: { evaluateEnabled: false },
+  plugins: { entries: { "llama-cpp": null } },
+}

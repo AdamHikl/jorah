@@ -12,7 +12,7 @@ Labels on each claim:
 
 - **[verified]** checked read-only on this Mac, or in this repo, on the date above.
 - **[docs-only]** from Apple's, GitHub's or a man page's text, not tried here.
-- **[inference]** reasoned, not documented or tried. Each one has a check in section 8.
+- **[inference]** reasoned, not documented or tried. Each one has a check in section 8 or the test pass.
 
 **Check where you are at any time** (read-only, no sudo). As `adam`:
 
@@ -28,32 +28,41 @@ only be seen from `jorah-build` and show `unknown` from `adam`, never `done`.
 
 ## Adam's steps
 
-In order. "Mac, adam" is a Terminal in your own account. "Mac, jorah-build" is a Terminal in the
-`jorah-build` login session (Control Center → Fast User Switching). Secrets, passwords and the
-phone passcode are typed only into the prompt that asks for them, in a Terminal attached to no
-agent. Times are your hands-on time.
+In order. Each step's section below has the full commands and what to expect.
+- **Mac, adam**: a Terminal in your own account.
+- **Mac, jorah-build**: a Terminal in the `jorah-build` login session (Control Center → Fast User
+  Switching).
+- **No agent**: a Terminal attached to no agent. Use it for every step marked so: those steps
+  handle a key or a password.
+
+Times are your hands-on time. After each step, the preflight shows that step as `done`.
 
 | # | Where | What | Expected | Time |
 |---|---|---|---|---|
-| **A1** | Decision | **Which Apple team signs for `jorah-build`.** Company team (recommended: both apps, their bundle IDs and Mizyun's capabilities are already there) or personal team. Also confirm: source access by read-only deploy keys for now (section 6), and signing only while `jorah-build` is logged in (section 3.4) | Your answer on issue 10. If personal, change `"team"` in step A8's file | 2 min |
-| **A2** | Mac, adam | `cd ~/Documents/jorah && git pull --ff-only && scripts/mac/setup-jorah-build.sh --dry-run`, then `sudo scripts/mac/setup-jorah-build.sh`, type `yes`, then a new password for `jorah-build` (save it in your password manager). Section 1 | `Result:` shows `jorah-build` not an admin, in `_developer`; folders root-owned; hand-off folder with an ACL line | 3 min |
-| **A3** | Mac, jorah-build | First login (Fast User Switching → Jorah build). Skip every setup offer, **never** sign in to an Apple Account. In Terminal: `/usr/local/libexec/jorah/ios-preflight` (section 2) | Xcode and simulators `done`; the rest says which step comes next | 5 min |
-| **A4** | Mac, jorah-build, then browser as adam | Development certificate made inside `jorah-build` (section 3.2), then `security set-key-partition-list …` and `security set-keychain-settings …` (section 3.3) | `security find-identity -v -p codesigning` shows exactly `1 valid identities found` | 10 min |
-| **A5** | Browser as adam, then Mac, jorah-build | Four Development profiles, then move them into `jorah-build` (section 3.5) | Four `.mobileprovision` files in its profiles folder | 15 min |
-| **A6** | Mac, jorah-build | `xcrun devicectl list devices` (section 4) | Your iPhone `available (paired)`. If not: USB, unlock, `xcrun devicectl manage pair --device <UDID>`, Trust on the phone | 2 min |
-| **A7** | Mac, jorah-build, then Mac, adam | Read-only deploy keys and the two clones (section 6) | `git -C ~/work/mizyun log -1 --oneline` and the same for threadfolio print a commit | 10 min |
-| **A8** | Mac, adam | Fill in and install the runner allowlist (section 5.1) | Preflight: `done allowlist filled in` | 10 min |
-| **A9** | Mac, adam | `sudo scripts/mac/setup-jorah-build.sh --install-runner`, `yes` (section 5.2) | `Result:` lists the LaunchAgent plist and wrapper as `root:wheel` | 2 min |
-| **A10** | Mac, jorah-build (no agent), then Mac, adam (no agent) | Make the shared runner key and send it to the PC (section 5.3). Needs `scripts/pc/receive-ios-key.sh` in `/opt/jorah` on the PC (step A14a) | The SHA-256 the PC prints equals the Mac's | 5 min |
-| **A11** | Mac, jorah-build | Log `jorah-build` out and back in, run `curl -s http://127.0.0.1:47820/v1/health`, then switch back to your account and leave `jorah-build` logged in (section 5.4). From `adam`: `scripts/mac/ios-preflight.sh` | `{"contract": "jorah-ios/1", …}`; preflight shows the runner `done` | 3 min |
-| **A12** | Tailscale admin console | Add the grant from ADR 0002 step 2: `{ "src": ["tag:jorah-pc"], "dst": ["adam-mac"], "ip": ["tcp:47820"] }` (or the PC's device name if it isn't tagged) | Policy saves, its `tests` pass | 5 min |
-| **A13** | Mac, adam | `tailscale serve --bg --tcp=47820 tcp://127.0.0.1:47820`, then `scripts/mac/ios-preflight.sh` | Preflight: `done Tailscale Serve forwards…` | 1 min |
-| **A14** | PC (from a Mac Terminal, no agent) | a. Your yes for a build session to copy `main` into `/opt/jorah`. b. Install the plugin as issue 9 says (`plugins install --link /opt/jorah/plugins/jorah-ios`). c. In `config/pc/ios.patch.json5` set `runnerUrl` to the Mac's MagicDNS name, then dry run and apply, then the same for `ios-tools.patch.json5` (section 5.5). d. If `jorah-guard` is on by then: the matrix entries from `docs/evidence/issue-9/README.md` | Each dry run: "Dry run successful", updates only where the patch header says, nothing under `gateway.*` | 15 min |
-| **A15** | Telegram or Talk | Ask Jorah to build Threadfolio for the simulator, approve the card, then install it on a simulator and take a screenshot. Then a device build of Mizyun and an install to the iPhone (approve both cards). Section 8 lists what to record | Build `tier: build`; simulator install `tier: launch`; a screenshot; device install `tier: install` or `launch` | 30 min, mostly waiting |
-| **A16** | Mac, docked | TOPO-B5, the 24-hour dock test (section 7) | Every check from the PC answered; no `Sleep` line | 10 min over 24 h |
+| **A1** | Decision | **Which Apple team signs for `jorah-build`.** Company team (recommended; it is what the tested allowlist names) or personal team. If you choose personal, a build session changes `"team"` in `services/ios-runner/ios-projects.json` before A9 | Your answer on issue 10 | 2 min |
+| **A2** | Mac, adam | `cd ~/Documents/jorah && git pull --ff-only && scripts/mac/setup-jorah-build.sh --dry-run`, then `sudo scripts/mac/setup-jorah-build.sh`, `yes`, and a new password for `jorah-build` (into your password manager). §1 | `Result:` shows `jorah-build` not an admin and in `_developer`; root-owned folders; the hand-off folder's ACL | 3 min |
+| **A3** | Mac, jorah-build | First login. Skip every setup offer, **never** sign in to an Apple Account. Run `/usr/local/libexec/jorah/ios-preflight`. §2 | Xcode and simulators `done` | 5 min |
+| **A4** | Mac, jorah-build, then a browser as adam | Development certificate made inside `jorah-build`, then the two `security` settings. §3.2, §3.3 | `security find-identity -v -p codesigning` shows `1 valid identities found` | 10 min |
+| **A5** | Browser as adam, then Mac, jorah-build | Four Development profiles with the exact names in §3.5, moved into `jorah-build` | Preflight as jorah-build: profiles `done` | 15 min |
+| **A6** | Mac, jorah-build | `xcrun devicectl list devices`. Note the iPhone's **Identifier** (UDID) for A9. §4 | iPhone `available (paired)`. If not: USB, unlock, `xcrun devicectl manage pair --device <UDID>`, tap Trust | 2 min |
+| **A7** | Mac, jorah-build, then Mac, adam | Read-only deploy keys, then clones into `~/src/threadfolio` and `~/src/mizyun`. §6 | Preflight: both clones `done` | 10 min |
+| **A8** | Mac, adam, **no agent** | Mizyun's env file: one line with the dev Supabase publishable key, copied from your `.env.dev` by `grep … \| sudo tee`. §5.1. The runner refuses to build Mizyun without it | Preflight: `done mizyun env file …` (root, 644) | 2 min |
+| **A9** | Mac, adam | `scripts/mac/install-ios-allowlist.sh --dry-run <UDID>`, then `sudo scripts/mac/install-ios-allowlist.sh <UDID>`, `yes`. It installs the tested `services/ios-runner/ios-projects.json` with your iPhone added as `adam-iphone`. §5.1 | Preflight: allowlist and devices `done` | 2 min |
+| **A10** | Mac, adam | `sudo scripts/mac/setup-jorah-build.sh --install-runner`, `yes`. §5.2 | `Result:` lists the LaunchAgent plist and wrapper as `root:wheel` | 2 min |
+| **A11** | Mac, jorah-build, **no agent** | Make the shared runner key and note its SHA-256. §5.3 step 1 | Preflight as jorah-build: key `done` | 1 min |
+| **A12** | Mac, jorah-build | Log `jorah-build` out and back in, run `curl -s http://127.0.0.1:47820/v1/health`, switch back to your account and leave it logged in. §5.4 | `{"contract": "jorah-ios/1", …}`; preflight: runner `done` | 3 min |
+| **A13** | Tailscale admin console | The grant from ADR 0002 step 2. §5.5 | Policy saves, its tests pass | 5 min |
+| **A14** | Mac, adam | `tailscale serve --bg --tcp=47820 tcp://127.0.0.1:47820`. §5.5 | Preflight: Serve forward `done` | 1 min |
+| **A15** | Your yes, to a build session | Copy `main` into `/opt/jorah` on the PC: plugin, patches and `scripts/pc/receive-ios-key.sh`. §5.6a | The session reports the files and their hashes | 1 min |
+| **A16** | Mac, adam, **no agent** | Send the key to the PC: `sudo base64 -i … \| ssh … receive-ios-key.sh`. §5.3 step 2 | The PC prints the same SHA-256 as A11 | 2 min |
+| **A17** | PC, from a Mac Terminal | Install the `jorah-ios` plugin, set `runnerUrl`, then each patch: `--dry-run` first, then apply. §5.6b, §5.6c | Each dry run: "Dry run successful", updates only where its header says, nothing under `gateway.*` | 15 min |
+| **A18** | Your yes, to the P5 work | The `jorah-guard` matrix line: `ios_build`, `ios_install`, `ios_status` under `taintRead` in `config/permission-matrix.json`. Belongs to P5, not issue 10. Needed only if `jorah-guard` is on. §5.6d | A P5 commit with the line, deployed by P5's own steps | 1 min |
+| **A19** | Mac, adam | Check that Mizyun is push-capable for Jorah: `gh api repos/AdamHikl/mizyun/rules/branches/main --jq '.[].type'`. Already done on 2026-11-10. If not, §6b | Includes `creation` and `update` | 1 min |
+| **A20** | Mac and Telegram | The test pass: `docs/runbooks/ios-test-pass.md`. Its gates G1 to G5 are steps A2 to A18 here. Then the extra checks in §8 | Each result PASS, FAIL or NOT RUN, in `docs/evidence/issue-12/test-pass.md` | 60 min, mostly waiting |
+| **A21** | Mac, docked | TOPO-B5, the 24-hour dock test. §7 | Every check answered; no `Sleep` line | 10 min over 24 h |
 
-After every Mac restart: FileVault waits for you (as now), then log in to `jorah-build` once
-with Fast User Switching and switch back. That is the only recurring step (section 3.4).
+After every Mac restart: FileVault waits for you, as it does now. Then log in to `jorah-build` once
+and switch back (§3.4). That is the only recurring step.
 
 ## 0. Decisions
 
@@ -62,7 +71,7 @@ install on the iPhone, all simulator use, no cards for simulator actions). Still
 
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
-| A1 / ADR D3 | Which of the two teams in your keychain | Personal team ("Adam Hikl"), or company team ("itinn s.r.o.") | **Company team.** Both apps' own device scripts sign with it, and Mizyun's bundle IDs, capabilities and existing profiles all sit there [verified: issue 11's `docs/runbooks/ios-recipes.md`; profile `TeamName` on this Mac]. The personal team would need new App IDs and capabilities. One certificate, one team. The template in step A8 is filled for the company team |
+| A1 / ADR D3 | Which of the two teams in your keychain | Personal team ("Adam Hikl"), or company team ("itinn s.r.o.") | **Company team.** Both apps' own device scripts sign with it, and Mizyun's bundle IDs, capabilities and existing profiles all sit there [verified: issue 11's `docs/runbooks/ios-recipes.md`; profile `TeamName` on this Mac]. The personal team would need new App IDs and capabilities. One certificate, one team. The tested allowlist `services/ios-runner/ios-projects.json` names the company team |
 | S1 | Source access for the runner's clones | Read-only deploy key per repo, or a GitHub App token per run | **Deploy keys now, token later.** The runner today fetches with whatever git credentials `jorah-build` has and takes no token (`docs/evidence/issue-8/README.md`) [verified], so a token needs runner and plugin work first. Section 6 |
 | S2 | When the runner may sign | Only while `jorah-build` is logged in (no stored secret), or a stored keychain password | **Logged in** (section 3.4) |
 
@@ -78,7 +87,7 @@ cd ~/Documents/jorah && git pull --ff-only && scripts/mac/setup-jorah-build.sh -
 
 **Expect** "This will:" with: create standard user `jorah-build`, add it to `_developer`, create
 group `jorah-handoff`, add you to it, create `/usr/local/libexec/jorah`, create
-`/Library/Application Support/Jorah`, install the read-only preflight, set up
+`/Library/Application Support/Jorah` and its `env` folder, install the read-only preflight, set up
 `/Users/Shared/jorah-handoff`. Two `note` lines:
 runner not installed yet, and DevToolsSecurity is disabled. "Dry run: nothing changed."
 [verified: dry run on this Mac]
@@ -195,8 +204,8 @@ that background session (`scripts/mac/com.jorah.ios-runner.plist`, root-owned, s
 ### 3.5 Profiles
 
 Developer website, the team from A1, one **iOS App Development** profile per bundle ID
-[verified: `docs/runbooks/ios-recipes.md`]. Use exactly these names: the allowlist template
-refers to them.
+[verified: `docs/runbooks/ios-recipes.md`]. Use exactly these names: the allowlist
+(`services/ios-runner/ios-projects.json`, `signing.profiles`) refers to them.
 
 | Profile name | Bundle ID | Target in the allowlist |
 |---|---|---|
@@ -229,6 +238,8 @@ As `adam` [verified 2026-11-11 and 2026-11-12]: your iPhone 16 Pro is paired, De
    [inference]. In **jorah-build**: `xcrun devicectl list devices`. **Expect** your iPhone
    `available (paired)`. If not: unlock the phone, USB, `xcrun devicectl manage pair --device
    <UDID>`, tap **Trust**, passcode on the phone [docs-only: `devicectl manage pair --help`].
+   Note the **Identifier** column: that UDID goes into the allowlist as `adam-iphone` in step A9,
+   the alias the test pass uses. It is not committed anywhere.
 3. **USB or network.** Same LAN or cable. Not over Tailscale [inference: discovery is local].
 4. **Phone locked.** Install expected to work, launch to fail until unlocked; the runner says
    "Is the phone locked?" with `LAUNCH_FAILED` [verified: runner source].
@@ -251,60 +262,73 @@ ADR D4 allows all simulator use, with no cards for simulator actions.
   setup never needs that.
 - **Test:** section 8, check 5, with `jorah-build` switched to the background.
 
-## 5. The runner service (A8 to A11, A14)
+## 5. The runner service (A8 to A17)
 
-### 5.1 The allowlist (A8)
+### 5.1 Mizyun's env file and the allowlist (A8, A9)
 
-`/Library/Application Support/Jorah/ios-projects.json`, owned by root, `0644`. The runner refuses
-it if group or others can write it, if it isn't owned by root or its own user, or if any key is
-unknown [verified: `services/ios-runner/ios_runner/config.py`]. The agent's wrapper points the
-runner at it with `JORAH_IOS_RUNNER_CONFIG`.
+**The allowlist** is `services/ios-runner/ios-projects.json`. Its entries built both apps and
+launched them on the simulator through the runner (`docs/evidence/issue-11/README.md`)
+[verified there]. It is the only copy. It is installed as `/Library/Application
+Support/Jorah/ios-projects.json`, root-owned, `0644`. The runner refuses the file if group or
+others can write it, if it is owned by anyone but root or the runner's own user, or if it has an
+unknown key [verified: `services/ios-runner/ios_runner/config.py`]. The runner reads it when it
+starts.
 
-`scripts/mac/ios-projects.template.json` is ready except for `<placeholders>` [verified: a test
-fills them and loads the file with the runner's own checker]. In your account:
-
-```bash
-cp ~/Documents/jorah/scripts/mac/ios-projects.template.json /Users/Shared/ios-projects.json && open -e /Users/Shared/ios-projects.json
-```
-
-Replace:
-
-- `SCAN_API_ORIGIN`: the dev scan host from Threadfolio's `scripts/ios-device-install.sh`.
-- The four `<EXPO_PUBLIC_ …>` lines: names and values from Mizyun's `apps/mobile/.env.dev`. These
-  end up in the app anyway; the runner refuses names containing `TOKEN`, `SECRET`, `PASSWORD`,
-  `PRIVATE`, `CREDENTIAL` or `API_KEY` [verified: runner source].
-- The iPhone's UDID, from `xcrun devicectl list devices`.
-- `"team"` only if A1 chose the personal team.
-
-Then:
+**A8, Mizyun's env file.** The app needs `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. That value is only
+in your `apps/mobile/.env.dev`, and it ships inside the app. Without the file the runner refuses
+to build Mizyun (`envFile is missing`) [verified: runner source]. In a Terminal attached to no
+agent, in your account, copy just that one line into place without displaying it:
 
 ```bash
-sudo install -o root -g wheel -m 0644 /Users/Shared/ios-projects.json "/Library/Application Support/Jorah/ios-projects.json" && rm /Users/Shared/ios-projects.json && ~/Documents/jorah/scripts/mac/ios-preflight.sh
+grep -E '^(export )?EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=' ~/Documents/mizyun/apps/mobile/.env.dev | sudo tee "/Library/Application Support/Jorah/env/mizyun-dev.env" >/dev/null && sudo chmod 644 "/Library/Application Support/Jorah/env/mizyun-dev.env" && sudo wc -l "/Library/Application Support/Jorah/env/mizyun-dev.env" && ls -l "/Library/Application Support/Jorah/env/"
 ```
 
-**Expect** `done allowlist filled in (projects: mizyun, threadfolio; …)`.
+**Expect** `1 …/mizyun-dev.env` and `-rw-r--r--  root  wheel`. The runner only reads it at build
+time and logs the name, never the value [verified: issue 11 evidence]. The preflight checks
+that the file exists, its owner and its mode, never its content.
 
-### 5.2 Install the runner and its agent (A9)
+**A9, the allowlist with your iPhone.** In your account, with the UDID from A6:
+
+```bash
+cd ~/Documents/jorah && scripts/mac/install-ios-allowlist.sh --dry-run <UDID>
+```
+
+**Expect** `Adds: devices.adam-iphone = <UDID>` and "Installs … (new)". Then:
+
+```bash
+sudo scripts/mac/install-ios-allowlist.sh <UDID>
+```
+
+Type `yes`. **Expect** `root:wheel -rw-r--r-- …/ios-projects.json`. Running it again later shows a
+diff against the installed copy first: use that after `main` changes the file. If the runner is
+already running, restart it afterwards, as `jorah-build`:
+`launchctl kickstart -k gui/$(id -u)/com.jorah.ios-runner`. A test loads this merged file with
+the runner's own checker [verified: `scripts/mac/tests`].
+
+### 5.2 Install the runner and its agent (A10)
 
 ```bash
 cd ~/Documents/jorah && scripts/mac/setup-jorah-build.sh --dry-run --install-runner
 ```
 
-**Expect** the plan to add: copy the runner to `/usr/local/libexec/jorah/ios-runner`, install
-`ios-runner-agent`, install `/Library/LaunchAgents/com.jorah.ios-runner.plist`. Then the same with
-`sudo`, without `--dry-run`, and `yes`. The agent runs
-`/usr/bin/python3 -I /usr/local/libexec/jorah/ios-runner/bin/jorah-ios-runner serve`, which
-listens on the allowlist's loopback address, `127.0.0.1:47820` [verified: runner README and
-`cli.py`]. For any user but `jorah-build` the wrapper exits at once [verified: source; a test
-checks the plist and wrapper agree].
+**Expect** the plan to add three things:
+- copy the runner to `/usr/local/libexec/jorah/ios-runner`;
+- install `ios-runner-agent`;
+- install `/Library/LaunchAgents/com.jorah.ios-runner.plist`.
 
-### 5.3 The shared key (A10)
+Then run it again with `sudo`, without `--dry-run`, and type `yes`. The agent runs
+`/usr/bin/python3 -I /usr/local/libexec/jorah/ios-runner/bin/jorah-ios-runner serve` on
+`127.0.0.1:47820` [verified: runner README and `cli.py`]. For any user but `jorah-build`, the
+wrapper exits at once [verified: source; a test checks that the plist and the wrapper agree].
+After `main` updates the runner, run this step again.
 
-One random 32-byte key, the same on both machines, never in a chat, the repo, config or an
-environment variable (contract, "Key"). The runner and the plugin read it per request, so a new
-key needs no restart [verified: runner README].
+### 5.3 The shared key (A11, A16)
 
-1. **Mac, jorah-build**, a Terminal attached to no agent:
+One random 32-byte key, the same on both machines. It never goes in a chat, the repo, config or
+an environment variable (contract, "Key"). Both sides read it per request [verified: runner
+README].
+
+1. **A11. Mac, jorah-build**, in a Terminal attached to no agent:
 
 ```bash
 umask 077 && mkdir -p ~/.config/jorah-ios && openssl rand -out ~/.config/jorah-ios/runner.key 32 && shasum -a 256 ~/.config/jorah-ios/runner.key
@@ -312,85 +336,99 @@ umask 077 && mkdir -p ~/.config/jorah-ios && openssl rand -out ~/.config/jorah-i
 
    Note the hash. It is not secret.
 
-2. **Mac, adam**, a Terminal attached to no agent. This needs `scripts/pc/receive-ios-key.sh` in
-   `/opt/jorah` on the PC (A14a):
+2. **A16. Mac, adam**, in a Terminal attached to no agent, after A15:
 
 ```bash
 sudo base64 -i /Users/jorah-build/.config/jorah-ios/runner.key | ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash /opt/jorah/scripts/pc/receive-ios-key.sh
 ```
 
    **Expect** `Written /home/jorah/.config/jorah-ios/runner.key (600)` and the same hash as step 1.
-   The key travels as base64 text inside SSH, from your Terminal to the PC: no agent, chat, file
-   or repo sees it. The script writes only if it decodes to exactly 32 bytes [verified: source;
-   not run, it runs on the PC]. If the hashes differ, run step 2 again; nothing else changes.
+   The key goes as base64 inside SSH, straight from your Terminal to the PC; no agent, chat, file
+   or repo sees it. The script writes the key only if it decodes to exactly 32 bytes [verified:
+   source; not run, because it runs on the PC]. If the hashes differ, run step 2 again.
 
-### 5.4 Start it (A11)
+### 5.4 Start it (A12)
 
-Fast User Switching → Jorah build. Apple menu → **Log Out Jorah build**, log in as it again, then
-in its Terminal:
+Switch to `jorah-build` (Fast User Switching). Apple menu → **Log Out Jorah build**, log in again,
+then in its Terminal:
 
 ```bash
 curl -s http://127.0.0.1:47820/v1/health
 ```
 
-**Expect** `{"contract": "jorah-ios/1", …, "busy": false}`. Switch back to your account without
-logging `jorah-build` out. From your account, `scripts/mac/ios-preflight.sh` should show the
-runner and its health `done`.
+**Expect** `{"contract": "jorah-ios/1", …, "busy": false}`. Switch back to your account **without
+logging `jorah-build` out**. From your account, `scripts/mac/ios-preflight.sh` shows the runner
+and its health as `done`.
 
-Off switch, quickest first: `tailscale serve --tcp=47820 off`; log out `jorah-build`;
-`sudo rm /Library/LaunchAgents/com.jorah.ios-runner.plist`.
+Off switch, quickest first:
+1. `tailscale serve --tcp=47820 off`
+2. Log out `jorah-build`.
+3. `sudo rm /Library/LaunchAgents/com.jorah.ios-runner.plist`
 
 Note for issue 8: build scripts run third-party code as `jorah-build`, which can read its own
-copy of the key. Such code could sign requests to the runner, which only does what the allowlist
-already lets `jorah-build` do; the PC accepts no requests [inference].
+copy of the key. That code could sign requests to the runner, but the runner only does what the
+allowlist already lets `jorah-build` do, and the PC accepts no requests [inference].
 
-### 5.5 The PC side (A14)
+### 5.5 Tailnet (A13, A14)
 
-a. **Files.** A build session copies `main` into `/opt/jorah` on your yes, as for earlier PC
-   changes (`docs/runbooks/jorah-on-pc.md`). It brings `plugins/jorah-ios`, the two patches and
+- **A13, Tailscale admin console → Access controls**: add to `grants`
+  `{ "src": ["tag:jorah-pc"], "dst": ["adam-mac"], "ip": ["tcp:47820"] }`. If the PC isn't
+  tagged, use its device name (ADR 0002, step 2). **Expect** the policy to save, with its `tests`
+  passing.
+- **A14, Mac, adam**: `tailscale serve --bg --tcp=47820 tcp://127.0.0.1:47820`. **Expect**
+  `tailscale serve status` to list TCP 47820, and the preflight to show it `done`.
+
+### 5.6 The PC side (A15, A17, A18)
+
+a. **A15, files.** A build session copies `main` into `/opt/jorah` on your yes, as for earlier PC
+   changes (`docs/runbooks/jorah-on-pc.md`). That brings `plugins/jorah-ios`, both patches and
    `scripts/pc/receive-ios-key.sh`.
 
-b. **Plugin.** As issue 9 lays out: `openclaw --profile jorah plugins install --link
-   /opt/jorah/plugins/jorah-ios`, run as `jorah` (the way `scripts/pc/install-github.sh` installs
-   `jorah-github`). Follow issue 9's own install step if it has one by then.
+b. **A17, plugin.** Run as `jorah`: `openclaw --profile jorah plugins install --link
+   /opt/jorah/plugins/jorah-ios`. This is the same way `scripts/pc/install-github.sh` installs
+   `jorah-github`. If issue 9's own install step exists by then, use it instead.
 
-c. **Config.** Each patch replaces whole arrays, so first compare with what is applied:
+c. **A17, config.** Each patch replaces whole arrays, so first compare against what is applied:
    `config get plugins.allow` and `config get agents.entries.main.tools.sandbox.tools.alsoAllow`,
-   as each patch's header says. Fill `runnerUrl` with the Mac's MagicDNS name. Then, as `jorah`:
+   as each patch's header says. Set `runnerUrl` to the Mac's MagicDNS name. Then, as `jorah`:
 
 ```bash
 openclaw --profile jorah config patch --file /opt/jorah/config/pc/ios.patch.json5 --dry-run
 ```
 
-   **Expect** "Dry run successful", updates only under `plugins.allow` and
-   `plugins.entries.jorah-ios`, nothing under `gateway.*` or `agents.*`. Then without
-   `--dry-run`. Then the same two commands with `ios-tools.patch.json5`: one update,
-   `agents.entries.main.tools.sandbox.tools.alsoAllow`. Neither needs a Gateway restart [ADR:
-   plugin config reloads].
+   **Expect** "Dry run successful", with updates only under `plugins.allow` and
+   `plugins.entries.jorah-ios`, and nothing under `gateway.*` or `agents.*`. Then run it again
+   without `--dry-run`. Then do the same two commands with `ios-tools.patch.json5`: one update,
+   `agents.entries.main.tools.sandbox.tools.alsoAllow`. Neither patch needs a Gateway restart
+   (ADR 0002: plugin config reloads).
 
-d. **jorah-guard**, only if it is enabled on the PC by then: it blocks tools not in
-   `config/permission-matrix.json`. The proposed entries (`ios_build`, `ios_install`, `ios_status`
-   under `taintRead`) are in `docs/evidence/issue-9/README.md`. They are the matrix owner's (P5)
-   commit, on your yes.
+d. **A18, `jorah-guard`.** This step belongs to the P5 work, not issue 10, and needs your yes. The
+   guard blocks every tool that isn't in `config/permission-matrix.json`. The line to add, from
+   `docs/evidence/issue-9/README.md`:
+   `"taintRead": [..., "ios_build", "ios_install", "ios_status"]`. The tools are treated as
+   reading outside text, because their results repeat repo content. They are still blocked while
+   Jorah is frozen. The plugin shows the card, and the guard adds none. Needed only once the guard
+   is enabled on the PC.
 
 ## 6. Source access for the runner's clones (A7)
 
-Clones live under `jorah-build`'s home, `~/work/<repo>`, as the template's `path` says.
+Clones live in `jorah-build`'s home under `~/src/<app>`. That is the `path` in
+`services/ios-runner/ios-projects.json`, and what the preflight checks.
 
 | | Read-only deploy key, one per repo | GitHub App token, one per run |
 |---|---|---|
 | Scope | One repo per key, read-only by default [docs-only: GitHub, "Managing deploy keys"] | One repo, `contents: read` [verified: `plugins/jorah-github/github.js` `repoToken`] |
 | Lifetime | Never expires [docs-only] | One hour [verified: same file] |
-| Secret lives | `jorah-build`'s `~/.ssh`, on a laptop that travels | On the PC; a 1-hour token crosses to the Mac |
+| Where the secret lives | `jorah-build`'s `~/.ssh`, on a laptop that travels | On the PC; a 1-hour token crosses to the Mac |
 | If the Mac is lost | Read access to both repos until you delete the keys | Nothing to revoke |
 | Works today | **Yes**: the runner fetches with `jorah-build`'s own git credentials [verified: issue 8 evidence] | **No**: needs a token field in the runner and plugin |
 
-**Now: deploy keys.** Switch to a token when issues 8 and 9 support it, then delete the keys.
+**Now: deploy keys.** Switch to a token once issues 8 and 9 support it, then delete the keys.
 
 1. **Mac, jorah-build:**
 
 ```bash
-mkdir -p ~/.ssh ~/work && chmod 700 ~/.ssh && for r in threadfolio mizyun; do ssh-keygen -q -t ed25519 -N '' -C "jorah-build $r read-only" -f ~/.ssh/jorah_${r}_ro && cp ~/.ssh/jorah_${r}_ro.pub /Users/Shared/; printf 'Host github-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/jorah_%s_ro\n  IdentitiesOnly yes\n' "$r" "$r" >> ~/.ssh/config; done; ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null; ssh-keygen -lf ~/.ssh/known_hosts
+mkdir -p ~/.ssh ~/src && chmod 700 ~/.ssh && for r in threadfolio mizyun; do ssh-keygen -q -t ed25519 -N '' -C "jorah-build $r read-only" -f ~/.ssh/jorah_${r}_ro && cp ~/.ssh/jorah_${r}_ro.pub /Users/Shared/; printf 'Host github-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/jorah_%s_ro\n  IdentitiesOnly yes\n' "$r" "$r" >> ~/.ssh/config; done; ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null; ssh-keygen -lf ~/.ssh/known_hosts
 ```
 
    **Expect** the fingerprint `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`, GitHub's
@@ -403,19 +441,36 @@ mkdir -p ~/.ssh ~/work && chmod 700 ~/.ssh && for r in threadfolio mizyun; do ss
 for r in threadfolio mizyun; do gh repo deploy-key add /Users/Shared/jorah_${r}_ro.pub --repo AdamHikl/$r --title "jorah-build read-only"; rm /Users/Shared/jorah_${r}_ro.pub; done
 ```
 
-   No `--allow-write`, so read-only [docs-only: `gh repo deploy-key add --help`]. Keys added by gh
-   are removed if you ever de-authorize gh's token [docs-only, same help].
+   Without `--allow-write`, the keys are read-only [docs-only: `gh repo deploy-key add --help`].
+   Keys added by gh are removed if you ever de-authorize gh's token [docs-only, same help].
 
 3. **Mac, jorah-build:**
 
 ```bash
-git clone git@github-threadfolio:AdamHikl/threadfolio.git ~/work/threadfolio && git clone git@github-mizyun:AdamHikl/mizyun.git ~/work/mizyun
+git clone git@github-threadfolio:AdamHikl/threadfolio.git ~/src/threadfolio && git clone git@github-mizyun:AdamHikl/mizyun.git ~/src/mizyun
 ```
 
    **Expect** both clones. The runner's `sync` fetches from that `origin` [verified: runner
-   source].
+   source]. Leave the clones clean: the runner refuses a dirty tree and never resets it.
 
-## 7. Power: a MacBook that travels daily (A16)
+### 6b. Mizyun push-capable for Jorah (A19)
+
+This is separate from builds. It lets Jorah push `jorah/<task>` branches to Mizyun. **Already
+done** [verified 2026-11-11 by issue 11, `docs/runbooks/ios-recipes.md`]: both rulesets are
+active, and `jorah-bot` covers all repositories. The check:
+
+```bash
+gh api repos/AdamHikl/mizyun/rules/branches/main --jq '.[].type'
+```
+
+**Expect** a list that includes `creation` and `update`. If not:
+1. GitHub → Settings → Applications → **jorah-bot** → **Configure**: "All repositories", or
+   `mizyun` ticked.
+2. `scripts/github/protect-repo.sh AdamHikl/mizyun --dry-run`, then the same without
+   `--dry-run`.
+3. **Expect** both rulesets `active`.
+
+## 7. Power: a MacBook that travels daily (A21)
 
 Current settings [verified: `pmset -g custom`]: on the charger `sleep 0`, `womp 1`,
 `tcpkeepalive 1`; on battery `sleep 1`. So docked with the lid open, the Mac does not sleep by
@@ -440,26 +495,31 @@ pmset -g log | grep -E " (Sleep|Wake|DarkWake) " | tail -50
 
 **Pass:** every check answered, no `Sleep` line. Save the output to `docs/evidence/10/topo-b5.txt`.
 
-## 8. First checks (A15; turns the inferences into results)
+## 8. The test pass and extra checks (A20)
 
-Record pass or fail in `docs/evidence/10/setup-checks.md`, private parts removed.
+Run `docs/runbooks/ios-test-pass.md` (issue 12). Its gates map to the steps here:
+- G1 is A2 to A5.
+- G2 is A8 to A12, and A16.
+- G3 is A6 and A9.
+- G4 is A13 and A14.
+- G5 is A17 and A18.
 
-1. `/usr/local/libexec/jorah/ios-preflight` as `jorah-build`: nothing `missing` or `unknown` except what depends on the PC.
-2. A simulator build of Threadfolio through Jorah, card approved → `tier: build`.
-3. A device build of Mizyun → `tier: build`, `codesign` shows `Apple Development` (the runner
-   checks), no keychain dialog appeared in `jorah-build`.
-4. Same as 3 with `jorah-build` **logged out** → fails cleanly, not hang (3.4).
-5. With `jorah-build` in the **background** session: simulator boot, install and launch, and a
-   screenshot through Jorah → `tier: launch` and a PNG (4b).
-6. Device install of the build from 3, phone **unlocked**, then **locked** → `install` or
-   `launch` the first time; `LAUNCH_FAILED` but `tier: install` the second.
-7. From your account: `ls -le /Users/Shared/jorah-handoff/<run-id>` → readable, ACL inherited;
-   delete it → works.
+These extra checks turn this runbook's own inferences into results. Record them in
+`docs/evidence/10/setup-checks.md`, with private parts removed.
+
+1. `/usr/local/libexec/jorah/ios-preflight` as `jorah-build`: nothing `missing` or `unknown`.
+2. A device build of Mizyun, with `jorah-build` **logged out** → it fails cleanly and doesn't hang
+   (3.4).
+3. A simulator boot, install, launch and screenshot through Jorah, with `jorah-build` in the
+   **background** session → `tier: launch` and a PNG (4b).
+4. A device install with the phone **locked** → `LAUNCH_FAILED`, but `tier: install` (4).
+5. From your account: `ls -le /Users/Shared/jorah-handoff/<run-id>` shows it readable with the
+   ACL inherited; deleting it works.
 
 ## 9. Evidence to record
 
 In `docs/evidence/10/`, private content removed: preflight output, the setup script's `Result:`
-blocks, the section 8 results with run IDs, and TOPO-B5's log. Never a CSR, `.cer`,
+blocks, the section 8 results with run IDs (the test pass has its own file), and TOPO-B5's log. Never a CSR, `.cer`,
 `.mobileprovision`, key, `.env` value or UDID.
 
 ## 10. Rollback
@@ -478,7 +538,7 @@ sudo scripts/mac/remove-jorah-build.sh
 
    **Expect** "This will:" listing the runner agent, the user and its home (keychain, profiles,
    clones, deploy keys, runner key), `/usr/local/libexec/jorah`, `/Library/Application
-   Support/Jorah`, the hand-off folder and the group; `yes`; then `ok … is gone` five times.
+   Support/Jorah` (allowlist and Mizyun's env file), the hand-off folder and the group; `yes`; then `ok … is gone` five times.
    `--keep-handoff` keeps built apps.
 3. developer.apple.com: revoke the certificate with the expiry date from 3.2; delete the four
    `Jorah …` profiles.
@@ -489,8 +549,6 @@ sudo scripts/mac/remove-jorah-build.sh
 
 ## Open
 
-- A1's answer (team), and A2 to A16.
-- Token per run instead of deploy keys: runner and plugin (issues 8, 9).
-- Threadfolio Release needs the build setting `EXTRA_PACKAGER_ARGS=--skip-server`, which the
-  allowlist has no field for (`docs/runbooks/ios-recipes.md`): issue 8 or 11.
-- Every [inference] above: section 8 and TOPO-B5.
+- A1's answer (the team), then steps A2 to A21.
+- A token per run instead of deploy keys: runner and plugin (issues 8 and 9).
+- Every [inference] above: section 8, the test pass and TOPO-B5.

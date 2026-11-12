@@ -21,6 +21,7 @@ import grp
 import json
 import os
 import plistlib
+import re
 import pwd
 import stat
 import subprocess
@@ -45,6 +46,11 @@ HEALTH_URL = "http://127.0.0.1:%d/v1/health" % PORT
 CONTRACT = "jorah-ios/1"
 KEY_REL = ".config/jorah-ios/runner.key"
 PROFILES_REL = "Library/Developer/Xcode/UserData/Provisioning Profiles"
+SRC_DIR = "/Users/jorah-build/src"  # clones, as services/ios-runner/ios-projects.json says
+DEFAULT_PROJECTS = ("threadfolio", "mizyun")
+# Checked even before the allowlist is installed (step A8 comes before A9).
+DEFAULT_ENV_FILES = {"mizyun": ADMIN_CONF + "/env/mizyun-dev.env"}
+UDID_RE = r"^[A-Fa-f0-9-]{8,64}$"
 
 DONE, MISSING, UNKNOWN, INFO = "done", "missing", "unknown", "info"
 
@@ -232,9 +238,9 @@ def _root_file(sys_: System, path: str, what: str, step: str, executable: bool) 
 
 
 def check_runner_install(sys_: System) -> List[Result]:
-    res = [_root_file(sys_, RUNNER_BIN, "runner installed, root-owned", "A9", True),
-           _root_file(sys_, AGENT_WRAPPER, "agent wrapper installed, root-owned", "A9", True),
-           _root_file(sys_, AGENT_PLIST, "LaunchAgent plist installed, root-owned", "A9", False)]
+    res = [_root_file(sys_, RUNNER_BIN, "runner installed, root-owned", "A10", True),
+           _root_file(sys_, AGENT_WRAPPER, "agent wrapper installed, root-owned", "A10", True),
+           _root_file(sys_, AGENT_PLIST, "LaunchAgent plist installed, root-owned", "A10", False)]
     if res[-1].status == DONE:
         data = sys_.read_bytes(AGENT_PLIST)
         try:
@@ -242,69 +248,121 @@ def check_runner_install(sys_: System) -> List[Result]:
             ok = plist.get("Label") == AGENT_LABEL and plist.get("ProgramArguments") == [AGENT_WRAPPER]
         except Exception:  # noqa: BLE001 - any parse failure is a finding, not a crash
             ok = False
-        res.append(Result(DONE if ok else MISSING, "LaunchAgent plist matches the repo", "", "" if ok else "A9"))
+        res.append(Result(DONE if ok else MISSING, "LaunchAgent plist matches the repo", "", "" if ok else "A10"))
     return res
 
 
 def check_allowlist(sys_: System) -> List[Result]:
     st = sys_.stat(ALLOWLIST)
     if st is None:
-        return [Result(MISSING, "allowlist ios-projects.json", ALLOWLIST, "A8")]
+        return ([check_env_file(sys_, n, f) for n, f in sorted(DEFAULT_ENV_FILES.items())] +
+                [Result(MISSING, "allowlist ios-projects.json", ALLOWLIST, "A9")])
     if st == "denied":
-        return [Result(UNKNOWN, "allowlist ios-projects.json", "cannot stat", "A8")]
+        return [Result(UNKNOWN, "allowlist ios-projects.json", "cannot stat", "A9")]
     uid, _, m = owner_mode(st)
     res = []
     if uid != 0 or m & 0o022:
-        res.append(Result(MISSING, "allowlist root-owned, not group/other writable", "uid %d mode %o" % (uid, m), "A8"))
+        res.append(Result(MISSING, "allowlist root-owned, not group/other writable", "uid %d mode %o" % (uid, m), "A9"))
     else:
         res.append(Result(DONE, "allowlist root-owned, not group/other writable"))
     raw = sys_.read_bytes(ALLOWLIST)
     if raw is None:
-        res.append(Result(UNKNOWN, "allowlist content", "not readable from this user", "A8"))
+        res.append(Result(UNKNOWN, "allowlist content", "not readable from this user", "A9"))
         return res
     try:
         data = json.loads(raw.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        res.append(Result(MISSING, "allowlist is valid JSON", "", "A8"))
+        res.append(Result(MISSING, "allowlist is valid JSON", "", "A9"))
         return res
     problems = []
     if data.get("contract") != CONTRACT:
         problems.append("contract is not " + CONTRACT)
-    text = raw.decode("utf-8")
-    if "<" in text and ">" in text:
-        problems.append("still has <placeholders>")
-    projects = sorted((data.get("projects") or {}).keys())
+    projects = data.get("projects") or {}
     if not projects:
         problems.append("no projects")
     if problems:
-        res.append(Result(MISSING, "allowlist filled in", "; ".join(problems), "A8"))
+        res.append(Result(MISSING, "allowlist installed from services/ios-runner/ios-projects.json", "; ".join(problems), "A9"))
     else:
-        res.append(Result(DONE, "allowlist filled in", "projects: " + ", ".join(projects) +
+        res.append(Result(DONE, "allowlist installed from services/ios-runner/ios-projects.json",
+                          "projects: " + ", ".join(sorted(projects)) +
                           "; simulators %s, device install %s" % (data.get("simulatorAllowed"), data.get("installAllowed"))))
+    devices = data.get("devices") or {}
+    good = {a: d for a, d in devices.items() if isinstance(d, dict) and re.match(UDID_RE, str(d.get("udid", "")))}
+    if good and len(good) == len(devices):
+        res.append(Result(DONE, "allowlist names the iPhone under devices", "aliases: " + ", ".join(sorted(good))))
+    else:
+        res.append(Result(MISSING, "allowlist names the iPhone under devices",
+                          "devices is empty" if not devices else "a UDID is malformed", "A9"))
+    for name in sorted(projects):
+        env_file = (projects[name] or {}).get("envFile") if isinstance(projects[name], dict) else None
+        if env_file:
+            res.append(check_env_file(sys_, name, env_file))
     res.append(Result(INFO, "full allowlist check", "the runner checks every field when it starts; see runner health"))
+    return res
+
+
+def check_env_file(sys_: System, project: str, path: str) -> Result:
+    """Existence, owner and mode only. The content is never opened."""
+    what = "%s env file present, root-owned, not group/other writable (content never read)" % project
+    st = sys_.stat(path)
+    if st is None:
+        return Result(MISSING, what, path + "; the runner refuses to build %s without it" % project, "A8")
+    if st == "denied":
+        return Result(UNKNOWN, what, "cannot stat " + path, "A8")
+    uid, _, m = owner_mode(st)
+    regular = stat.S_ISREG(st.st_mode)
+    if not regular or uid != 0 or m & 0o022:
+        return Result(MISSING, what, "uid %d mode %o%s; want root, 644" % (uid, m, "" if regular else ", not a file"), "A8")
+    return Result(DONE, what, "root %o, %d bytes" % (m, st.st_size))
+
+
+def allowlist_projects(sys_: System) -> List[str]:
+    raw = sys_.read_bytes(ALLOWLIST)
+    try:
+        names = sorted((json.loads(raw.decode("utf-8")).get("projects") or {}).keys()) if raw else []
+    except (ValueError, UnicodeDecodeError, AttributeError):
+        names = []
+    return names or list(DEFAULT_PROJECTS)
+
+
+def check_clones(sys_: System) -> List[Result]:
+    res = []
+    for name in allowlist_projects(sys_):
+        what = "clone %s/%s" % (SRC_DIR, name)
+        st = sys_.stat("%s/%s/.git" % (SRC_DIR, name))
+        if st is None:
+            parent = sys_.stat(SRC_DIR)
+            if parent == "denied":
+                res.append(Result(UNKNOWN, what, "not visible from this user", "A7"))
+            else:
+                res.append(Result(MISSING, what, "", "A7"))
+        elif st == "denied":
+            res.append(Result(UNKNOWN, what, "not visible from this user", "A7"))
+        else:
+            res.append(Result(DONE, what))
     return res
 
 
 def check_agent_loaded(sys_: System, me: str) -> Result:
     uid = sys_.uid_of(BUILD_USER)
     if uid is None:
-        return Result(MISSING, "runner agent loaded for jorah-build", "no such user", "A11")
+        return Result(MISSING, "runner agent loaded for jorah-build", "no such user", "A12")
     if me != BUILD_USER:
-        return Result(UNKNOWN, "runner agent loaded for jorah-build", "only visible as jorah-build; health below tells", "A11")
+        return Result(UNKNOWN, "runner agent loaded for jorah-build", "only visible as jorah-build; health below tells", "A12")
     code, out = sys_.run(["/bin/launchctl", "print", "gui/%d/%s" % (uid, AGENT_LABEL)])
     if code is None:
-        return Result(UNKNOWN, "runner agent loaded for jorah-build", "launchctl did not answer", "A11")
+        return Result(UNKNOWN, "runner agent loaded for jorah-build", "launchctl did not answer", "A12")
     if code != 0:
-        return Result(MISSING, "runner agent loaded for jorah-build", "not loaded in this login session", "A11")
+        return Result(MISSING, "runner agent loaded for jorah-build", "not loaded in this login session", "A12")
     running = "state = running" in out
     return Result(DONE if running else MISSING, "runner agent loaded for jorah-build",
-                  "running" if running else "loaded, not running", "" if running else "A11")
+                  "running" if running else "loaded, not running", "" if running else "A12")
 
 
 def check_health(sys_: System) -> Result:
     code, body = sys_.http_get(HEALTH_URL)
     if code is None:
-        return Result(MISSING, "runner answers on 127.0.0.1:%d" % PORT, "nothing listening", "A11")
+        return Result(MISSING, "runner answers on 127.0.0.1:%d" % PORT, "nothing listening", "A12")
     try:
         data = json.loads(body)
     except ValueError:
@@ -312,7 +370,7 @@ def check_health(sys_: System) -> Result:
     if code == 200 and data.get("contract") == CONTRACT:
         return Result(DONE, "runner answers on 127.0.0.1:%d" % PORT,
                       "runner %s, busy %s" % (data.get("runner_version"), data.get("busy")))
-    return Result(MISSING, "runner answers on 127.0.0.1:%d" % PORT, "HTTP %s, not %s" % (code, CONTRACT), "A11")
+    return Result(MISSING, "runner answers on 127.0.0.1:%d" % PORT, "HTTP %s, not %s" % (code, CONTRACT), "A12")
 
 
 def check_signing(sys_: System, me: str, home: Optional[str]) -> List[Result]:
@@ -357,17 +415,17 @@ def check_signing(sys_: System, me: str, home: Optional[str]) -> List[Result]:
 def check_key(sys_: System, me: str, home: Optional[str]) -> Result:
     what = "runner key file present, private (content never read)"
     if not home:
-        return Result(MISSING, what, "no jorah-build home", "A10")
+        return Result(MISSING, what, "no jorah-build home", "A11")
     st = sys_.stat(os.path.join(home, KEY_REL))
     if st == "denied" or (st is None and me != BUILD_USER):
-        return Result(UNKNOWN, what, "only visible as jorah-build", "A10")
+        return Result(UNKNOWN, what, "only visible as jorah-build", "A11")
     if st is None:
-        return Result(MISSING, what, "", "A10")
+        return Result(MISSING, what, "", "A11")
     uid, _, m = owner_mode(st)
     ok = uid == sys_.uid_of(BUILD_USER) and m == 0o600 and st.st_size == 32
     return Result(DONE if ok else MISSING, what,
                   "" if ok else "uid %d mode %o size %d; want jorah-build, 600, 32 bytes" % (uid, m, st.st_size),
-                  "" if ok else "A10")
+                  "" if ok else "A11")
 
 
 def _devices(sys_: System, tmpdir: str) -> Optional[list]:
@@ -422,19 +480,19 @@ def check_tailscale(sys_: System) -> Result:
             cli = c
             break
     if not cli:
-        return Result(UNKNOWN, what, "tailscale CLI not found", "A13")
+        return Result(UNKNOWN, what, "tailscale CLI not found", "A14")
     code, out = sys_.run([cli, "serve", "status", "--json"])
     if code != 0:
-        return Result(UNKNOWN, what, "tailscale serve status failed", "A13")
+        return Result(UNKNOWN, what, "tailscale serve status failed", "A14")
     try:
         data = json.loads(out or "{}")
     except ValueError:
-        return Result(UNKNOWN, what, "unreadable serve status", "A13")
+        return Result(UNKNOWN, what, "unreadable serve status", "A14")
     tcp = (data.get("TCP") or {}).get(str(PORT)) or {}
     target = tcp.get("TCPForward", "")
     if target in ("127.0.0.1:%d" % PORT, "localhost:%d" % PORT):
         return Result(DONE, what)
-    return Result(MISSING, what, "no TCP %d entry" % PORT if not tcp else "forwards to " + target, "A13")
+    return Result(MISSING, what, "no TCP %d entry" % PORT if not tcp else "forwards to " + target, "A14")
 
 
 def check_xcode(sys_: System) -> List[Result]:
@@ -474,15 +532,15 @@ def collect(sys_: System, tmpdir: str = "/tmp") -> List[Tuple[str, List[Result]]
     adam = None if me == BUILD_USER else me
     home = sys_.home_of(BUILD_USER)
     return [
-        ("Account (A2)", check_user(sys_) + check_group(sys_, adam)),
-        ("Folders (A2)", check_dirs(sys_)),
+        ("Account and folders (A2)", check_user(sys_) + check_group(sys_, adam) + check_dirs(sys_)),
+        ("Xcode and simulators (A3)", check_xcode(sys_)),
         ("Signing (A4, A5)", check_signing(sys_, me, home)),
         ("iPhone (A6)", check_iphone(sys_, me, tmpdir)),
-        ("Allowlist (A8)", check_allowlist(sys_)),
-        ("Runner (A9 to A11)", check_runner_install(sys_) + [check_agent_loaded(sys_, me), check_health(sys_)]),
-        ("Runner key (A10)", [check_key(sys_, me, home)]),
-        ("Tailnet (A13)", [check_tailscale(sys_)]),
-        ("Xcode and simulators (A3)", check_xcode(sys_)),
+        ("Clones (A7)", check_clones(sys_)),
+        ("Allowlist and env file (A8, A9)", check_allowlist(sys_)),
+        ("Runner (A10 to A12)", check_runner_install(sys_) + [check_key(sys_, me, home), check_agent_loaded(sys_, me),
+                                                            check_health(sys_)]),
+        ("Tailnet (A14)", [check_tailscale(sys_)]),
     ]
 
 

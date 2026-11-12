@@ -18,8 +18,8 @@
 #      inherited ACL so Adam can read and delete each run's folder and nobody else can look.
 #   4b. /usr/local/libexec/jorah/ios-preflight, the read-only check (scripts/mac/ios-preflight.sh),
 #      so jorah-build can run it too.
-#   5. /Library/Application Support/Jorah, root:wheel 0755, for the admin-owned runner
-#      allowlist ios-projects.json (contract section 6). Adam places that file.
+#   5. /Library/Application Support/Jorah and its env/ folder, root:wheel 0755, for the runner
+#      allowlist (scripts/mac/install-ios-allowlist.sh) and Mizyun's env file, which Adam places.
 #
 # It never touches a keychain, certificate, device pairing, power or security setting.
 # Those are Adam's manual steps in docs/runbooks/ios-builds.md. Rollback:
@@ -121,10 +121,10 @@ if [ "$INSTALL_RUNNER" = "1" ]; then
   plan+=("install $AGENT_PLIST, root:wheel 0644; it starts at $BUILD_USER's next login")
 fi
 
-if [ -d "$ADMIN_CONF" ]; then
-  echo "ok    $ADMIN_CONF exists ($(stat -f '%Su:%Sg %Lp' "$ADMIN_CONF"))"
+if [ -d "$ADMIN_CONF/env" ]; then
+  echo "ok    $ADMIN_CONF and its env folder exist ($(stat -f '%Su:%Sg %Lp' "$ADMIN_CONF"))"
 else
-  plan+=("create $ADMIN_CONF as root:wheel 0755 (for ios-projects.json, which you place)")
+  plan+=("create $ADMIN_CONF and $ADMIN_CONF/env as root:wheel 0755 (allowlist and Mizyun's env file, which you place)")
 fi
 
 if [ -d "$HANDOFF" ]; then
@@ -195,9 +195,9 @@ if [ "$INSTALL_RUNNER" = "1" ]; then
   install -o root -g wheel -m 0644 "$REPO/scripts/mac/com.jorah.ios-runner.plist" "$AGENT_PLIST"
 fi
 
-mkdir -p "$ADMIN_CONF"
-chown root:wheel "$ADMIN_CONF"
-chmod 0755 "$ADMIN_CONF"
+mkdir -p "$ADMIN_CONF/env"
+chown root:wheel "$ADMIN_CONF" "$ADMIN_CONF/env"
+chmod 0755 "$ADMIN_CONF" "$ADMIN_CONF/env"
 
 mkdir -p "$HANDOFF"
 chown "$BUILD_USER:$HANDOFF_GROUP" "$HANDOFF"

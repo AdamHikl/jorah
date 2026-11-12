@@ -4,7 +4,6 @@ needed: the machine is a fake, so they run anywhere `just unit` runs."""
 import importlib.util
 import json
 import os
-import re
 import stat
 import sys
 import tempfile
@@ -180,11 +179,47 @@ class Shared(unittest.TestCase):
         f.stats[pf.RUNNER_BIN] = st(mode=0o775, kind=stat.S_IFREG)
         self.assertEqual(pf._root_file(f, pf.RUNNER_BIN, "x", "A9", True).status, pf.MISSING)
 
-    def test_allowlist_with_placeholders_is_missing(self):
+    def allowlist(self, devices):
+        data = json.loads((REPO / "services/ios-runner/ios-projects.json").read_text())
+        data["devices"] = devices
         f = Fake()
         f.stats[pf.ALLOWLIST] = st(mode=0o644, kind=stat.S_IFREG)
-        f.files[pf.ALLOWLIST] = (REPO / "scripts/mac/ios-projects.template.json").read_bytes()
-        self.assertEqual(statuses(pf.check_allowlist(f))["allowlist filled in"], pf.MISSING)
+        f.files[pf.ALLOWLIST] = json.dumps(data).encode()
+        return f
+
+    def test_real_allowlist_without_devices_or_env_file_is_missing(self):
+        r = statuses(pf.check_allowlist(self.allowlist({})))
+        self.assertEqual(r["allowlist installed from services/ios-runner/ios-projects.json"], pf.DONE)
+        self.assertEqual(r["allowlist names the iPhone under devices"], pf.MISSING)
+        env = [k for k in r if k.startswith("mizyun env file")]
+        self.assertEqual([r[k] for k in env], [pf.MISSING])
+
+    def test_env_file_checked_by_stat_only(self):
+        f = self.allowlist({"adam-iphone": {"udid": "00008140-0000000000000000"}})
+        path = "/Library/Application Support/Jorah/env/mizyun-dev.env"
+        f.stats[path] = st(mode=0o644, size=60, kind=stat.S_IFREG)
+        r = statuses(pf.check_allowlist(f))
+        self.assertEqual(r["allowlist names the iPhone under devices"], pf.DONE)
+        self.assertEqual(r[[k for k in r if k.startswith("mizyun env file")][0]], pf.DONE)
+        self.assertNotIn(path, f.files)  # never opened
+        f.stats[path] = st(uid=ADAM_UID, mode=0o644, kind=stat.S_IFREG)
+        r = statuses(pf.check_allowlist(f))
+        self.assertEqual(r[[k for k in r if k.startswith("mizyun env file")][0]], pf.MISSING)
+
+    def test_env_file_checked_before_allowlist_exists(self):
+        r = statuses(pf.check_allowlist(Fake()))
+        self.assertEqual(r["allowlist ios-projects.json"], pf.MISSING)
+        self.assertIn(pf.MISSING, [v for k, v in r.items() if k.startswith("mizyun env file")])
+
+    def test_clones(self):
+        f = Fake()
+        f.stats[pf.SRC_DIR + "/threadfolio/.git"] = st()
+        f.stats[pf.SRC_DIR] = st()
+        r = statuses(pf.check_clones(f))
+        self.assertEqual(r["clone /Users/jorah-build/src/threadfolio"], pf.DONE)
+        self.assertEqual(r["clone /Users/jorah-build/src/mizyun"], pf.MISSING)
+        f.stats[pf.SRC_DIR] = "denied"
+        self.assertEqual(statuses(pf.check_clones(f))["clone /Users/jorah-build/src/mizyun"], pf.UNKNOWN)
 
     def test_tailscale_serve(self):
         f = Fake()
@@ -219,30 +254,33 @@ class Shared(unittest.TestCase):
         self.assertEqual(pf.render([("s", [pf.Result(pf.MISSING, "a"), pf.Result(pf.UNKNOWN, "b")])], "adam", out.append), 1)
 
 
-class Template(unittest.TestCase):
-    """The allowlist template must load in the runner's own checker once placeholders are filled."""
+class Allowlist(unittest.TestCase):
+    """The one allowlist source, plus the iPhone added at install time, loads in the runner."""
 
-    def test_filled_template_loads_in_runner(self):
+    def test_installed_allowlist_loads_in_runner(self):
+        spec2 = importlib.util.spec_from_file_location("ios_allowlist", HERE.parent / "ios_allowlist.py")
+        al = importlib.util.module_from_spec(spec2)
+        spec2.loader.exec_module(al)
         sys.path.insert(0, str(REPO / "services/ios-runner"))
         try:
             from ios_runner.config import load_config
         finally:
             sys.path.pop(0)
-        text = (REPO / "scripts/mac/ios-projects.template.json").read_text()
-        counter = iter(range(1, 100))
-        text = re.sub(r'"<EXPO_PUBLIC_[^"]*>"', lambda m: '"EXPO_PUBLIC_X%d"' % next(counter), text)
-        text = text.replace('"<iPhone UDID: xcrun devicectl list devices>"', '"00008140-0000000000000000"')
-        text = re.sub(r'"<[^"]*>"', '"filled"', text)
-        self.assertNotIn("<", text)
+        source = (REPO / "services/ios-runner/ios-projects.json").read_text()
+        merged = al.merge(source, "00008140-0000000000000000")
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "ios-projects.json"
-            p.write_text(text)
+            p.write_text(merged)
             os.chmod(p, 0o600)
             config = load_config(p)
+        self.assertEqual(config.devices, {"adam-iphone": "00008140-0000000000000000"})
         self.assertEqual(sorted(config.projects), ["mizyun", "threadfolio"])
+        for project in config.projects.values():
+            self.assertEqual(str(project.path.parent), pf.SRC_DIR)
+        self.assertEqual(str(config.projects["mizyun"].env_file), pf.DEFAULT_ENV_FILES["mizyun"])
         self.assertEqual(config.port, pf.PORT)
-        self.assertEqual(set(config.projects["mizyun"].signing.profiles),
-                         {"MizyunDev", "ExpoWidgetsTarget", "MizyunWorkoutWatchDev"})
+        with self.assertRaises(ValueError):
+            al.merge(source, "00008140; rm -rf /")
 
     def test_launch_agent_plist_points_at_wrapper(self):
         import plistlib

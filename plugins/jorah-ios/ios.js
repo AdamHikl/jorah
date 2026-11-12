@@ -372,7 +372,8 @@ export function shortTail(tail) {
   return out;
 }
 
-const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
+// Sizes as people read them: a 4 KiB log is not "0.0 MB" (seen in the loopback e2e, 2026-11-12).
+const mb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KiB`);
 const shown = (n) => (n === null ? "unknown" : String(n));
 
 // Contract 5, amended 2026-11-11: the full log is in the runner's state folder, not the handoff.

@@ -1,5 +1,62 @@
 # Issue 9: `plugins/jorah-ios`, evidence and notes
 
+## Update 2026-11-12, evening: the plugin against the real runner on loopback
+
+`just ios-e2e-local` (`plugins/jorah-ios/e2e/loopback.mjs`) starts the real runner
+(`services/ios-runner`, `serve`) on 127.0.0.1 with a throwaway key and the fixture app, and drives
+the plugin's `before_tool_call` hook and tool handlers through a stand-in for the Gateway's plugin
+API. It answers each card the way the step needs, then calls `execute`, as the Gateway does. The
+fixture is copied into its own temp git repo with a local bare `origin`. The runner's `sync` fetches
+from `origin` and its build may `git switch --detach`, so it must never point at a jorah checkout.
+No network is used, and everything is deleted at the end. It is not part of `just check` because it
+needs Xcode and a simulator.
+
+**Result: 21 of 21 steps passed** on this Mac (Xcode 27.2, runner 2.1.0, `jorah-ios/1`). The record
+is in [`e2e-loopback.json`](e2e-loopback.json), with temp paths shown as `<temp>`. The first run also
+passed 21 of 21; the recorded run is the second, with reply text added. It covered:
+- A carded simulator build whose card names the commit `sync` resolved, then "State: succeeded. Tier
+  proved: build." with the artifact hashed.
+- A log page with whole lines in the untrusted wrapper, and the run list.
+- With no card (the default): boot, then install with launch (tier `launch`, with a process ID),
+  then launch, screenshot (image shown, sha256 checked against the run, tier `none`; read again in
+  16 KiB pages through `ios_status`), terminate and shutdown.
+- A denied card and a timed-out card, and `execute` without a card (`DENIED`).
+- Refused before the Mac: an off-allowlist project and six injected arguments (shell string and
+  option in `ref`, a flag in `configuration`, an extra `scheme`, a quote in a simulator name, a
+  `path` field), and a simulator install of a build that never had a card. The run count was
+  unchanged across all of these.
+- A wrong key (the real runner's 401, reported as `AUTH_FAILED`), and the runner stopped ("Mac not
+  reachable … Nothing was started", for a status read and for a build hook).
+
+**Faults found:** one small one on the plugin side, fixed: a short log read "(0.0 MB)" in the
+reply; sizes under 1 MB now show in KiB (the recorded run predates the fix). None in the runner or
+the contract that this path reaches. Not covered here, because they need G1 to G4 of `docs/runbooks/ios-test-pass.md`:
+- device builds and installs, signing, `sync` from GitHub;
+- the runner as `jorah-build` under launchd;
+- the tailnet hop and the Gateway itself: whether its plugin API calls `onResolution` before
+  `execute`, and passes the same `toolCallId`.
+
+**jorah-guard:** checked with jorah-guard's own `decide()` (read-only). With today's
+`config/permission-matrix.json`, all three tools are blocked ("isn't in Jorah's permission list
+yet"). With the diff below they are allowed, the chat is marked as having read outside text, and
+they are blocked while Jorah is frozen. Proposal only, not applied:
+
+```diff
+--- a/config/permission-matrix.json
++++ b/config/permission-matrix.json
+@@ -7,7 +7,7 @@
+     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
+     "agentmemory__memory_diagnose"
+   ],
+-  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync"],
++  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "ios_build", "ios_install", "ios_status"],
+   "search": ["web_search", "x_search"],
+   "url": ["web_fetch", "browser"],
+   "fileWrite": ["write", "edit", "apply_patch"],
+```
+
+---
+
 ## Update 2026-11-12: simulator actions (ADR 0002 D4, accepted)
 
 Built to the contract on `main` at d253d4e (0107f66 plus Adam's no-cards decision). **Tier: source and tests** (50 unit tests).

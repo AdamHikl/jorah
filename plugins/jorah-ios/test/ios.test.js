@@ -354,6 +354,7 @@ test("long logs are summarised from tail and first errors, wrapped as untrusted,
   assert.doesNotMatch(t, /line 1500 /);
   assert.match(t, /runner's state folder on the Mac \(runs\/20261111T213005Z-threadfolio-3f9c2e\/run\.log\)/);
   assert.match(t, /40\.0 MB/);
+  assert.match(describeRun(readRun(deviceRun({ log: { bytes: 4067, tail: "", complete: true } }))), /\(4 KiB\)/);
   assert.equal(t.split("--- end of untrusted build output ---").length - 1, 2, "a forged end marker was not defused");
   assert.ok(shortTail("a\n".repeat(10)).split("\n").length <= 20);
   assert.match(untrusted("hi"), /^--- untrusted build output/);

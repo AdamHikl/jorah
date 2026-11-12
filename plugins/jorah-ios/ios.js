@@ -69,10 +69,10 @@ export function settings(pluginConfig = {}) {
     }
     runnerUrl = u.origin;
   }
-  // Simulator actions' cards (ADR 0002, "D4, simulator use"). Adam chose none on 2026-11-12, set as
-  // "off" in config/pc/ios.patch.json5. Left out, it is "required", the fail-closed side. Builds
-  // and device installs always ask, whatever this says.
-  const simulatorCards = pluginConfig.simulatorCards ?? "required";
+  // Simulator actions' cards (ADR 0002 "D4, simulator use"; contract 1 "Cards on a simulator: none").
+  // Adam, 2026-11-12: "No cards for simulator", so the default is "off"; "required" turns them back
+  // on. Builds (simulator builds included) and device installs always ask, whatever this says.
+  const simulatorCards = pluginConfig.simulatorCards ?? "off";
   if (!["required", "off"].includes(simulatorCards)) throw new Error('jorah-ios: simulatorCards must be "required" or "off"');
   return { runnerUrl, keyFile: pluginConfig.keyFile ?? DEFAULTS.keyFile, projects: [...projects], simulatorCards };
 }

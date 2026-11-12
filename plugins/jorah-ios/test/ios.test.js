@@ -401,6 +401,16 @@ test("SHA fixture is a valid digest", () => assert.match(SHA, /^[0-9a-f]{64}$/))
 // --- Simulator (contract 1 "On a simulator", 4a; ADR 0002 D4) ---
 
 const SIM_INSTALL = { simulator: SIM, run_id: simBuildRun().run_id };
+const CARDS = { simulatorCards: "required" };
+
+/** A simulator build that went through the card, then finished on the (fake) Mac. */
+async function approvedSimBuild(h) {
+  const b = await h.call("ios_build", { project: "threadfolio", kind: "simulator" });
+  assert.ok(b.hook.requireApproval, "a simulator build always has a card");
+  const id = b.details.run.run_id;
+  h.fake.runs.set(id, simBuildRun({ run_id: id }));
+  return { simulator: SIM, run_id: id };
+}
 
 test("simulator arguments: only the contract's combinations pass", () => {
   assert.deepEqual(checkInstall(SIM_INSTALL), { target: "simulator", action: "install", simulator: SIM, run_id: simBuildRun().run_id, launch: false });
@@ -422,15 +432,16 @@ test("simulator arguments: only the contract's combinations pass", () => {
   for (const p of bad) assert.throws(() => checkInstall(p), /BAD_ARGUMENT|must|doesn't|needs|not both|only action/, JSON.stringify(p));
 });
 
-test("simulator install: card names action, simulator, project and commit, then installs that build", async () => {
-  const h = await harness();
+test("simulator install with cards required: card names action, simulator, project and commit, then installs that build", async () => {
+  const h = await harness({ extraConfig: CARDS });
   try {
-    const r = await h.call("ios_install", { ...SIM_INSTALL, launch: true });
+    const target = await approvedSimBuild(h);
+    const r = await h.call("ios_install", { ...target, launch: true });
     const card = r.hook.requireApproval;
     assert.equal(card.title, "Jorah wants to use the iOS Simulator");
     assert.deepEqual(card.allowedDecisions, ["allow-once", "deny"]);
     for (const s of ["install", "iPhone 17", "iOS 27.0", "threadfolio", COMMIT, "Debug", "launch", "not the iPhone"]) assert.ok(card.description.includes(s), s);
-    assert.deepEqual(h.fake.calls.find((c) => c.verb === "sim-install").body, { build_run_id: simBuildRun().run_id, simulator: SIM, launch: true });
+    assert.deepEqual(h.fake.calls.find((c) => c.verb === "sim-install").body, { build_run_id: target.run_id, simulator: SIM, launch: true });
     assert.equal(r.details.ok, true);
     assert.equal(r.details.run.tier, "launch");
     assert.match(r.text, /Tier proved: launch/);
@@ -451,13 +462,30 @@ test("a simulator the runner doesn't list is refused before the card", async () 
   } finally { await h.after(); }
 });
 
-test("installing a non-simulator build on a simulator is refused before the card", async () => {
-  const notSucceeded = simBuildRun({ run_id: "20261112T110132Z-threadfolio-000001", state: "failed", tier: "none", artifact: null });
-  const h = await harness({ runner: { runs: new Map([[deviceRun().run_id, deviceRun()], [notSucceeded.run_id, notSucceeded], [simBuildRun().run_id, simBuildRun()]]) } });
+for (const cards of ["off", "required"]) {
+  test(`installing anything but a succeeded, carded simulator build on a simulator is refused (cards ${cards})`, async () => {
+    const h = await harness({ extraConfig: { simulatorCards: cards } });
+    try {
+      // A good simulator build the Mac knows, but that never went through this plugin's card.
+      const r0 = await h.call("ios_install", { simulator: SIM, run_id: simBuildRun().run_id });
+      assert.match(r0.blocked, /NOT_INSTALLABLE/);
+      assert.match(r0.blocked, /build card/);
+      // Also refused if execute is reached without the hook.
+      assert.equal((await h.tools.ios_install.execute("x", { simulator: SIM, run_id: simBuildRun().run_id })).details.error.code, "NOT_INSTALLABLE");
+      // Carded, but the Mac reports it failed, or as a device build.
+      const target = await approvedSimBuild(h);
+      h.fake.runs.set(target.run_id, simBuildRun({ run_id: target.run_id, state: "failed", tier: "none", artifact: null }));
+      assert.match((await h.call("ios_install", target)).blocked, /NOT_INSTALLABLE/);
+      h.fake.runs.set(target.run_id, deviceRun({ run_id: target.run_id }));
+      assert.match((await h.call("ios_install", target)).blocked, /NOT_INSTALLABLE/);
+      assert.ok(!h.fake.verbs().includes("sim-install"));
+    } finally { await h.after(); }
+  });
+}
+
+test("a simulator build can't go to the iPhone", async () => {
+  const h = await harness();
   try {
-    assert.match((await h.call("ios_install", { simulator: SIM, run_id: deviceRun().run_id })).blocked, /NOT_INSTALLABLE/);
-    assert.match((await h.call("ios_install", { simulator: SIM, run_id: notSucceeded.run_id })).blocked, /NOT_INSTALLABLE/);
-    // And a simulator build can't go to the iPhone.
     assert.match((await h.call("ios_install", { device: "adam-iphone", run_id: simBuildRun().run_id })).blocked, /NOT_INSTALLABLE/);
     assert.ok(!h.fake.verbs().some((v) => v === "sim-install" || v === "install-device"));
   } finally { await h.after(); }
@@ -472,8 +500,8 @@ test("simulator actions on a project outside the allowlist are refused", async (
 });
 
 for (const decision of ["deny", "timeout"]) {
-  test(`a simulator card answered ${decision} runs nothing`, async () => {
-    const h = await harness();
+  test(`with cards required, a simulator card answered ${decision} runs nothing`, async () => {
+    const h = await harness({ extraConfig: CARDS });
     try {
       const r = await h.call("ios_install", { simulator: SIM, action: "boot" }, decision);
       assert.equal(r.denied, decision);
@@ -484,29 +512,74 @@ for (const decision of ["deny", "timeout"]) {
   });
 }
 
-test("simulatorCards defaults to required; off lets simulator actions run without a card, and only them", async () => {
-  assert.equal(settings({}).simulatorCards, "required");
+test("simulatorCards defaults to off (Adam, 2026-11-12); anything but off or required is refused", () => {
+  assert.equal(settings({}).simulatorCards, "off");
+  assert.equal(settings({ simulatorCards: "required" }).simulatorCards, "required");
   assert.throws(() => settings({ simulatorCards: "sometimes" }), /required/);
-  const h = await harness({ extraConfig: { simulatorCards: "off" } });
+});
+
+test("cards off (the default): every simulator action runs without a card, still checked", async () => {
+  const h = await harness();
   try {
-    const r = await h.call("ios_install", { simulator: SIM, action: "boot" });
-    assert.equal(r.hook, undefined, "no card");
-    assert.equal(r.details.ok, true);
-    assert.match(r.text, /Simulator booted/);
-    // Still validated and still allowlisted without a card.
+    const target = await approvedSimBuild(h);
+    const steps = [
+      { simulator: SIM, action: "boot" },
+      { ...target, launch: true },
+      { simulator: SIM, action: "launch", project: "threadfolio" },
+      { simulator: SIM, action: "screenshot", project: "threadfolio" },
+      { simulator: SIM, action: "terminate", project: "threadfolio" },
+      { simulator: SIM, action: "shutdown" },
+    ];
+    for (const p of steps) {
+      const r = await h.call("ios_install", p);
+      assert.equal(r.hook, undefined, `no card for ${p.action ?? "install"}`);
+      assert.equal(r.details.ok, true, `${p.action ?? "install"}: ${r.text}`);
+    }
+    for (const v of ["sim-boot", "sim-install", "sim-launch", "sim-screenshot", "sim-terminate", "sim-shutdown"]) assert.ok(h.fake.verbs().includes(v), v);
+    // Still validated and allowlisted without a card.
     assert.match((await h.call("ios_install", { simulator: SIM, action: "launch", project: "robot-tour" })).blocked, /PROJECT_NOT_ALLOWED/);
-    // Builds and device installs still ask.
-    assert.ok((await h.call("ios_build", BUILD)).hook.requireApproval);
-    assert.ok((await h.call("ios_install", { device: "adam-iphone", run_id: deviceRun().run_id })).hook.requireApproval);
+    assert.match((await h.call("ios_install", { simulator: { name: "iPhone 99", os: "27.0" }, action: "boot" })).blocked, /SIMULATOR_NOT_FOUND/);
   } finally { await h.after(); }
 });
+
+test("cards required: every simulator action waits for its own card", async () => {
+  const h = await harness({ extraConfig: CARDS });
+  try {
+    const target = await approvedSimBuild(h);
+    for (const p of [{ simulator: SIM, action: "boot" }, target, { simulator: SIM, action: "launch", project: "threadfolio" }, { simulator: SIM, action: "screenshot", project: "threadfolio" }, { simulator: SIM, action: "terminate", project: "threadfolio" }, { simulator: SIM, action: "shutdown" }]) {
+      const r = await h.call("ios_install", p);
+      assert.equal(r.hook.requireApproval.title, "Jorah wants to use the iOS Simulator", p.action ?? "install");
+      assert.equal(r.details.ok, true);
+    }
+  } finally { await h.after(); }
+});
+
+for (const cards of ["off", "required"]) {
+  test(`cards ${cards}: every build, simulator included, and every device install still shows a card`, async () => {
+    const h = await harness({ extraConfig: { simulatorCards: cards } });
+    try {
+      for (const kind of ["simulator", "device", "archive"]) {
+        const r = await h.call("ios_build", { project: "threadfolio", kind }, "deny");
+        assert.equal(r.hook.requireApproval.title, "Jorah wants to build an iOS app", kind);
+        assert.equal(r.denied, "deny");
+      }
+      const dev = await h.call("ios_install", { device: "adam-iphone", run_id: deviceRun().run_id }, "deny");
+      assert.equal(dev.hook.requireApproval.title, "Jorah wants to install an app on your iPhone");
+      // Without the card, execute sends nothing to the iPhone.
+      assert.equal((await h.tools.ios_install.execute("call-9", { device: "adam-iphone", run_id: deviceRun().run_id })).details.error.code, "DENIED");
+      assert.ok(!h.fake.verbs().some((v) => ["build-sim", "build-device", "archive", "install-device"].includes(v)));
+      // A denied simulator build is never installable on a simulator.
+      assert.match((await h.call("ios_install", { simulator: SIM, run_id: "20261111T220000Z-threadfolio-abcdef" })).blocked, /NOT_INSTALLABLE/);
+    } finally { await h.after(); }
+  });
+}
 
 test("screenshot: the PNG comes back whole as an image, its sha256 checked, read in bounded pages", async () => {
   const shot = png(200);
   const h = await harness({ runner: { png: shot } });
   try {
     const r = await h.call("ios_install", { simulator: SIM, action: "screenshot", project: "threadfolio" });
-    assert.match(r.hook.requireApproval.description, /screenshot/);
+    assert.equal(r.hook, undefined);
     const image = r.out.content.find((c) => c.type === "image");
     assert.equal(image.mimeType, "image/png");
     assert.ok(Buffer.from(image.data, "base64").equals(shot));
@@ -564,7 +637,7 @@ test("simulator tiers: claimed only as proved, unknown never reads as success", 
   } finally { await h.after(); }
   const lost = await harness({ runner: { simInstallOver: { state: "unknown" } } });
   try {
-    const r = await lost.call("ios_install", SIM_INSTALL);
+    const r = await lost.call("ios_install", await approvedSimBuild(lost));
     assert.equal(r.details.ok, false);
     assert.match(r.text, /not a success/);
   } finally { await lost.after(); }
@@ -585,7 +658,7 @@ test("boot, shutdown and terminate report only what the Mac confirmed", async ()
 test("a lost reply to a simulator action is unknown; the Mac asleep is 'Mac not reachable'", async () => {
   const h = await harness({ runner: { hangVerbs: new Set(["sim-install"]) } });
   try {
-    const r = await h.call("ios_install", SIM_INSTALL);
+    const r = await h.call("ios_install", await approvedSimBuild(h));
     assert.equal(r.details.state, "unknown");
     assert.match(r.text, /State: unknown/);
   } finally { await h.after(); }

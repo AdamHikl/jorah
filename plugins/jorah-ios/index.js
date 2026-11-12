@@ -9,9 +9,10 @@
 //
 // Three tools only (waiver condition 1). Simulator actions go through ios_install with `simulator`
 // (contract 1, "On a simulator"); the proposed fourth tool ios_simulator is not built. Simulator
-// actions skip the card when plugins.entries.jorah-ios.config.simulatorCards is "off" (Adam,
-// 2026-11-12: "No cards for simulator"; config/pc/ios.patch.json5 sets it). Left out, it is
-// "required". Builds, simulator builds included, and device installs always ask.
+// actions run without a card by default (Adam, 2026-11-12: "No cards for simulator");
+// plugins.entries.jorah-ios.config.simulatorCards: "required" turns the cards back on. Builds,
+// simulator builds included, and device installs always ask. A simulator install takes only a
+// build this plugin started after Adam's card (approvedBuilds below).
 
 import {
   IosError, checkBuild, checkCommit, checkInstall, checkProject, checkStatus, describeRun, describeSimulator, logPlace,
@@ -53,6 +54,20 @@ export function createPlugin(deps = {}) {
       const config = () => settings(api.pluginConfig ?? {});
       const client = () => runnerClient(config(), deps);
       const cardless = (name, args) => name === "ios_install" && args.target === "simulator" && config().simulatorCards === "off";
+
+      // Run IDs of builds this plugin started after an allow-once card. A simulator install has no
+      // card of its own by default, so it takes only one of these: the card it rests on is the
+      // build's. Kept in memory, newest 200: after a Gateway restart, build again (fails closed).
+      const approvedBuilds = new Set();
+      const rememberBuild = (runId) => {
+        approvedBuilds.add(runId);
+        while (approvedBuilds.size > 200) approvedBuilds.delete(approvedBuilds.values().next().value);
+      };
+      function checkApprovedBuild(runId) {
+        if (!approvedBuilds.has(runId)) {
+          throw new IosError("NOT_INSTALLABLE", "That build didn't go through Adam's build card in this Gateway session, so it isn't installed on a simulator. Build it again with ios_build.");
+        }
+      }
 
       // Cards shown and their decisions, by tool call ID when the host gives one, else by the call.
       const approvals = new Map();
@@ -138,8 +153,10 @@ export function createPlugin(deps = {}) {
       async function installCard(p, signal) {
         const args = checkInstall(p);
         if (args.project) checkProject(config(), args.project);
-        if (cardless("ios_install", args)) return { args, card: null };
-        return { args, card: args.target === "device" ? await deviceCard(args, signal) : await simulatorCard(args, signal) };
+        if (args.target === "simulator" && args.action === "install") checkApprovedBuild(args.run_id);
+        // The checks behind a card run either way; only showing it depends on the switch.
+        const card = args.target === "device" ? await deviceCard(args, signal) : await simulatorCard(args, signal);
+        return { args, card: cardless("ios_install", args) ? null : card };
       }
 
       // Every build and every install waits for Adam (simulator actions too, unless switched off).
@@ -245,6 +262,7 @@ export function createPlugin(deps = {}) {
             if (run?.commit && run.commit !== approved.bound.commit) {
               return result(`The Mac reports building ${run.commit}, not the approved ${approved.bound.commit}. Treat this run as unknown.\n${describeRun(run)}`, { ok: false, run, error: { code: "CONTRACT_MISMATCH", message: "The Mac built a different commit from the one approved.", retryable: false } });
             }
+            if (args.kind === "simulator" && run?.run_id) rememberBuild(run.run_id);
             api.logger.info(`jorah-ios: build ${run?.run_id ?? "?"} started (${args.project} ${args.kind})`);
             return result(`Build started on the Mac.\n${describeRun(run, { withTail: false })}\nCheck it with ios_status { run_id: "${run?.run_id ?? ""}", wait_seconds: 120 }.`, { ok: true, run, error: null });
           } catch (error) {
@@ -282,6 +300,7 @@ export function createPlugin(deps = {}) {
           try {
             const args = checkInstall(p ?? {});
             if (args.project) checkProject(config(), args.project);
+            if (args.target === "simulator" && args.action === "install") checkApprovedBuild(args.run_id);
             if (!cardless("ios_install", args)) takeApproval("ios_install", toolCallId, args);
             if (args.target === "simulator") {
               const out = await simulatorAction(args);

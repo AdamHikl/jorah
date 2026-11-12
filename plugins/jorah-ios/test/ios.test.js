@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPlugin } from "../index.js";
-import { checkRef, describeRun, readKey, readRun, settings, shortTail, trimPage, untrusted } from "../ios.js";
-import { COMMIT, SHA, deviceRun, startFakeRunner } from "./fake-runner.js";
+import { checkInstall, checkRef, describeRun, readKey, readRun, settings, shortTail, trimPage, untrusted } from "../ios.js";
+import { COMMIT, SHA, SIM, deviceRun, png, simBuildRun, startFakeRunner } from "./fake-runner.js";
 
 // A throwaway key per test run, made here and never written to the repo.
 function keyFile(mode = 0o600, key = randomBytes(32)) {
@@ -19,7 +19,7 @@ function keyFile(mode = 0o600, key = randomBytes(32)) {
 const BUILD = { project: "threadfolio", kind: "device" };
 
 /** The plugin registered against a fake host, plus helpers that act as the Gateway would. */
-async function harness({ runner = {}, pluginKey, runnerUrl, deps = {} } = {}) {
+async function harness({ runner = {}, pluginKey, runnerUrl, deps = {}, extraConfig = {} } = {}) {
   const { f, key } = keyFile();
   const fake = await startFakeRunner(key, runner);
   const hooks = {};
@@ -27,7 +27,7 @@ async function harness({ runner = {}, pluginKey, runnerUrl, deps = {} } = {}) {
   const logs = [];
   const plugin = createPlugin({ healthTimeoutMs: 300, ...deps });
   plugin.register({
-    pluginConfig: { runnerUrl: runnerUrl ?? fake.url, keyFile: pluginKey ?? f, projects: ["threadfolio", "mizyun"] },
+    pluginConfig: { runnerUrl: runnerUrl ?? fake.url, keyFile: pluginKey ?? f, projects: ["threadfolio", "mizyun"], ...extraConfig },
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
     on: (n, fn) => (hooks[n] = fn),
     registerTool: (t) => (tools[t.name] = t),
@@ -77,7 +77,8 @@ test("only main and jorah/<task> refs pass", async () => {
   assert.equal(checkRef(undefined), "main");
   assert.equal(checkRef("main"), "main");
   assert.equal(checkRef("jorah/fix-login"), "jorah/fix-login");
-  for (const ref of ["develop", "feature/x", COMMIT, "jorah/", "jorah/../main", "jorah/x.lock", "refs/heads/main", "+main", "jorah/x:main", "-main"]) {
+  assert.equal(checkRef("jorah/v1.2_x"), "jorah/v1.2_x");
+  for (const ref of ["develop", "feature/x", COMMIT, "jorah/", "jorah/../main", "jorah/x.lock", "jorah/x.", "jorah/Fix", "jorah/a/b", "jorah/-x", `jorah/${"a".repeat(64)}`, "refs/heads/main", "+main", "jorah/x:main", "-main"]) {
     assert.throws(() => checkRef(ref), /main or a jorah/, ref);
   }
   const h = await harness();
@@ -286,6 +287,7 @@ test("install card names project, commit, configuration, device and model; insta
     for (const s of ["threadfolio", COMMIT, "Debug", "adam-iphone", "iPhone 16 Pro", "launch"]) assert.ok(card.description.includes(s), s);
     assert.deepEqual(h.fake.calls.find((c) => c.verb === "install-device").body, { build_run_id: deviceRun().run_id, device: "adam-iphone", launch: true });
     assert.equal(r.details.run.tier, "launch");
+    assert.equal(r.details.run.process_id, 4242);
     assert.match(r.text, /Tier proved: launch/);
   } finally { await h.after(); }
 });
@@ -350,7 +352,7 @@ test("long logs are summarised from tail and first errors, wrapped as untrusted,
   assert.ok(t.length < 4000, `text is ${t.length} chars`);
   assert.match(t, /line 1999/);
   assert.doesNotMatch(t, /line 1500 /);
-  assert.match(t, /\/Users\/Shared\/jorah-handoff\/20261111T213005Z-threadfolio-3f9c2e\//);
+  assert.match(t, /runner's state folder on the Mac \(runs\/20261111T213005Z-threadfolio-3f9c2e\/run\.log\)/);
   assert.match(t, /40\.0 MB/);
   assert.equal(t.split("--- end of untrusted build output ---").length - 1, 2, "a forged end marker was not defused");
   assert.ok(shortTail("a\n".repeat(10)).split("\n").length <= 20);
@@ -395,3 +397,209 @@ test("every signed request carries the contract headers and a fresh nonce", asyn
 });
 
 test("SHA fixture is a valid digest", () => assert.match(SHA, /^[0-9a-f]{64}$/));
+
+// --- Simulator (contract 1 "On a simulator", 4a; ADR 0002 D4) ---
+
+const SIM_INSTALL = { simulator: SIM, run_id: simBuildRun().run_id };
+
+test("simulator arguments: only the contract's combinations pass", () => {
+  assert.deepEqual(checkInstall(SIM_INSTALL), { target: "simulator", action: "install", simulator: SIM, run_id: simBuildRun().run_id, launch: false });
+  assert.deepEqual(checkInstall({ simulator: SIM, action: "boot" }), { target: "simulator", action: "boot", simulator: SIM });
+  assert.deepEqual(checkInstall({ simulator: SIM, action: "screenshot", project: "threadfolio" }), { target: "simulator", action: "screenshot", simulator: SIM, project: "threadfolio" });
+  const bad = [
+    { simulator: SIM, device: "adam-iphone", run_id: simBuildRun().run_id },
+    { simulator: { name: "iPhone 17; rm -rf /", os: "27.0" }, action: "boot" },
+    { simulator: { name: "iPhone 17", os: "27" }, action: "boot" },
+    { simulator: { name: "iPhone 17", os: "27.0", udid: "x" }, action: "boot" },
+    { simulator: SIM, action: "exec" },
+    { simulator: SIM, action: "launch" },
+    { simulator: SIM, action: "launch", project: "threadfolio", run_id: simBuildRun().run_id },
+    { simulator: SIM, action: "boot", project: "threadfolio" },
+    { simulator: SIM, action: "install", project: "threadfolio", run_id: simBuildRun().run_id },
+    { simulator: SIM, action: "screenshot", project: "threadfolio", launch: true },
+    { device: "adam-iphone", run_id: deviceRun().run_id, action: "launch" },
+  ];
+  for (const p of bad) assert.throws(() => checkInstall(p), /BAD_ARGUMENT|must|doesn't|needs|not both|only action/, JSON.stringify(p));
+});
+
+test("simulator install: card names action, simulator, project and commit, then installs that build", async () => {
+  const h = await harness();
+  try {
+    const r = await h.call("ios_install", { ...SIM_INSTALL, launch: true });
+    const card = r.hook.requireApproval;
+    assert.equal(card.title, "Jorah wants to use the iOS Simulator");
+    assert.deepEqual(card.allowedDecisions, ["allow-once", "deny"]);
+    for (const s of ["install", "iPhone 17", "iOS 27.0", "threadfolio", COMMIT, "Debug", "launch", "not the iPhone"]) assert.ok(card.description.includes(s), s);
+    assert.deepEqual(h.fake.calls.find((c) => c.verb === "sim-install").body, { build_run_id: simBuildRun().run_id, simulator: SIM, launch: true });
+    assert.equal(r.details.ok, true);
+    assert.equal(r.details.run.tier, "launch");
+    assert.match(r.text, /Tier proved: launch/);
+    assert.match(r.text, /says nothing about the iPhone/);
+  } finally { await h.after(); }
+});
+
+test("a simulator the runner doesn't list is refused before the card", async () => {
+  const h = await harness();
+  try {
+    const r = await h.call("ios_install", { simulator: { name: "iPhone 99", os: "27.0" }, action: "boot" });
+    assert.match(r.blocked, /SIMULATOR_NOT_FOUND/);
+    const two = await harness({ runner: { simulators: [{ ...SIM, state: "booted" }, { ...SIM, state: "shutdown" }] } });
+    try {
+      assert.match((await two.call("ios_install", { simulator: SIM, action: "boot" })).blocked, /more than one/);
+    } finally { await two.after(); }
+    assert.ok(!h.fake.verbs().includes("sim-boot"));
+  } finally { await h.after(); }
+});
+
+test("installing a non-simulator build on a simulator is refused before the card", async () => {
+  const notSucceeded = simBuildRun({ run_id: "20261112T110132Z-threadfolio-000001", state: "failed", tier: "none", artifact: null });
+  const h = await harness({ runner: { runs: new Map([[deviceRun().run_id, deviceRun()], [notSucceeded.run_id, notSucceeded], [simBuildRun().run_id, simBuildRun()]]) } });
+  try {
+    assert.match((await h.call("ios_install", { simulator: SIM, run_id: deviceRun().run_id })).blocked, /NOT_INSTALLABLE/);
+    assert.match((await h.call("ios_install", { simulator: SIM, run_id: notSucceeded.run_id })).blocked, /NOT_INSTALLABLE/);
+    // And a simulator build can't go to the iPhone.
+    assert.match((await h.call("ios_install", { device: "adam-iphone", run_id: simBuildRun().run_id })).blocked, /NOT_INSTALLABLE/);
+    assert.ok(!h.fake.verbs().some((v) => v === "sim-install" || v === "install-device"));
+  } finally { await h.after(); }
+});
+
+test("simulator actions on a project outside the allowlist are refused", async () => {
+  const h = await harness();
+  try {
+    assert.match((await h.call("ios_install", { simulator: SIM, action: "launch", project: "robot-tour" })).blocked, /PROJECT_NOT_ALLOWED/);
+    assert.deepEqual(h.fake.verbs(), []);
+  } finally { await h.after(); }
+});
+
+for (const decision of ["deny", "timeout"]) {
+  test(`a simulator card answered ${decision} runs nothing`, async () => {
+    const h = await harness();
+    try {
+      const r = await h.call("ios_install", { simulator: SIM, action: "boot" }, decision);
+      assert.equal(r.denied, decision);
+      const forced = await h.tools.ios_install.execute("call-1", { simulator: SIM, action: "boot" });
+      assert.equal(forced.details.error.code, "DENIED");
+      assert.ok(!h.fake.verbs().includes("sim-boot"));
+    } finally { await h.after(); }
+  });
+}
+
+test("simulatorCards defaults to required; off lets simulator actions run without a card, and only them", async () => {
+  assert.equal(settings({}).simulatorCards, "required");
+  assert.throws(() => settings({ simulatorCards: "sometimes" }), /required/);
+  const h = await harness({ extraConfig: { simulatorCards: "off" } });
+  try {
+    const r = await h.call("ios_install", { simulator: SIM, action: "boot" });
+    assert.equal(r.hook, undefined, "no card");
+    assert.equal(r.details.ok, true);
+    assert.match(r.text, /Simulator booted/);
+    // Still validated and still allowlisted without a card.
+    assert.match((await h.call("ios_install", { simulator: SIM, action: "launch", project: "robot-tour" })).blocked, /PROJECT_NOT_ALLOWED/);
+    // Builds and device installs still ask.
+    assert.ok((await h.call("ios_build", BUILD)).hook.requireApproval);
+    assert.ok((await h.call("ios_install", { device: "adam-iphone", run_id: deviceRun().run_id })).hook.requireApproval);
+  } finally { await h.after(); }
+});
+
+test("screenshot: the PNG comes back whole as an image, its sha256 checked, read in bounded pages", async () => {
+  const shot = png(200);
+  const h = await harness({ runner: { png: shot } });
+  try {
+    const r = await h.call("ios_install", { simulator: SIM, action: "screenshot", project: "threadfolio" });
+    assert.match(r.hook.requireApproval.description, /screenshot/);
+    const image = r.out.content.find((c) => c.type === "image");
+    assert.equal(image.mimeType, "image/png");
+    assert.ok(Buffer.from(image.data, "base64").equals(shot));
+    assert.equal(r.details.screenshot.sha256, createHash("sha256").update(shot).digest("hex"));
+    assert.equal(r.details.run.tier, "none");
+    assert.match(r.text, /Tier proved: none/);
+    assert.match(r.text, /checked/);
+    assert.ok(!JSON.stringify(r.details).includes(image.data.slice(0, 40)), "base64 kept out of details");
+    // Again through ios_status, in small pages.
+    const runId = r.details.run.run_id;
+    const before = h.fake.verbs().filter((v) => v === "sim-screenshot-read").length;
+    const s = await h.tools.ios_status.execute("s", { run_id: runId, screenshot: { offset: 0, max_bytes: 1024 } });
+    assert.ok(Buffer.from(s.content.find((c) => c.type === "image").data, "base64").equals(shot));
+    assert.equal(h.fake.verbs().filter((v) => v === "sim-screenshot-read").length - before, Math.ceil(shot.length / 1024));
+    // Too many pages, a nonzero offset, or a run that isn't a screenshot: refused.
+    assert.match((await h.tools.ios_status.execute("s", { run_id: runId, screenshot: { offset: 0, max_bytes: 1 } })).content[0].text, /larger max_bytes/);
+    assert.equal((await h.tools.ios_status.execute("s", { run_id: runId, screenshot: { offset: 5, max_bytes: 1024 } })).details.error.code, "BAD_ARGUMENT");
+    assert.equal((await h.tools.ios_status.execute("s", { run_id: deviceRun().run_id, screenshot: { offset: 0, max_bytes: 1024 } })).details.ok, false);
+  } finally { await h.after(); }
+});
+
+test("screenshot: a hash mismatch or a file that isn't a PNG shows no image", async () => {
+  const cases = [
+    { runner: { reportedSha: "b".repeat(64) }, why: /sha256 didn't match/ },             // run's artifact hash differs from the file
+    { runner: { readSha: "c".repeat(64) }, why: /sha256 didn't match/ },                 // read reply's hash differs from the bytes
+    { runner: { servedPng: Buffer.concat([png(), Buffer.from("x")]) }, why: /sha256 didn't match/ }, // bytes changed after the run
+    { runner: { png: Buffer.from("GIF89a not a png at all") }, why: /isn't a PNG/ },
+    { runner: { mediaType: "text/html" }, why: /isn't marked as a PNG/ },
+  ];
+  for (const c of cases) {
+    const h = await harness({ runner: c.runner });
+    try {
+      const r = await h.call("ios_install", { simulator: SIM, action: "screenshot", project: "threadfolio" });
+      assert.equal(r.out.content.some((x) => x.type === "image"), false, String(c.why));
+      assert.equal(r.details.ok, false);
+      assert.match(r.text, c.why);
+    } finally { await h.after(); }
+  }
+});
+
+test("simulator tiers: claimed only as proved, unknown never reads as success", async () => {
+  // A screenshot claiming launch, a launch with no process ID, an install with no artifact hash.
+  assert.equal(readRun({ kind: "sim-screenshot", state: "succeeded", tier: "launch", artifact: { kind: "png", path: "/x", bytes: 1, sha256: SHA } }).tier, "unknown");
+  assert.equal(readRun({ kind: "sim-launch", state: "succeeded", tier: "launch", process_id: null }).tier, "unknown");
+  assert.equal(readRun({ kind: "sim-launch", state: "succeeded", tier: "launch", process_id: 12 }).tier, "launch");
+  assert.equal(readRun({ kind: "sim-install", state: "succeeded", tier: "install", artifact: null }).tier, "unknown");
+  assert.equal(readRun({ kind: "install", state: "succeeded", tier: "launch", artifact: deviceRun().artifact }).tier, "unknown", "device launch without a pid");
+
+  const h = await harness({ runner: { simLaunchOver: { process_id: null } } });
+  try {
+    const r = await h.call("ios_install", { simulator: SIM, action: "launch", project: "threadfolio" });
+    assert.equal(r.details.ok, false);
+    assert.match(r.text, /did not succeed/);
+    assert.match(r.text, /no process ID/);
+  } finally { await h.after(); }
+  const lost = await harness({ runner: { simInstallOver: { state: "unknown" } } });
+  try {
+    const r = await lost.call("ios_install", SIM_INSTALL);
+    assert.equal(r.details.ok, false);
+    assert.match(r.text, /not a success/);
+  } finally { await lost.after(); }
+});
+
+test("boot, shutdown and terminate report only what the Mac confirmed", async () => {
+  const h = await harness({ runner: { shutdownSticks: false, terminated: null } });
+  try {
+    const down = await h.call("ios_install", { simulator: SIM, action: "shutdown" });
+    assert.equal(down.details.ok, false);
+    assert.match(down.text, /not confirmed: the Mac reports state booted/);
+    const stop = await h.call("ios_install", { simulator: SIM, action: "terminate", project: "threadfolio" });
+    assert.equal(stop.details.ok, false);
+    assert.match(stop.text, /unknown/);
+  } finally { await h.after(); }
+});
+
+test("a lost reply to a simulator action is unknown; the Mac asleep is 'Mac not reachable'", async () => {
+  const h = await harness({ runner: { hangVerbs: new Set(["sim-install"]) } });
+  try {
+    const r = await h.call("ios_install", SIM_INSTALL);
+    assert.equal(r.details.state, "unknown");
+    assert.match(r.text, /State: unknown/);
+  } finally { await h.after(); }
+  const asleep = await harness({ runner: { hangHealth: true } });
+  try {
+    assert.match((await asleep.call("ios_install", { simulator: SIM, action: "boot" })).blocked, /Mac not reachable/);
+  } finally { await asleep.after(); }
+});
+
+test("ios_status lists simulators, alone", async () => {
+  const h = await harness();
+  try {
+    const s = await h.tools.ios_status.execute("s", { simulators: true });
+    assert.match(s.content[0].text, /iPhone 17 \(iOS 27\.0\): booted/);
+    assert.equal((await h.tools.ios_status.execute("s", { simulators: true, devices: true })).details.error.code, "BAD_ARGUMENT");
+  } finally { await h.after(); }
+});

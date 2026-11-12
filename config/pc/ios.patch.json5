@@ -1,7 +1,7 @@
 // DRAFT. Not applied. Route 2 of docs/adr/0002-ios-builds-on-the-mac.md: Jorah's iOS tools
 // (plugins/jorah-ios, issue 9) call the runner on the Mac (services/ios-runner, issue 8) over the
-// tailnet, under contract docs/contracts/jorah-ios-v1.md. Apply only after Adam answers ADR 0002's
-// D1 (route 2) and D2 (waiver accepted), and after the plugin is installed on the PC
+// tailnet, under contract docs/contracts/jorah-ios-v1.md. ADR 0002 accepted 2026-11-12 (D1 route 2,
+// D2 waiver accepted). Apply only on Adam's yes, after the plugin is installed on the PC
 // (`plugins install --link /opt/jorah/plugins/jorah-ios`, the way scripts/pc/install-github.sh
 // installs jorah-github). Main's tool allow list is the separate ios-tools.patch.json5, applied after this.
 //
@@ -24,6 +24,9 @@
 // can run, the matrix needs ios_build, ios_install and ios_status under "taintRead" (their results
 // repeat repo content; still blocked while Jorah is frozen; the card comes from this plugin, so the
 // guard adds none). That edit belongs to the P5 owner of the matrix.
+//
+// Tools and fields: ios_install also takes { simulator, action, project } since 2026-11-12 (contract
+// 1, "On a simulator"); the tool names are unchanged, so ios-tools.patch.json5 is unchanged.
 //
 // Undo: github.patch.json5 (plugins.allow without jorah-ios) and `plugins.entries.jorah-ios: null`.
 {
@@ -52,6 +55,10 @@
           keyFile: "/home/jorah/.config/jorah-ios/runner.key",
           // For early refusal and card text only. The runner's own allowlist decides.
           projects: ["threadfolio", "mizyun"],
+          // Each simulator action (ios_install with `simulator`) waits for a card. "off" would let them run
+          // without one; builds and device installs always ask. Adam's open question (ADR 0002, "D4,
+          // simulator use"): change this only on his answer, and record it there.
+          simulatorCards: "required",
         },
       },
     },

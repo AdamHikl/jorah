@@ -56,7 +56,7 @@ Card text (title "Jorah wants to install an app on your iPhone"): project, commi
 
 Runner routes per action: `install` → `sim-install`, `launch` → `sim-launch`, `terminate` → `sim-terminate`, `screenshot` → `sim-screenshot`, `boot` → `sim-boot`, `shutdown` → `sim-shutdown` (section 4a). Card text (title "Jorah wants to use the iOS Simulator"): the action, simulator name and iOS version, project, and for `install` the commit and configuration.
 
-**Cards on a simulator: open.** Every simulator action waits for a card, allow-once or deny, like a device install, because waiver condition (4) was accepted as written. Whether simulator actions may go without a card is Adam's to decide (ADR 0002, "D4, simulator use"); until he does, the plugin shows one.
+**Cards on a simulator: none (Adam, 2026-11-12, "No cards for simulator").** The simulator actions `install`, `launch`, `terminate`, `screenshot`, `boot` and `shutdown` run without a card (ADR 0002, "Cards on a simulator"). The card text above is kept for the plugin's config switch, which can turn cards back on. `ios_build` still shows a card for every kind, `simulator` included, and a simulator install accepts only a `build_run_id` from a build approved that way. A device install still shows its card.
 
 **Proposal, needs Adam's amendment to waiver condition (1).** A fourth tool, `ios_simulator { action, simulator, project?, run_id?, launch? }`, would read better than `ios_install { action: "screenshot" }`: `ios_install` would stay "put a build on a target", and every simulator action, including `boot` and `screenshot`, would sit in one tool with one card title. Same runner routes, same fields. Not decided: the three-tool form above is the contract until Adam amends condition (1).
 

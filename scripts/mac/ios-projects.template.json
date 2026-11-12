@@ -1,0 +1,59 @@
+{
+  "contract": "jorah-ios/1",
+  "installAllowed": true,
+  "simulatorAllowed": true,
+  "team": "LQJNDVBL43",
+  "stateDir": "~/Library/Application Support/jorah-ios-runner",
+  "handoffDir": "/Users/Shared/jorah-handoff",
+  "keyFile": "~/.config/jorah-ios/runner.key",
+  "listen": { "host": "127.0.0.1", "port": 47820 },
+  "path": ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/homebrew/bin"],
+  "projects": {
+    "threadfolio": {
+      "repo": "AdamHikl/threadfolio",
+      "path": "/Users/jorah-build/work/threadfolio",
+      "workspace": "ios/ThreadfolioDev.xcworkspace",
+      "scheme": "ThreadfolioDev",
+      "bundleId": "com.threadfolio.dev",
+      "prepare": ["npm-ci", "expo-prebuild-npx", "pod-install"],
+      "restore": ["package.json"],
+      "env": {
+        "THREADFOLIO_APP_VARIANT": "dev",
+        "SCAN_API_ORIGIN": "<dev scan host, from docs/runbooks/ios-recipes.md>"
+      },
+      "signing": {
+        "style": "manual",
+        "profiles": { "ThreadfolioDev": "Jorah com.threadfolio.dev" }
+      }
+    },
+    "mizyun": {
+      "repo": "AdamHikl/mizyun",
+      "path": "/Users/jorah-build/work/mizyun",
+      "workspace": "apps/mobile/ios/MizyunDev.xcworkspace",
+      "scheme": "MizyunDev",
+      "bundleId": "com.mizyun.development",
+      "prepare": ["pnpm-install", { "step": "expo-prebuild", "dir": "apps/mobile" }, "pod-install"],
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "MIZYUN_APP_VARIANT": "dev",
+        "MIZYUN_IOS_DISABLE_PUSH": "0",
+        "MIZYUN_ENABLE_APPLE_AUTH": "1",
+        "<EXPO_PUBLIC_ name 1 from apps/mobile/.env.dev>": "<its value>",
+        "<EXPO_PUBLIC_ name 2>": "<its value>",
+        "<EXPO_PUBLIC_ name 3>": "<its value>",
+        "<EXPO_PUBLIC_ name 4>": "<its value>"
+      },
+      "signing": {
+        "style": "manual",
+        "profiles": {
+          "MizyunDev": "Jorah com.mizyun.development",
+          "ExpoWidgetsTarget": "Jorah com.mizyun.development.ExpoWidgetsTarget",
+          "MizyunWorkoutWatchDev": "Jorah com.mizyun.development.watchkitapp"
+        }
+      }
+    }
+  },
+  "devices": {
+    "adam-iphone": { "udid": "<iPhone UDID: xcrun devicectl list devices>" }
+  }
+}

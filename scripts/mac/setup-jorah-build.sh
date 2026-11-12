@@ -16,6 +16,8 @@
 #      it starts at jorah-build's next login and only for that user.
 #   4. /Users/Shared/jorah-handoff, owner jorah-build, group jorah-handoff, 0750, with an
 #      inherited ACL so Adam can read and delete each run's folder and nobody else can look.
+#   4b. /usr/local/libexec/jorah/ios-preflight, the read-only check (scripts/mac/ios-preflight.sh),
+#      so jorah-build can run it too.
 #   5. /Library/Application Support/Jorah, root:wheel 0755, for the admin-owned runner
 #      allowlist ios-projects.json (contract section 6). Adam places that file.
 #
@@ -104,6 +106,12 @@ if [ -d "$LIBEXEC" ] && [ "$(stat -f '%Su:%Sg %Lp' "$LIBEXEC")" = "root:wheel 75
 else
   plan+=("create $LIBEXEC as root:wheel 0755 (parents too)")
 fi
+# The read-only preflight, root-owned where jorah-build can run it (it cannot read Adam's home).
+if cmp -s "$REPO/scripts/mac/ios_preflight.py" "$LIBEXEC/ios_preflight.py" 2>/dev/null && [ -x "$LIBEXEC/ios-preflight" ]; then
+  echo "ok    $LIBEXEC/ios-preflight is current"
+else
+  plan+=("install the read-only preflight as $LIBEXEC/ios-preflight, root:wheel 0755")
+fi
 
 if [ "$INSTALL_RUNNER" = "1" ]; then
   [ -x "$RUNNER_SRC/bin/jorah-ios-runner" ] || die "--install-runner given, but $RUNNER_SRC/bin/jorah-ios-runner is not on this checkout (issue 8 not merged?)."
@@ -170,6 +178,8 @@ is_member "$ADAM" "$HANDOFF_GROUP" || dseditgroup -o edit -a "$ADAM" -t user "$H
 mkdir -p "$LIBEXEC"
 chown root:wheel "$LIBEXEC"
 chmod 0755 "$LIBEXEC"
+install -o root -g wheel -m 0644 "$REPO/scripts/mac/ios_preflight.py" "$LIBEXEC/ios_preflight.py"
+install -o root -g wheel -m 0755 "$REPO/scripts/mac/ios-preflight.sh" "$LIBEXEC/ios-preflight"
 
 if [ "$INSTALL_RUNNER" = "1" ]; then
   staging="$(mktemp -d "$LIBEXEC/.ios-runner.XXXXXX")"

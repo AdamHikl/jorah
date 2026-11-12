@@ -1,19 +1,21 @@
 # ADR 0002: iOS builds on the Mac, requested from Jorah on the PC
 
-**Status:** proposed, 2026-11-11. Waiting for Adam's four decisions below. Nothing is installed, paired, configured or applied. Issue 7.
+**Status:** accepted by Adam, 2026-11-12, in the build session: "accept all four, for D4 allow all simulator use as well". Route 2, waiver accepted, paid team with a Development certificate, device install allowed on the iPhone, and simulator use allowed. Nothing is installed, paired, configured or applied yet. Issue 7.
 
 **Recommendation:** route 2. A Gateway plugin on the PC, `jorah-ios`, offers three typed tools and calls a small runner on the Mac, under macOS user `jorah-build`, over the tailnet. No node is paired, `gateway.nodes` is not touched, and `system.run` stays denied everywhere. The interface the other issues build to is in [`docs/contracts/jorah-ios-v1.md`](../contracts/jorah-ios-v1.md).
 
 ## Adam's decisions
 
-Each one is yours. Until you answer, issues 9 to 12 build source and tests only.
+Decided 2026-11-12. Issues 9 to 12 may now go past source and tests, each step still on Adam's yes.
 
-| # | Decision | Options | Proposed |
-|---|---|---|---|
-| D1 | **Route** | 1 node-hosted typed MCP, 2 Gateway plugin plus Mac runner, 3 allowlisted `system.run` | **2** |
-| D2 | **Waiver of hard gate 2** for this route, before M3 | Accept the text in "Waived gate" below, or refuse. Refusing means no remote iOS builds until M3 passes | Accept, if you want builds before M3 |
-| D3 | **Apple team** that `jorah-build` signs with | Your paid Developer Program team, or a free Personal Team (7-day profiles, few devices) | Your paid team, Development certificate only, if you have one |
-| D4 | **Device install** | Allowed (each install is its own card, only to devices you list), or simulator and archive only | Allowed, iPhone only |
+| # | Decision | Options | Proposed | Adam, 2026-11-12 |
+|---|---|---|---|---|
+| D1 | **Route** | 1 node-hosted typed MCP, 2 Gateway plugin plus Mac runner, 3 allowlisted `system.run` | **2** | **2** |
+| D2 | **Waiver of hard gate 2** for this route, before M3 | Accept the text in "Waived gate" below, or refuse. Refusing means no remote iOS builds until M3 passes | Accept, if you want builds before M3 | **Accepted**, with the simulator addition below |
+| D3 | **Apple team** that `jorah-build` signs with | Your paid Developer Program team, or a free Personal Team (7-day profiles, few devices) | Your paid team, Development certificate only, if you have one | **Paid team, Development certificate only.** Which of the two teams in the keychain is still Adam's to name at setup |
+| D4 | **Device install** | Allowed (each install is its own card, only to devices you list), or simulator and archive only | Allowed, iPhone only | **Allowed, iPhone only, and all simulator use allowed** |
+
+**D4, simulator use.** Adam's words: "for D4 allow all simulator use as well". Read here as [inference, Claude's reading]: on the Mac's iOS Simulators the runner may build, boot and shut down a simulator, install, launch and stop the app, and take screenshots, for projects on the allowlist, on any simulator Xcode offers, with no device allowlist. Everything else in the waiver still holds for simulator use: fixed verbs with no free-form command, the project allowlist, and truthful tiers. **Open:** whether simulator actions still wait for an approval card each. Until Adam says otherwise they do, because waiver condition (4) was accepted as written. The contract and the runner today cover only the simulator build; the other simulator verbs are still to be built.
 
 ## Where the facts come from
 
@@ -93,7 +95,7 @@ Hard gate 2 says: before M3, the iPhone is the only node, and any other node wai
 
 > **Waived gate: hard gate 2 (spirit), for iOS builds on the Mac before M3.** I accept that, before M3's security gate passes, Jorah on the PC may ask a runner on my Mac, under the macOS user `jorah-build`, to build, archive and install my iOS apps, by route 2 of ADR 0002. This waiver holds only while all of these hold: (1) Jorah has exactly three tools, `ios_build`, `ios_install` and `ios_status`, with fixed fields and no free-form command, path or flag; (2) the runner builds only projects on its allowlist, from their GitHub repo at a commit the card showed me; (3) signing uses a Development certificate only, with no distribution certificate on that account; (4) every build and every install waits for my tap on an approval card, with allow-once and deny only; (5) nothing is distributed or uploaded by Jorah or the runner, and I upload with Transporter myself; (6) no OpenClaw node is paired, `gateway.nodes.pluginTools.enabled` stays `false`, and `system.run` stays denied; (7) results claim only the tier they reached. If any of these stops holding, the waiver ends and the route stops until I decide again. It ends anyway when M3's gate passes, and M19's gate (SEC-T15 on `jorah-build`) still applies then.
 
-Refusing it means: issues 8 to 11 stay at source and tests, and nothing connects until M3.
+**Accepted** by Adam on 2026-11-12, in the build session, with the D4 simulator addition recorded under "Adam's decisions". The waiver's scope therefore reads "build, archive, install and run in the iOS Simulator".
 
 ## The limits that carry the weight before M3
 
@@ -117,9 +119,9 @@ M3's checks (outbound filter, taint rewrite, the typed reader path) have not run
 
 ## Steps for Adam
 
-Nothing below has been done. Each is yours, after D1 to D4.
+Nothing below has been done except step 1. Each is yours.
 
-1. **Answer D1 to D4** in a comment on issue 7, and paste the waiver text with "Accepted" or "Refused".
+1. ~~Answer D1 to D4~~ Done 2026-11-12, recorded above and on issue 7.
 2. **Tailnet grant** (only after D1 = 2 and D2 accepted). In the Tailscale admin console, Access controls, add to `grants`:
    `{ "src": ["tag:jorah-pc"], "dst": ["adam-mac"], "ip": ["tcp:47820"] }`
    If the PC is not tagged yet, use its device name instead, and say so in the issue. Expected: the policy saves, and its `tests` still pass.

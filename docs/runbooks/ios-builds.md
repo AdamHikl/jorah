@@ -39,7 +39,7 @@ Times are your hands-on time. After each step, the preflight shows that step as 
 
 | # | Where | What | Expected | Time |
 |---|---|---|---|---|
-| **A1** | Decision | **Which Apple team signs for `jorah-build`.** Company team (recommended; it is what the tested allowlist names) or personal team. If you choose personal, a build session changes `"team"` in `services/ios-runner/ios-projects.json` before A9 | Your answer on issue 10 | 2 min |
+| **A1** | Decision | ~~Which Apple team signs for `jorah-build`~~ **Done 2026-11-12: company team**, the one the tested allowlist names in `services/ios-runner/ios-projects.json`. Nothing to change before A9 | Recorded in ADR 0002 (D3) and on issue 10 | 0 min |
 | **A2** | Mac, adam | `cd ~/Documents/jorah && git pull --ff-only && scripts/mac/setup-jorah-build.sh --dry-run`, then `sudo scripts/mac/setup-jorah-build.sh`, `yes`, and a new password for `jorah-build` (into your password manager). §1 | `Result:` shows `jorah-build` not an admin and in `_developer`; root-owned folders; the hand-off folder's ACL | 3 min |
 | **A3** | Mac, jorah-build | First login. Skip every setup offer, **never** sign in to an Apple Account. Run `/usr/local/libexec/jorah/ios-preflight`. §2 | Xcode and simulators `done` | 5 min |
 | **A4** | Mac, jorah-build, then a browser as adam | Development certificate made inside `jorah-build`, then the two `security` settings. §3.2, §3.3 | `security find-identity -v -p codesigning` shows `1 valid identities found` | 10 min |

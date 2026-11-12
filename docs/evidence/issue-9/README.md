@@ -2,17 +2,21 @@
 
 ## Update 2026-11-12: simulator actions (ADR 0002 D4, accepted)
 
-Built to the contract on `main` at 0107f66. **Tier: source and tests** (44 unit tests).
+Built to the contract on `main` at d253d4e (0107f66 plus Adam's no-cards decision). **Tier: source and tests** (44 unit tests).
 
 - **Three tools only** (waiver condition 1). Simulator actions go through `ios_install` with
   `simulator: { name, os }` and `action` (`install` default, `launch`, `terminate`, `screenshot`,
   `boot`, `shutdown`), as contract 1 "On a simulator" states. The proposed fourth tool `ios_simulator`
   is **not** built: it waits for Adam to amend waiver condition (1).
-- **The card switch:** `plugins.entries.jorah-ios.config.simulatorCards`, `"required"` (default) or
-  `"off"`, read in `plugins/jorah-ios/ios.js` `settings()` and used by `cardless()` in
-  `plugins/jorah-ios/index.js`. Set in `config/pc/ios.patch.json5` to `"required"`. `"off"` affects
-  only simulator actions; builds and device installs always ask. Validation and the project
-  allowlist still apply without a card.
+- **The card switch:** `plugins.entries.jorah-ios.config.simulatorCards`, `"required"` or `"off"`,
+  read in `plugins/jorah-ios/ios.js` `settings()` and used by `cardless()` in
+  `plugins/jorah-ios/index.js`. Adam decided on 2026-11-12, "No cards for simulator" (ADR 0002 and
+  contract 1, d253d4e), so `config/pc/ios.patch.json5` sets `"off"`. The plugin's own default, if the
+  key is left out, stays `"required"`, the fail-closed side. `"off"` affects only simulator actions:
+  every build, a simulator build included, and every device install still asks. Validation, the
+  project allowlist and the "a simulator install needs a succeeded, proved simulator build" check
+  still apply without a card. Since builds always have a card, any build a simulator install accepts
+  was approved.
 - **Simulator card** ("Jorah wants to use the iOS Simulator"): action, simulator name, iOS version and
   state, project, and for an install the commit, configuration, run and whether it launches. Before
   the card the hook checks the simulator appears exactly once in `sim-list`

@@ -1,7 +1,7 @@
 {
   "id": "jorah-ios",
   "name": "Jorah iOS",
-  "description": "Build Adam's iOS apps on his Mac (simulator, Development-signed device build or archive) from main or a jorah/* branch, install a device build on an allowlisted iPhone, and use the Mac's iOS Simulator (install, launch, terminate, screenshot, boot, shutdown) through the same three tools. Every build and install waits for Adam's approval card, which names the exact commit; simulator actions do too unless simulatorCards is \"off\". Talks to the runner on the Mac over the tailnet with signed requests (docs/contracts/jorah-ios-v1.md); never uploads anything.",
+  "description": "Build Adam's iOS apps on his Mac (simulator, Development-signed device build or archive) from main or a jorah/* branch, install a device build on an allowlisted iPhone, and use the Mac's iOS Simulator (install, launch, terminate, screenshot, boot, shutdown) through the same three tools. Every build and install waits for Adam's approval card, which names the exact commit; simulator actions only when simulatorCards is \"required\" (Adam chose \"off\"). Talks to the runner on the Mac over the tailnet with signed requests (docs/contracts/jorah-ios-v1.md); never uploads anything.",
   "categories": [
     "developer-tools"
   ],
@@ -42,7 +42,7 @@
           "off"
         ],
         "default": "required",
-        "description": "Whether each simulator action waits for Adam's card (ADR 0002, D4 simulator use, open). Builds and device installs always ask"
+        "description": "Whether each simulator action waits for Adam's card. Adam chose \"off\" on 2026-11-12 (ADR 0002, D4 simulator use); left out, \"required\". Builds and device installs always ask"
       }
     }
   }

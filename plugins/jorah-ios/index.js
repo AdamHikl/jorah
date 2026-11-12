@@ -8,9 +8,10 @@
 // No record, a record that wasn't allow-once, or one already used means nothing is sent.
 //
 // Three tools only (waiver condition 1). Simulator actions go through ios_install with `simulator`
-// (contract 1, "On a simulator"); the proposed fourth tool ios_simulator is not built. Each
-// simulator action waits for a card unless plugins.entries.jorah-ios.config.simulatorCards is "off"
-// (Adam's open question, ADR 0002 "D4, simulator use"); the default is "required".
+// (contract 1, "On a simulator"); the proposed fourth tool ios_simulator is not built. Simulator
+// actions skip the card when plugins.entries.jorah-ios.config.simulatorCards is "off" (Adam,
+// 2026-11-12: "No cards for simulator"; config/pc/ios.patch.json5 sets it). Left out, it is
+// "required". Builds, simulator builds included, and device installs always ask.
 
 import {
   IosError, checkBuild, checkCommit, checkInstall, checkProject, checkStatus, describeRun, describeSimulator, logPlace,

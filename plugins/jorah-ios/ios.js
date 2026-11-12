@@ -69,8 +69,9 @@ export function settings(pluginConfig = {}) {
     }
     runnerUrl = u.origin;
   }
-  // Adam's open question (ADR 0002, "D4, simulator use"): do simulator actions need a card each?
-  // Until he answers, they do. "off" lets them run without one; device installs and builds always ask.
+  // Simulator actions' cards (ADR 0002, "D4, simulator use"). Adam chose none on 2026-11-12, set as
+  // "off" in config/pc/ios.patch.json5. Left out, it is "required", the fail-closed side. Builds
+  // and device installs always ask, whatever this says.
   const simulatorCards = pluginConfig.simulatorCards ?? "required";
   if (!["required", "off"].includes(simulatorCards)) throw new Error('jorah-ios: simulatorCards must be "required" or "off"');
   return { runnerUrl, keyFile: pluginConfig.keyFile ?? DEFAULTS.keyFile, projects: [...projects], simulatorCards };

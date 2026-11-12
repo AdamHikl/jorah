@@ -55,10 +55,11 @@
           keyFile: "/home/jorah/.config/jorah-ios/runner.key",
           // For early refusal and card text only. The runner's own allowlist decides.
           projects: ["threadfolio", "mizyun"],
-          // Each simulator action (ios_install with `simulator`) waits for a card. "off" would let them run
-          // without one; builds and device installs always ask. Adam's open question (ADR 0002, "D4,
-          // simulator use"): change this only on his answer, and record it there.
-          simulatorCards: "required",
+          // Simulator actions (ios_install with `simulator`: install, launch, terminate, screenshot,
+          // boot, shutdown) run without a card: Adam, 2026-11-12, "No cards for simulator" (ADR 0002,
+          // "D4, simulator use"). "required" turns the cards back on. Builds, simulator builds
+          // included, and device installs always ask. Left out, the plugin defaults to "required".
+          simulatorCards: "off",
         },
       },
     },

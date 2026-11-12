@@ -341,3 +341,11 @@ test("a new session starts clean: new sessionId (daily or idle reset) or before_
   const r = again.call("before_tool_call", { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "x" }] } }, s2);
   assert.equal(r, undefined);
 });
+
+test("the search wrapper's namespaced inner ids are read by their last part (P5.4 finding)", () => {
+  const { run } = fresh();
+  assert.equal(run("tool_call", { id: "openclaw:core:web_fetch", args: { url: "https://wttr.in/x" } }).verdict, "allow");
+  assert.equal(run("tool_call", { id: "openclaw:memory-core:memory_search", args: { query: "x" } }).verdict, "allow");
+  assert.equal(run("tool_call", { id: "openclaw:core:gateway", args: {} }).verdict, "block");
+  assert.equal(run("tool_call", { id: "openclaw:core:web_fetch", args: { url: "http://127.0.0.1:43181/" } }).verdict, "block");
+});

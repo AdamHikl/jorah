@@ -155,7 +155,9 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
   // The search wrapper: decide on the inner call now only to block early; the hook runs again on the
   // inner tool with its real name (G-S2), where cards and taint are handled. Never a card here.
   if (tool === "tool_call") {
-    const inner = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : null;
+    // Inner ids may be namespaced ("openclaw:core:web_fetch", P5.4): the last part is the tool name.
+    const raw = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : null;
+    const inner = raw ? raw.split(":").pop() : null;
     if (!inner) return { verdict: "allow", reason: "wrapper without a named tool" };
     const d = decide({ tool: inner, params: params.args ?? params.arguments ?? {}, ctx, matrix, view, settings });
     return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${inner}` };

@@ -86,6 +86,7 @@ class Project:
     prepare: List[PrepareStep] = field(default_factory=list)
     restore: List[str] = field(default_factory=list)
     env: Dict[str, str] = field(default_factory=dict)
+    env_file: Optional[Path] = None  # admin-owned KEY=VALUE file outside the clone, read per build
     signing: Signing = field(default_factory=Signing)
 
     def container_args(self) -> List[str]:
@@ -163,9 +164,49 @@ def _env(env, what):
     return out
 
 
+def read_env_file(path: Path, fixed: Dict[str, str]) -> Dict[str, str]:
+    """A project's envFile: NAME=VALUE lines, '#' comments, for values Adam keeps
+    out of git but that are not secrets, such as a publishable key that ships in
+    the app. Same name rules as the env map. Refused if group or others can
+    write it, if anyone but root or the runner's user owns it, or if it repeats
+    a name from the env map. Error messages carry names, never values."""
+    try:
+        st = path.stat()
+    except OSError:
+        raise ConfigError("envFile is missing")
+    if not stat.S_ISREG(st.st_mode) or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise ConfigError("envFile must be a regular file not writable by group or others")
+    if st.st_uid not in (0, os.getuid()):
+        raise ConfigError("envFile must be owned by root or the runner's user")
+    if st.st_size > 16384:
+        raise ConfigError("envFile is over 16 KiB")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise ConfigError("envFile is not readable UTF-8")
+    raw = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        name, sep, value = line.partition("=")
+        if not sep:
+            raise ConfigError(f"envFile line {number} is not NAME=VALUE")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        name = name.strip()
+        if name in raw or name in fixed:
+            raise ConfigError(f"envFile sets {name} twice, or again after the env map")
+        raw[name] = value
+    return _env(raw, "envFile")
+
+
 def _project(name, p, top_team):
     _keys(p, {"repo", "path", "workspace", "project", "scheme", "bundleId", "team", "prepare", "restore", "env",
-              "signing"}, f"project {name}")
+              "envFile", "signing"}, f"project {name}")
     if bool(p.get("workspace")) == bool(p.get("project")):
         raise ConfigError(f"project {name} needs exactly one of workspace or project")
     root = p.get("path")
@@ -195,6 +236,14 @@ def _project(name, p, top_team):
         profiles[target] = _match(PROFILE_RE, profile, f"project {name} profile for {target}")
     signing = Signing(style, profiles, _bool(s.get("allowProvisioningUpdates", False),
                                              f"project {name} allowProvisioningUpdates"))
+    env_file = p.get("envFile")
+    if env_file is not None:
+        if not isinstance(env_file, str) or not os.path.isabs(env_file) or "\n" in env_file:
+            raise ConfigError(f"project {name} envFile must be an absolute path")
+        env_file = Path(os.path.normpath(env_file))
+        clone = Path(os.path.normpath(os.path.expanduser(root)))
+        if env_file == clone or clone in env_file.parents:
+            raise ConfigError(f"project {name} envFile must be outside the project's clone")
     return Project(
         name=name,
         repo=_match(REPO_RE, p.get("repo"), f"project {name} repo"),
@@ -207,6 +256,7 @@ def _project(name, p, top_team):
         prepare=prepare,
         restore=restore,
         env=_env(p.get("env"), f"project {name} env"),
+        env_file=env_file,
         signing=signing,
     )
 

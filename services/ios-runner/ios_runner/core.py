@@ -24,9 +24,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .config import CONTRACT, DEVICE_RE, PREPARE_STEPS, PROJECT_RE, Config, Project
+from .config import CONTRACT, DEVICE_RE, PREPARE_STEPS, PROJECT_RE, Config, ConfigError, Project, read_env_file
 
-RUNNER_VERSION = "2.1.0"
+RUNNER_VERSION = "2.2.0"
 
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -301,6 +301,7 @@ class RunContext:
         self.cancelled = False
         self.failure_code = "RUNNER_ERROR"  # what a non-zero exit of the current step means
         self.install_target = None
+        self.file_env: Dict[str, str] = {}
         self.seq = time.time_ns()
         self.save()
 
@@ -317,7 +318,7 @@ class RunContext:
         """Runs one argument array with its output in the capped log. Raises
         StepFailed on a non-zero exit, a timeout or a missing tool."""
         timeout = self.runner.config.timeouts[timeout_key]
-        env = self.runner.env(self.project if project_env else None)
+        env = self.runner.env(self.project if project_env else None, self.file_env if project_env else None)
         self.log.note(f"\n=== {name}: {json.dumps(argv)} (cwd {cwd}, timeout {timeout}s) ===\n")
         captured = bytearray()
         try:
@@ -425,10 +426,12 @@ class Runner(SimulatorVerbs):
 
     # environment
 
-    def env(self, project: Optional[Project] = None):
+    def env(self, project: Optional[Project] = None, file_env: Optional[Dict[str, str]] = None):
         env = {}
         if project:
             env.update(project.env)
+        if file_env:
+            env.update(file_env)
         env.update({
             "PATH": ":".join(self.config.path),
             "HOME": os.environ.get("HOME", "/var/empty"),
@@ -693,6 +696,12 @@ class Runner(SimulatorVerbs):
         p = ctx.project
         kind = ctx.run["kind"]
         conf = ctx.run["configuration"]
+        if p.env_file:
+            try:
+                ctx.file_env = read_env_file(p.env_file, p.env)
+            except ConfigError as e:
+                raise StepFailed("RUNNER_ERROR", f"The project's envFile can't be used: {e}.")
+            ctx.log.note(f"\n=== envFile: {sorted(ctx.file_env)} (names only) ===\n")
         self._checkout(ctx)
         self._prepare(ctx)
         derived = self.config.state_dir / "derived" / p.name / kind

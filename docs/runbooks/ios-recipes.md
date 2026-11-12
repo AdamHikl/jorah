@@ -4,7 +4,11 @@ Issue 11. How the Mac builds Adam's two iOS apps locally with `xcodebuild`, with
 the runner's project entries for them (ADR 0002, runner from issue 8). Written 2026-11-11 from
 reading both repos; nothing was built.
 
-**Tier reached: source.** No build, install or launch was run for this file. Each claim is marked:
+**Tier reached, 2026-11-12: launch on the iOS Simulator, for both apps, through the runner.** Release simulator
+builds of Threadfolio `99d1be9` and Mizyun `163caa53` ran through the runner's HTTP front end on loopback,
+as Adam's Mac user, from scratch clones, and were installed, launched and screenshotted on a simulator
+(evidence: `docs/evidence/issue-11/`). Device builds, signing, the iPhone and anything as `jorah-build` are
+still not run. Claims proved by that run are marked **[run 2026-11-12]**. The rest of the marks:
 
 - **[verified]** read in the repo's source or seen with a read-only command (`xcodebuild -list` on
   Adam's existing generated project, `gh api` reads).
@@ -36,8 +40,9 @@ checked only through their `.example` files and `.gitignore`.
 - **Install:** `xcrun devicectl device install app --device <udid> <app>`, then
   `xcrun devicectl device process launch --device <udid> --terminate-existing <bundle-id>`
   [verified: both scripts].
-- **Build times:** neither repo documents an iOS build time [verified: searched README, docs,
-  status]. Mizyun records an Android Release build of 3 min 51 s; that says nothing about iOS.
+- **Build times** [run 2026-11-12, Mac with Xcode 27.2, Node 26.13 from Homebrew, first build in a fresh
+  clone with empty derived data, Release, simulator]: Threadfolio 8 min 34 s, Mizyun 7 min 5 s, each
+  including `npm ci`/`pnpm install`, prebuild and `pod install`. Neither repo documents one.
 
 ## Threadfolio
 
@@ -62,15 +67,20 @@ checked only through their `.example` files and `.gitignore`.
    a tracked file. The repo's script puts them back with `sed` [verified]. A runner must restore
    the file (`git checkout -- package.json`) or its next clean-tree check fails [inference].
 
-**Simulator** [inference: standard flags; the repo has no simulator script]:
+**Simulator** [run 2026-11-12: through the runner, Release, as below plus `SCAN_API_ORIGIN` and
+`EXTRA_PACKAGER_ARGS=--skip-server` in the environment; the app opens on its "Welcome to Threadfolio"
+onboarding screen]:
 
 ```bash
 THREADFOLIO_APP_VARIANT=dev xcodebuild -workspace ios/ThreadfolioDev.xcworkspace -scheme ThreadfolioDev \
-  -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build \
+  -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Debug on the simulator loads JS from `npm run start:dev`; Release embeds it.
+Debug on the simulator loads JS from `npm run start:dev`; Release embeds it, so the runner builds Release.
+The prepare steps were `npm ci`, `npx expo prebuild --platform ios --no-install --clean`, `pod install` in
+`ios/`, then `git checkout -- package.json`: prebuild did rewrite `package.json`, and after the restore the
+clone was clean [run 2026-11-12].
 
 **Device, Release (works without the Mac)** [verified: `scripts/ios-device-install.sh`]:
 
@@ -145,7 +155,8 @@ set -a; . apps/mobile/.env.dev; set +a   # EXPO_PUBLIC_API_URL, _SUPABASE_URL, _
 
 The scripts refuse unless the three URL values equal the dev hosts written in them.
 
-**Simulator** [inference: no simulator script in the repo]:
+**Simulator** [run 2026-11-12: through the runner, Release, with the fixed env of the runner entry, no
+publishable key]:
 
 ```bash
 xcodebuild -workspace apps/mobile/ios/MizyunDev.xcworkspace -scheme MizyunDev -configuration Release \
@@ -154,6 +165,13 @@ xcodebuild -workspace apps/mobile/ios/MizyunDev.xcworkspace -scheme MizyunDev -c
 ```
 
 HealthKit, Sign in with Apple and push don't behave on an unsigned simulator build [inference].
+The prepare steps were `pnpm install --frozen-lockfile` at the root, `pnpm exec expo prebuild --platform ios
+--no-install --clean` in `apps/mobile`, and `pod install` in `apps/mobile/ios`. Prebuild reported
+"Updated package.json | no changes" and the clone stayed clean, so Mizyun needs no restore step
+[run 2026-11-12]. **Without `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` the build succeeds and the app opens
+to its own "Supabase public configuration has not been provided" screen**, not a crash [run 2026-11-12].
+The key is only in Adam's `apps/mobile/.env.dev`; the runner takes it from an admin-owned `envFile`
+(below).
 
 **Device, Release, Dev variant** [verified: `scripts/mobile-device-install.sh`]:
 
@@ -186,60 +204,30 @@ IPA, not one Transporter can upload. Open: see the end.
 | `certs/` | Not read; not needed for an iOS build with automatic signing [inference] | Private |
 | `apps/mobile/eas.json` | No (EAS cloud) | No |
 
-## Runner project entries (ready to paste)
+## Runner project entries
 
-**The runner's project-file schema is not on `main` yet** (checked 2026-11-11: no
-`services/ios-runner/` on `origin/main`), so these entries are not in a config file. They follow
-the **uncommitted draft** in issue 8's worktree (`SCHEMA = 1`, JSON, keys `path`, `workspace`,
-`scheme`, `configuration`, `bundle_id`, `team_id`, `prepare` from `pnpm-install`, `npm-ci`,
-`pod-install`, `expo-prebuild`). Recheck against the merged schema before pasting.
+Corrected 2026-11-12. The entries are in the repo as
+[`services/ios-runner/ios-projects.json`](../../services/ios-runner/ios-projects.json), the file
+Adam installs as `/Library/Application Support/Jorah/ios-projects.json` (`docs/runbooks/ios-builds.md`
+section 5); `services/ios-runner/README.md` describes every key. The draft schema this section used to
+show is gone. What changed from it:
 
-`path` is the clone under `jorah-build`'s home; the exact folder is issue 10's to choose
-[inference: ADR 0002 closes `/Users/adam` to `jorah-build`].
-
-```json
-{
-  "projects": {
-    "threadfolio": {
-      "path": "/Users/jorah-build/work/threadfolio",
-      "workspace": "ios/ThreadfolioDev.xcworkspace",
-      "scheme": "ThreadfolioDev",
-      "configuration": "Release",
-      "bundle_id": "com.threadfolio.dev",
-      "team_id": "LQJNDVBL43",
-      "prepare": ["npm-ci", "expo-prebuild", "pod-install"]
-    },
-    "mizyun": {
-      "path": "/Users/jorah-build/work/mizyun",
-      "workspace": "apps/mobile/ios/MizyunDev.xcworkspace",
-      "scheme": "MizyunDev",
-      "configuration": "Release",
-      "bundle_id": "com.mizyun.development",
-      "team_id": "LQJNDVBL43",
-      "prepare": ["pnpm-install", "expo-prebuild", "pod-install"]
-    }
-  }
-}
-```
-
-**These entries alone will not produce working apps with the draft runner** [inference from its
-code], because the recipes need things the draft has no field for:
-
-1. **Fixed environment per project.** The draft gives commands only PATH, HOME, TMPDIR and
-   DEVELOPER_DIR. Threadfolio Release needs `THREADFOLIO_APP_VARIANT=dev`, `SCAN_API_ORIGIN` and
-   the build setting `EXTRA_PACKAGER_ARGS=--skip-server`. Mizyun needs the four fixed variables
-   above plus `.env.dev`'s values. Without them Mizyun's prebuild still passes, but the app is
-   built pointing at no API. Suggested: a fixed `env` map and an admin-owned `env_file` outside the
-   clone, both in the project file, never from the model.
-2. **`expo-prebuild` runs `pnpm exec expo` at the clone root.** Mizyun needs it in `apps/mobile`
-   (or `pnpm --filter @mizyun/mobile exec`); Threadfolio is an npm project (`npx expo`). Both
-   repos' scripts use `--clean`.
-3. **Threadfolio's prebuild edits tracked `package.json`**; a restore step is needed before the
-   next sync's clean-tree check.
-4. **`-allowProvisioningUpdates CODE_SIGN_STYLE=Automatic`**, which both repos pass, aren't in the
-   draft's device build.
-
-These went to the runner session as a note; the runner decides how to cover them.
+1. **Fixed env per project**, from the repos' own scripts and `.example` files, non-secret only:
+   Threadfolio `THREADFOLIO_APP_VARIANT=dev`, `SCAN_API_ORIGIN` (the dev scan host from
+   `scripts/ios-device-install.sh`), `EXTRA_PACKAGER_ARGS=--skip-server`; Mizyun `EXPO_NO_DOTENV=1`,
+   `MIZYUN_APP_VARIANT=dev`, `MIZYUN_ENABLE_APPLE_AUTH=1`, `MIZYUN_IOS_DISABLE_PUSH=0`, and the dev
+   API, Supabase and redirect values the Mizyun scripts check for.
+2. **Mizyun's publishable key goes in an `envFile`** Adam places:
+   `/Library/Application Support/Jorah/env/mizyun-dev.env`, one line
+   `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=…`, owned by root, mode 644. The runner reads it per build and
+   refuses to build Mizyun until it exists.
+3. **Prebuild:** Threadfolio uses `expo-prebuild-npx` at the root; Mizyun uses `expo-prebuild` with
+   `dir: apps/mobile`. Both use `--clean --no-install`, then `pod-install`.
+4. **Restore:** Threadfolio `package.json`; Mizyun none.
+5. **Signing:** manual, one `Jorah <bundle id>` profile per target (`ThreadfolioDev`; `MizyunDev`,
+   `ExpoWidgetsTarget`, `MizyunWorkoutWatchDev`), team `LQJNDVBL43`. Device builds are not run yet.
+6. **Clones** at `/Users/jorah-build/src/threadfolio` and `/Users/jorah-build/src/mizyun`, made from
+   GitHub when `jorah-build` exists (issue 10).
 
 ## Making Mizyun push-capable for Jorah
 
@@ -262,15 +250,13 @@ If it ever has to be redone, Adam's steps:
 
 ## Still open
 
-- **Proving each recipe on the Mac** (issue 11's goal, issue 12's tests): no build was run. Tiers
-  open: build, install, launch, signed-in device use.
-- **Runner fields** for env, prebuild location and signing flags (above).
+- **Device builds** with the `Jorah …` profiles, install and launch on the iPhone, and every run as
+  `jorah-build` (issues 10 and 12). The simulator tiers above prove nothing about the device.
+- **Adam places** the Mizyun `envFile` with the dev publishable key, and adds his iPhone to `devices`.
 - **Mizyun Production upload** needs a Distribution identity that `jorah-build` won't hold. Either
   Adam keeps running `pnpm mobile:founder-production:ios:ipa` under his own user, or ADR 0002's
   limit changes. Adam's call.
 - **Signing for `jorah-build`** (issue 10) must cover all three Mizyun dev bundle IDs and their
   capabilities, and Threadfolio's `com.threadfolio.dev`.
-- **Adam places** `apps/mobile/.env.dev` (and only if ever needed, `.env.production`) where the
-  runner reads it, in a Terminal attached to no agent.
 - Mizyun's `AGENTS.md` names `com.mizyun.dev` as the iOS dev bundle ID; the code says
   `com.mizyun.development`. A one-line fix for Mizyun, not made here.

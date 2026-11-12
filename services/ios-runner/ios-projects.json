@@ -1,0 +1,58 @@
+{
+  "contract": "jorah-ios/1",
+  "installAllowed": true,
+  "simulatorAllowed": true,
+  "team": "LQJNDVBL43",
+  "stateDir": "/Users/jorah-build/Library/Application Support/jorah-ios-runner",
+  "handoffDir": "/Users/Shared/jorah-handoff",
+  "keyFile": "/Users/jorah-build/.config/jorah-ios/runner.key",
+  "listen": { "host": "127.0.0.1", "port": 47820 },
+  "path": ["/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"],
+  "projects": {
+    "threadfolio": {
+      "repo": "AdamHikl/threadfolio",
+      "path": "/Users/jorah-build/src/threadfolio",
+      "workspace": "ios/ThreadfolioDev.xcworkspace",
+      "scheme": "ThreadfolioDev",
+      "bundleId": "com.threadfolio.dev",
+      "prepare": ["npm-ci", "expo-prebuild-npx", "pod-install"],
+      "restore": ["package.json"],
+      "env": {
+        "THREADFOLIO_APP_VARIANT": "dev",
+        "SCAN_API_ORIGIN": "https://threadfolio-api-dev.phiskel.com",
+        "EXTRA_PACKAGER_ARGS": "--skip-server"
+      },
+      "signing": {
+        "style": "manual",
+        "profiles": { "ThreadfolioDev": "Jorah com.threadfolio.dev" }
+      }
+    },
+    "mizyun": {
+      "repo": "AdamHikl/mizyun",
+      "path": "/Users/jorah-build/src/mizyun",
+      "workspace": "apps/mobile/ios/MizyunDev.xcworkspace",
+      "scheme": "MizyunDev",
+      "bundleId": "com.mizyun.development",
+      "prepare": ["pnpm-install", { "step": "expo-prebuild", "dir": "apps/mobile" }, "pod-install"],
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "MIZYUN_APP_VARIANT": "dev",
+        "MIZYUN_ENABLE_APPLE_AUTH": "1",
+        "MIZYUN_IOS_DISABLE_PUSH": "0",
+        "EXPO_PUBLIC_API_URL": "https://mizyun-api-dev.phiskel.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://mizyun-supabase-dev.phiskel.com",
+        "EXPO_PUBLIC_AUTH_REDIRECT_URI": "mizyun-dev://auth/callback"
+      },
+      "envFile": "/Library/Application Support/Jorah/env/mizyun-dev.env",
+      "signing": {
+        "style": "manual",
+        "profiles": {
+          "MizyunDev": "Jorah com.mizyun.development",
+          "ExpoWidgetsTarget": "Jorah com.mizyun.development.ExpoWidgetsTarget",
+          "MizyunWorkoutWatchDev": "Jorah com.mizyun.development.watchkitapp"
+        }
+      }
+    }
+  },
+  "devices": {}
+}

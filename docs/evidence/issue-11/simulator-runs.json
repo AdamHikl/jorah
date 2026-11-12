@@ -1,0 +1,409 @@
+{
+  "mizyun_committed_entry_without_envFile": {
+    "build_sim": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 160902423,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T194424Z-mizyun-db8631/MizyunDev.app",
+          "sha256": "8a080d3d4d19f172640520931bebaa960eb5b36cc0fa76cd01a0c105f62074c5"
+        },
+        "commit": "163caa533b1cf88d58ef57507bff3261142f5e77",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T19:51:29Z",
+        "kind": "simulator",
+        "log": {
+          "bytes": 27542431,
+          "complete": true
+        },
+        "project": "mizyun",
+        "run_id": "20261112T194424Z-mizyun-db8631",
+        "simulator": null,
+        "started_at": "2026-11-12T19:44:24Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": 0,
+          "warnings": 5012
+        },
+        "tier": "build",
+        "tier_note": "Built for the simulator. Not installed, not launched."
+      }
+    },
+    "sim_boot": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      }
+    },
+    "sim_install": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 160902423,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T194424Z-mizyun-db8631/MizyunDev.app",
+          "sha256": "8a080d3d4d19f172640520931bebaa960eb5b36cc0fa76cd01a0c105f62074c5"
+        },
+        "build_run_id": "20261112T194424Z-mizyun-db8631",
+        "commit": "163caa533b1cf88d58ef57507bff3261142f5e77",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T19:52:07Z",
+        "kind": "sim-install",
+        "log": {
+          "bytes": 1063,
+          "complete": true
+        },
+        "process_id": 80616,
+        "project": "mizyun",
+        "run_id": "20261112T195145Z-mizyun-b10478",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T19:51:45Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "launch",
+        "tier_note": "Launched on the simulator. Says nothing about whether any feature works."
+      }
+    },
+    "sim_screenshot": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 126980,
+          "kind": "png",
+          "path": "<scratch>/runner/handoff/20261112T195218Z-mizyun-7f63b0/screenshot.png",
+          "sha256": "efc2785a37ab7f9f61a9bc8635bf17206fbce72faeabeacb9fd783a587a8c35c"
+        },
+        "commit": null,
+        "configuration": null,
+        "finished_at": "2026-11-12T19:52:19Z",
+        "kind": "sim-screenshot",
+        "log": {
+          "bytes": 594,
+          "complete": true
+        },
+        "project": "mizyun",
+        "run_id": "20261112T195218Z-mizyun-7f63b0",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T19:52:18Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "none",
+        "tier_note": "A screenshot of the simulator's screen. It proves no install or launch."
+      }
+    },
+    "sim_shutdown": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "shutdown"
+      }
+    },
+    "sim_terminate": {
+      "error": null,
+      "ok": true,
+      "project": "mizyun",
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      },
+      "terminated": true
+    }
+  },
+  "note": "Runner 2.1.0 serve on 127.0.0.1, signed requests, Adam's Mac user, scratch clones. Paths: <scratch> = the scratch folder under ~/Library/Caches. No env values are recorded; run results carry none.",
+  "simulator": {
+    "name": "iPhone 17",
+    "os": "27.0"
+  },
+  "threadfolio_1_without_SCAN_API_ORIGIN": {
+    "build_sim": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 89054765,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T193436Z-threadfolio-529744/ThreadfolioDev.app",
+          "sha256": "b6c40898d87d255425f41290f16425e3aae62c77551671853632854cbd81b404"
+        },
+        "commit": "99d1be9341e447f9e24b7c54c045c416726eda01",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T19:43:10Z",
+        "kind": "simulator",
+        "log": {
+          "bytes": 14940943,
+          "complete": true
+        },
+        "project": "threadfolio",
+        "run_id": "20261112T193436Z-threadfolio-529744",
+        "simulator": null,
+        "started_at": "2026-11-12T19:34:36Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": 0,
+          "warnings": 2119
+        },
+        "tier": "build",
+        "tier_note": "Built for the simulator. Not installed, not launched."
+      }
+    },
+    "sim_boot": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      }
+    },
+    "sim_install": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 89054765,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T193436Z-threadfolio-529744/ThreadfolioDev.app",
+          "sha256": "b6c40898d87d255425f41290f16425e3aae62c77551671853632854cbd81b404"
+        },
+        "build_run_id": "20261112T193436Z-threadfolio-529744",
+        "commit": "99d1be9341e447f9e24b7c54c045c416726eda01",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T19:43:57Z",
+        "kind": "sim-install",
+        "log": {
+          "bytes": 1084,
+          "complete": true
+        },
+        "process_id": 61573,
+        "project": "threadfolio",
+        "run_id": "20261112T194331Z-threadfolio-87d2bf",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T19:43:31Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "launch",
+        "tier_note": "Launched on the simulator. Says nothing about whether any feature works."
+      }
+    },
+    "sim_screenshot": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 239602,
+          "kind": "png",
+          "path": "<scratch>/runner/handoff/20261112T194406Z-threadfolio-1a3cbc/screenshot.png",
+          "sha256": "f44d871315ae006d85acd1851c1376cc0a9bab53ddfd2f1d8c767d4da7296f9d"
+        },
+        "commit": null,
+        "configuration": null,
+        "finished_at": "2026-11-12T19:44:07Z",
+        "kind": "sim-screenshot",
+        "log": {
+          "bytes": 609,
+          "complete": true
+        },
+        "project": "threadfolio",
+        "run_id": "20261112T194406Z-threadfolio-1a3cbc",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T19:44:06Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "none",
+        "tier_note": "A screenshot of the simulator's screen. It proves no install or launch."
+      }
+    },
+    "sim_shutdown": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "shutdown"
+      }
+    },
+    "sim_terminate": {
+      "error": null,
+      "ok": true,
+      "project": "threadfolio",
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      },
+      "terminated": true
+    }
+  },
+  "threadfolio_2_committed_entry": {
+    "build_sim": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 89054910,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T195441Z-threadfolio-d82b2e/ThreadfolioDev.app",
+          "sha256": "78bfb04d918ac2138f846e53e2491ff147e1675f4528cdb6de9d92729a7cef1a"
+        },
+        "commit": "99d1be9341e447f9e24b7c54c045c416726eda01",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T19:59:50Z",
+        "kind": "simulator",
+        "log": {
+          "bytes": 11641414,
+          "complete": true
+        },
+        "project": "threadfolio",
+        "run_id": "20261112T195441Z-threadfolio-d82b2e",
+        "simulator": null,
+        "started_at": "2026-11-12T19:54:41Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": 0,
+          "warnings": 1943
+        },
+        "tier": "build",
+        "tier_note": "Built for the simulator. Not installed, not launched."
+      }
+    },
+    "sim_boot": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      }
+    },
+    "sim_install": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 89054910,
+          "kind": "app",
+          "path": "<scratch>/runner/handoff/20261112T195441Z-threadfolio-d82b2e/ThreadfolioDev.app",
+          "sha256": "78bfb04d918ac2138f846e53e2491ff147e1675f4528cdb6de9d92729a7cef1a"
+        },
+        "build_run_id": "20261112T195441Z-threadfolio-d82b2e",
+        "commit": "99d1be9341e447f9e24b7c54c045c416726eda01",
+        "configuration": "Release",
+        "finished_at": "2026-11-12T20:00:27Z",
+        "kind": "sim-install",
+        "log": {
+          "bytes": 1084,
+          "complete": true
+        },
+        "process_id": 85685,
+        "project": "threadfolio",
+        "run_id": "20261112T200008Z-threadfolio-15d164",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T20:00:08Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "launch",
+        "tier_note": "Launched on the simulator. Says nothing about whether any feature works."
+      }
+    },
+    "sim_screenshot": {
+      "error": null,
+      "ok": true,
+      "run": {
+        "artifact": {
+          "bytes": 239385,
+          "kind": "png",
+          "path": "<scratch>/runner/handoff/20261112T200035Z-threadfolio-7e771c/screenshot.png",
+          "sha256": "174c200afc6d983efe5b24ac4defd83e766bf20032b917796321960f43f78a0e"
+        },
+        "commit": null,
+        "configuration": null,
+        "finished_at": "2026-11-12T20:00:36Z",
+        "kind": "sim-screenshot",
+        "log": {
+          "bytes": 609,
+          "complete": true
+        },
+        "project": "threadfolio",
+        "run_id": "20261112T200035Z-threadfolio-7e771c",
+        "simulator": {
+          "name": "iPhone 17",
+          "os": "27.0",
+          "state": "booted"
+        },
+        "started_at": "2026-11-12T20:00:35Z",
+        "state": "succeeded",
+        "summary": {
+          "errors": null,
+          "warnings": null
+        },
+        "tier": "none",
+        "tier_note": "A screenshot of the simulator's screen. It proves no install or launch."
+      }
+    },
+    "sim_shutdown": {
+      "error": null,
+      "ok": true,
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "shutdown"
+      }
+    },
+    "sim_terminate": {
+      "error": null,
+      "ok": true,
+      "project": "threadfolio",
+      "simulator": {
+        "name": "iPhone 17",
+        "os": "27.0",
+        "state": "booted"
+      },
+      "terminated": true
+    }
+  }
+}

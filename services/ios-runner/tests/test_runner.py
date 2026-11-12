@@ -40,7 +40,7 @@ tool = Path(sys.argv[0]).name
 args = sys.argv[1:]
 with open(here / "calls.jsonl", "a") as f:
     f.write(json.dumps({"argv": [tool] + args, "cwd": os.getcwd(),
-                        "env": {k: os.environ.get(k) for k in ("APP_VARIANT", "PATH", "CI")}}) + "\n")
+                        "env": {k: os.environ.get(k) for k in ("APP_VARIANT", "PATH", "CI", "FROM_FILE_URL", "FROM_FILE_PUBLISHABLE_KEY")}}) + "\n")
 key = tool
 if tool == "xcrun":
     key = args[0]
@@ -371,6 +371,20 @@ class Allowlist(Case):
         self.refused(lambda c: c.update(uploadTo="testflight"), "unknown")
         self.refused(lambda c: (c.pop("uploadTo"), c.update(contract="jorah-ios/2")), "contract")
 
+    def test_the_real_allowlist_loads(self):
+        copy = self.tmp / "ios-projects.json"
+        shutil.copy(ROOT / "ios-projects.json", copy)
+        copy.chmod(0o600)
+        config = load_config(copy)
+        self.assertEqual(sorted(config.projects), ["mizyun", "threadfolio"])
+        self.assertTrue(config.simulator_allowed)
+        self.assertEqual(config.devices, {})  # Adam adds his iPhone's UDID
+        for project in config.projects.values():
+            self.assertTrue(str(project.path).startswith("/Users/jorah-build/src/"))
+            self.assertFalse(any(w in n for n in project.env for w in ("KEY", "TOKEN", "SECRET")))
+        self.assertEqual(str(config.projects["mizyun"].env_file),
+                         "/Library/Application Support/Jorah/env/mizyun-dev.env")
+
     def test_example_file_loads_and_holds_placeholders_only(self):
         copy = self.tmp / "example.json"
         shutil.copy(ROOT / "projects.example.json", copy)
@@ -480,6 +494,58 @@ class Builds(Case):
         self.assertTrue(all(c["env"]["APP_VARIANT"] == "dev" for c in calls[:4]))
         self.assertEqual(git("status", "--porcelain", cwd=self.clone), "")  # package.json put back
         self.assertTrue(self.build()["ok"])  # so the next build is not TREE_DIRTY
+
+    def env_file(self, text, mode=0o600):
+        path = self.tmp / "private" / "sample.env"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(text)
+        path.chmod(mode)
+        self.config["projects"]["sample"].update(prepare=["pnpm-install"], env={"APP_VARIANT": "dev"},
+                                                 envFile=str(path))
+        self.write_config()
+        return path
+
+    def test_env_file_values_reach_prepare_and_xcodebuild(self):
+        self.env_file("# kept out of git\nFROM_FILE_URL=https://dev.example.invalid\n"
+                      "export FROM_FILE_PUBLISHABLE_KEY='pk-123'\n")
+        out = self.build()
+        self.assertTrue(out["ok"], out)
+        for call in self.calls("pnpm") + self.calls("xcodebuild"):
+            self.assertEqual((call["env"]["FROM_FILE_URL"], call["env"]["FROM_FILE_PUBLISHABLE_KEY"],
+                              call["env"]["APP_VARIANT"]), ("https://dev.example.invalid", "pk-123", "dev"))
+        log = (self.state / "runs" / out["run"]["run_id"] / "run.log").read_text()
+        self.assertIn("FROM_FILE_URL", log)
+        self.assertNotIn("pk-123", log)
+        self.assertNotIn("pk-123", json.dumps(out))
+
+    def test_env_file_problems_stop_the_build_before_anything_runs(self):
+        cases = [
+            (None, "missing"),
+            ("FROM_FILE_URL=x\n", "writable"),  # mode 0o666 below
+            ("GITHUB_TOKEN=ghp-secret-value\n", "secret"),
+            ("DYLD_INSERT_LIBRARIES=/x\n", "DYLD"),
+            ("APP_VARIANT=production\n", "twice"),
+            ("no equals sign\n", "NAME=VALUE"),
+        ]
+        for text, word in cases:
+            with self.subTest(word=word):
+                path = self.env_file(text or "", 0o666 if word == "writable" else 0o600)
+                if text is None:
+                    path.unlink()
+                (self.stubs / "calls.jsonl").unlink(missing_ok=True)
+                out = self.build()
+                self.assertEqual((self.code(out), out["run"]["state"], out["run"]["tier"]),
+                                 ("RUNNER_ERROR", "failed", "none"))
+                self.assertIn(word, out["error"]["message"])
+                self.assertNotIn("ghp-secret-value", json.dumps(out))
+                self.assertEqual(self.calls("pnpm") + self.calls("xcodebuild"), [])
+
+    def test_env_file_must_live_outside_the_clone(self):
+        self.config["projects"]["sample"]["envFile"] = str(self.clone / ".env")
+        self.write_config()
+        with self.assertRaises(ConfigError) as e:
+            load_config(self.config_path)
+        self.assertIn("outside", str(e.exception))
 
     def test_prepare_in_a_sub_folder(self):
         self.config["projects"]["sample"]["prepare"] = [{"step": "expo-prebuild", "dir": "apps/mobile"}]

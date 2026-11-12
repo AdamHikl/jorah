@@ -28,6 +28,7 @@ export function context(ctx = {}) {
     agentId: ctx.agentId,
     sessionKey: ctx.sessionKey,
     runId: ctx.runId ? "present" : undefined,
+    toolCallId: typeof ctx.toolCallId === "string" ? ctx.toolCallId : undefined,
     messageProvider: ctx.messageProvider,
     channelId: ctx.channelId,
     toolKind: ctx.toolKind,

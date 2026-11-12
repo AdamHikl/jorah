@@ -56,12 +56,13 @@ export default {
     api.on("before_tool_call", (event, ctx) => {
       const tool = event?.toolName;
       try {
+        state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings });
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
+        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
         return {
@@ -75,7 +76,7 @@ export default {
           },
         };
       } catch (error) {
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, tool, verdict: "block", reason: `guard error: ${error?.message ?? error}` });
+        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, tool, verdict: "block", reason: `guard error: ${error?.message ?? error}` });
         return { block: true, blockReason: "jorah-guard: the guard couldn't check this call, so it is blocked." };
       }
     }, { priority: PRIORITY });
@@ -84,6 +85,7 @@ export default {
     api.on("after_tool_call", (event, ctx) => {
       try {
         const key = ctx?.sessionKey;
+        state.enter(key, ctx?.sessionId);
         const urls = urlsIn(event?.result).map(normalise).filter(Boolean);
         state.addSeen(key, urls);
         const child = event?.result?.details?.childSessionKey;
@@ -99,6 +101,7 @@ export default {
     api.on("before_agent_run", (event, ctx) => {
       try {
         const key = ctx?.sessionKey ?? event?.sessionKey;
+        state.enter(key, ctx?.sessionId ?? event?.sessionId);
         // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;
         if (!(r?.senderIsOwner === true && r?.channel !== "webchat")) { state.setWords(key, ""); return undefined; }
@@ -107,6 +110,17 @@ export default {
         state.addSeen(key, findUrls(prompt).map(normalise).filter(Boolean));
       } catch (e) {
         api.logger.warn(`jorah-guard: before_agent_run: ${e?.message}`);
+      }
+      return undefined;
+    });
+
+    // /new and /reset keep the sessionId but empty the context: start the chat's record again.
+    api.on("before_reset", (event, ctx) => {
+      try {
+        const key = ctx?.sessionKey ?? event?.sessionKey;
+        if (key) { state.reset(key); log({ session: key, tool: "before_reset", verdict: "reset" }); }
+      } catch (e) {
+        api.logger.warn(`jorah-guard: before_reset: ${e?.message}`);
       }
       return undefined;
     });

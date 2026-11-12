@@ -19,6 +19,7 @@ export class GuardState {
     this.seen = new Map(); // sessionKey -> Set(normalised URL)
     this.words = new Map(); // sessionKey -> { text, at }
     this.acp = new Map(); // sessionKey -> [timestamps]
+    this.current = new Map(); // sessionKey -> sessionId last seen in a hook
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (existsSync(this.file)) {
@@ -59,17 +60,48 @@ export class GuardState {
     return own ?? null;
   }
 
+  // A chat starts a new session on the daily and idle resets (a new sessionId, OpenClaw's
+  // session schema) and on /new or /reset (same sessionId, a before_reset event). Either way its
+  // context no longer holds the outside text, so its record starts again. Compaction keeps the
+  // sessionId, so it never clears anything. A hook without a sessionId changes nothing (stricter).
+  enter(sessionKey, sessionId) {
+    if (!sessionKey || typeof sessionId !== "string" || sessionId.length === 0) return;
+    const rec = this.data.sessions[sessionKey];
+    const known = this.current.get(sessionKey) ?? rec?.sessionId;
+    this.current.set(sessionKey, sessionId);
+    if (known === undefined || known === sessionId) {
+      if (rec && rec.sessionId === undefined) { rec.sessionId = sessionId; this.persist(); }
+      return;
+    }
+    this.reset(sessionKey, `new session ${sessionId.slice(0, 8)}`);
+  }
+
+  reset(sessionKey) {
+    if (!sessionKey) return;
+    this.seen.delete(sessionKey);
+    this.words.delete(sessionKey);
+    this.acp.delete(sessionKey);
+    if (this.data.sessions[sessionKey]) {
+      delete this.data.sessions[sessionKey];
+      this.persist();
+    }
+  }
+
+  currentSession(sessionKey) {
+    return this.current.get(sessionKey);
+  }
+
   markTainted(sessionKey, source) {
     if (!sessionKey) return;
     const cur = this.data.sessions[sessionKey];
     if (cur?.tainted) return;
-    this.data.sessions[sessionKey] = { tainted: true, source: String(source).slice(0, 120), at: this.now() };
+    this.data.sessions[sessionKey] = { ...(cur ?? {}), tainted: true, source: String(source).slice(0, 120), at: this.now(), sessionId: this.current.get(sessionKey) ?? cur?.sessionId };
     this.persist();
   }
 
   markReadPrivateRepo(sessionKey, repo) {
     if (!sessionKey) return;
-    const cur = this.data.sessions[sessionKey] ?? { tainted: false, at: this.now() };
+    const cur = this.data.sessions[sessionKey] ?? { tainted: false, at: this.now(), sessionId: this.current.get(sessionKey) };
     cur.readRepos = Array.from(new Set([...(cur.readRepos ?? []), String(repo).slice(0, 100)])).slice(0, 50);
     this.data.sessions[sessionKey] = cur;
     this.persist();

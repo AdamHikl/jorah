@@ -1,0 +1,25 @@
+// P5.4: jorah-guard on the jorah-dev scratch profile only (docs/plan/p5-plan.md section 9).
+// The plugin and the matrix are copies under ~/scratch-dev/p5, its state in ~/.jorah-guard-dev, so
+// nothing here touches the live guard's folders. The spike plugin stays on as a second witness.
+// allowConversationAccess lets before_agent_run see Adam's typed words (4.2, D2).
+{
+  plugins: {
+    allow: ["anthropic", "memory-core", "active-memory", "memory-wiki", "device-pair", "talk-voice",
+            "browser", "duckduckgo", "jorah-guard-spike", "jorah-guard"],
+    load: { paths: ["/home/jorah/scratch-dev/p5/plugins/jorah-guard-spike", "/home/jorah/scratch-dev/p5/plugins/jorah-guard"] },
+    entries: {
+      // The spike's values log is the tests' witness of what actually ran (fake canaries only).
+      "jorah-guard-spike": { config: { logValues: true } },
+      "jorah-guard": {
+        enabled: true,
+        hooks: { allowConversationAccess: true },
+        config: {
+          matrixFile: "/home/jorah/scratch-dev/p5/config/permission-matrix.json",
+          stateDir: "/home/jorah/.jorah-guard-dev",
+          workspace: "/home/jorah/scratch-dev/workspace",
+          cleanSessionKeys: ["agent:main:main"],
+        },
+      },
+    },
+  },
+}

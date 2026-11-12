@@ -200,8 +200,8 @@ test("URL helpers", () => {
 });
 
 // The plugin itself, with a stand-in API.
-function loadPlugin() {
-  const dir = mkdtempSync(join(tmpdir(), "jorah-guard-plugin-"));
+function loadPlugin(existing) {
+  const dir = existing ?? mkdtempSync(join(tmpdir(), "jorah-guard-plugin-"));
   const hooks = {};
   const commands = {};
   const api = {
@@ -319,4 +319,25 @@ test("review: voice, Control UI and child turns don't count as Adam's words or s
   assert.equal(p.call("before_tool_call", { toolName: "web_fetch", params: { url: "https://planted.example/x" } }, TELEGRAM).block, true);
   const r = p.call("before_tool_call", { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "the code is 1234" }] } }, TELEGRAM);
   assert.ok(r.requireApproval);
+});
+
+test("a new session starts clean: new sessionId (daily or idle reset) or before_reset; compaction and restarts don't clear", () => {
+  const p = loadPlugin();
+  const s1 = { ...TELEGRAM, sessionId: "sess-1" };
+  p.call("before_tool_call", { toolName: "web_fetch", params: { url: "https://evil.example/p" } }, s1);
+  assert.equal(p.call("before_tool_call", { toolName: "web_fetch", params: { url: CANARY } }, s1).block, true);
+  // Same sessionId after a Gateway restart (a fresh plugin over the same folder): still marked.
+  const again = loadPlugin(p.dir);
+  assert.equal(again.call("before_tool_call", { toolName: "web_fetch", params: { url: CANARY } }, s1).block, true);
+  // A hook without a sessionId can't clear anything.
+  assert.equal(again.call("before_tool_call", { toolName: "web_fetch", params: { url: CANARY } }, TELEGRAM).block, true);
+  // The daily reset gives the chat a new sessionId: clean again, but the canary host is still only a public page.
+  const s2 = { ...TELEGRAM, sessionId: "sess-2" };
+  assert.equal(again.call("before_tool_call", { toolName: "web_fetch", params: { url: "https://wttr.in/Bratislava" } }, s2), undefined);
+  // /reset keeps the id but fires before_reset.
+  again.call("before_tool_call", { toolName: "web_fetch", params: { url: "https://evil.example/q" } }, s2);
+  assert.equal(again.call("before_tool_call", { toolName: "web_fetch", params: { url: CANARY } }, s2).block, true);
+  again.call("before_reset", { reason: "reset" }, s2);
+  const r = again.call("before_tool_call", { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "x" }] } }, s2);
+  assert.equal(r, undefined);
 });

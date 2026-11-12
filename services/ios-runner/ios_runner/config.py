@@ -49,6 +49,7 @@ DEFAULT_TIMEOUTS = {
     "launch": 120,
     "devices": 60,
     "codesign": 60,
+    "simulator": 300,  # simctl: boot, shutdown, install, launch, screenshot, list
 }
 
 DEFAULT_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/homebrew/bin"]
@@ -99,6 +100,7 @@ class Project:
 @dataclass
 class Config:
     install_allowed: bool
+    simulator_allowed: bool
     team: Optional[str]
     state_dir: Path
     handoff_dir: Path
@@ -222,7 +224,7 @@ def load_config(path: Path) -> Config:
         data = json.loads(path.read_text())
     except (OSError, ValueError) as e:
         raise ConfigError("allowlist is not valid JSON") from e
-    _keys(data, {"contract", "installAllowed", "team", "stateDir", "handoffDir", "keyFile", "listen", "path",
+    _keys(data, {"contract", "installAllowed", "simulatorAllowed", "team", "stateDir", "handoffDir", "keyFile", "listen", "path",
                  "developerDir", "maxLogBytes", "keepRuns", "timeouts", "projects", "devices"}, "allowlist")
     if data.get("contract") != CONTRACT:
         raise ConfigError(f"allowlist contract must be {CONTRACT}")
@@ -275,6 +277,7 @@ def load_config(path: Path) -> Config:
 
     return Config(
         install_allowed=_bool(data.get("installAllowed", False), "installAllowed"),
+        simulator_allowed=_bool(data.get("simulatorAllowed", False), "simulatorAllowed"),
         team=team,
         state_dir=abs_path("stateDir", "~/Library/Application Support/jorah-ios-runner"),
         handoff_dir=abs_path("handoffDir", "/Users/Shared/jorah-handoff"),

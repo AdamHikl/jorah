@@ -40,3 +40,7 @@ mac-ear:
 # on loopback, as the current user, with state in a new temp folder.
 ios-runner-sample:
     python3 services/ios-runner/tools/sample_over_http.py
+
+# The same, then boot, install, launch, screenshot and shut down on a real iOS Simulator
+ios-runner-sample-sim:
+    python3 services/ios-runner/tools/sample_over_http.py --simulator

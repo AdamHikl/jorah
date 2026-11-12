@@ -1,0 +1,122 @@
+{
+  "build_sim": {
+    "artifact": {
+      "bytes": 200272,
+      "kind": "app",
+      "path": "<temp>/handoff/20261112T110132Z-sample-376310/Sample.app",
+      "sha256": "5ab4d60fdb928813d57b017760d09360b56294c1bc0503b629c044f626ae7b2f"
+    },
+    "commit": "f89821aa530d7bfae5c57871684def9ef9de43c1",
+    "run_id": "20261112T110132Z-sample-376310",
+    "state": "succeeded",
+    "tier": "build",
+    "tier_note": "Built for the simulator. Not installed, not launched."
+  },
+  "simulator_steps": {
+    "simulator": {
+      "name": "iPhone 17",
+      "os": "27.0"
+    },
+    "steps": [
+      {
+        "reply": {
+          "error": null,
+          "ok": true,
+          "simulator": {
+            "name": "iPhone 17",
+            "os": "27.0",
+            "state": "booted"
+          }
+        },
+        "verb": "sim-boot"
+      },
+      {
+        "reply": {
+          "error": null,
+          "ok": true,
+          "run": {
+            "artifact": {
+              "bytes": 200272,
+              "kind": "app",
+              "path": "<temp>/handoff/20261112T110132Z-sample-376310/Sample.app",
+              "sha256": "5ab4d60fdb928813d57b017760d09360b56294c1bc0503b629c044f626ae7b2f"
+            },
+            "build_run_id": "20261112T110132Z-sample-376310",
+            "kind": "sim-install",
+            "process_id": 79575,
+            "run_id": "20261112T110213Z-sample-dbccd7",
+            "simulator": {
+              "name": "iPhone 17",
+              "os": "27.0",
+              "state": "booted"
+            },
+            "state": "succeeded",
+            "tier": "launch",
+            "tier_note": "Launched on the simulator. Says nothing about whether any feature works."
+          }
+        },
+        "verb": "sim-install"
+      },
+      {
+        "reply": {
+          "error": null,
+          "ok": true,
+          "run": {
+            "artifact": {
+              "bytes": 76943,
+              "kind": "png",
+              "path": "<temp>/handoff/20261112T110229Z-sample-c79f51/screenshot.png",
+              "sha256": "971094cc657175e8b058c2588d63211424b0c3804e1c338abf35ccd44d328dfd"
+            },
+            "build_run_id": null,
+            "kind": "sim-screenshot",
+            "process_id": null,
+            "run_id": "20261112T110229Z-sample-c79f51",
+            "simulator": {
+              "name": "iPhone 17",
+              "os": "27.0",
+              "state": "booted"
+            },
+            "state": "succeeded",
+            "tier": "none",
+            "tier_note": "A screenshot of the simulator's screen. It proves no install or launch."
+          }
+        },
+        "verb": "sim-screenshot"
+      },
+      {
+        "reply": {
+          "pages_bytes": 76943,
+          "sha256_matches_artifact": true
+        },
+        "verb": "sim-screenshot-read"
+      },
+      {
+        "reply": {
+          "error": null,
+          "ok": true,
+          "project": "sample",
+          "simulator": {
+            "name": "iPhone 17",
+            "os": "27.0",
+            "state": "booted"
+          },
+          "terminated": true
+        },
+        "verb": "sim-terminate"
+      },
+      {
+        "reply": {
+          "error": null,
+          "ok": true,
+          "simulator": {
+            "name": "iPhone 17",
+            "os": "27.0",
+            "state": "shutdown"
+          }
+        },
+        "verb": "sim-shutdown"
+      }
+    ]
+  }
+}

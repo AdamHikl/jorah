@@ -2,6 +2,7 @@
 codesign, pnpm, npx and pod. Real git runs against throwaway repositories. No
 Xcode, device or network is needed."""
 
+import base64
 import fcntl
 import json
 import os
@@ -47,6 +48,8 @@ if tool == "xcrun":
         key = "devicectl-" + args[2]
     elif args[:2] == ["devicectl", "list"]:
         key = "devicectl-list"
+    elif args[0] == "simctl":
+        key = "simctl-" + args[1].replace("_", "-")
 elif tool == "xcodebuild" and "archive" in args:
     key = "archive"
 mode = json.loads((here / "behaviour.json").read_text()).get(key, "ok")
@@ -99,6 +102,54 @@ elif key == "devicectl-info":
     write_json({"result": {"apps": [] if mode == "empty" else [{"bundleIdentifier": "dev.jorah.fixture.sample"}]}})
 elif key == "devicectl-process":
     write_json({"result": {"process": {} if mode == "nopid" else {"processIdentifier": 4242}}})
+elif key.startswith("simctl-"):
+    # A pretend CoreSimulator: one booted-or-not iPhone 18 Pro on iOS 27.0, state kept in sims.json.
+    state_file = here / "sims.json"
+    sims = json.loads(state_file.read_text()) if state_file.exists() else {"state": "Shutdown", "installed": False}
+    sub = key[len("simctl-"):]
+    rt27, rt26, watch = ("com.apple.CoreSimulator.SimRuntime.iOS-27-0", "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+                         "com.apple.CoreSimulator.SimRuntime.watchOS-12-0")
+    if sub == "list":
+        print("simctl: a warning on stderr", file=sys.stderr)
+        print(json.dumps({
+            "runtimes": [{"identifier": rt27, "version": "27.0", "platform": "iOS", "isAvailable": True},
+                         {"identifier": rt26, "version": "26.5", "platform": "iOS", "isAvailable": True},
+                         {"identifier": watch, "version": "12.0", "platform": "watchOS", "isAvailable": True}],
+            "devices": {
+                rt27: [{"name": "iPhone 18 Pro", "udid": "11111111-2222-3333-4444-555555555555",
+                        "state": sims["state"], "isAvailable": True},
+                       {"name": "iPhone Duo", "udid": "AAAAAAAA-2222-3333-4444-555555555555", "state": "Shutdown",
+                        "isAvailable": True},
+                       {"name": "iPhone Duo", "udid": "BBBBBBBB-2222-3333-4444-555555555555", "state": "Shutdown",
+                        "isAvailable": True},
+                       {"name": "iPhone Gone", "udid": "CCCCCCCC-2222-3333-4444-555555555555", "state": "Shutdown",
+                        "isAvailable": False}],
+                rt26: [{"name": "iPhone 18 Pro", "udid": "DDDDDDDD-2222-3333-4444-555555555555", "state": "Shutdown",
+                        "isAvailable": True}],
+                watch: [{"name": "Apple Watch Series 12", "udid": "EEEEEEEE-2222-3333-4444-555555555555",
+                         "state": "Shutdown", "isAvailable": True}]}}))
+    elif sub == "bootstatus":
+        sims["state"] = "Booted"
+    elif sub == "shutdown":
+        if sims["state"] == "Shutdown":
+            print("Unable to shutdown device in current state: Shutdown", file=sys.stderr)
+            sys.exit(149)
+        sims["state"] = "Shutdown"
+    elif sub == "install":
+        if mode != "noop":
+            sims["installed"] = True
+    elif sub == "get-app-container":
+        if not sims["installed"]:
+            print("No such app", file=sys.stderr)
+            sys.exit(2)
+        make_app(here / "sim-container")
+        print(here / "sim-container" / "Sample.app")
+    elif sub == "launch":
+        if mode != "nopid":
+            print("dev.jorah.fixture.sample: 777")
+    elif sub == "io":
+        Path(args[-1]).write_bytes(b"junk" if mode == "notpng" else b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 1200)
+    state_file.write_text(json.dumps(sims))
 elif key in ("pnpm", "npx"):
     if mode == "rewrite":
         Path("package.json").write_text('{"scripts": {"ios": "rewritten"}}\n')
@@ -625,6 +676,11 @@ class StatusLogsLocks(Case):
 class Http(Case):
     def setUp(self):
         super().setUp()
+        self.config["timeouts"]["build"] = 30  # the 3 s of the other classes is tight for a 1.5 s "slow" build under load
+        self.write_config()
+        self.setUp_server()
+
+    def setUp_server(self):
         self.server = subprocess.Popen([sys.executable, "-I", str(RUNNER), "serve"], env=self.env(),
                                        stderr=subprocess.PIPE, text=True)
         line = self.server.stderr.readline()
@@ -683,6 +739,22 @@ class Http(Case):
         status, body = self.post("devices", {}, headers={"X-Jorah-Contract": "jorah-ios/2"})
         self.assertEqual((status, json.loads(body)["error"]["code"]), (400, "CONTRACT_MISMATCH"))
 
+    def test_simulator_verbs_over_http(self):
+        self.server.send_signal(signal.SIGTERM)
+        self.server.wait(timeout=20)
+        self.server.stderr.close()
+        self.config["simulatorAllowed"] = True
+        self.write_config()
+        self.setUp_server()
+        status, body = self.post("sim-boot", {"simulator": SIM})
+        self.assertEqual((status, json.loads(body)["simulator"]["state"]), (200, "booted"))
+        status, body = self.post("sim-screenshot", {"project": "sample", "simulator": SIM})
+        run = json.loads(body)["run"]
+        status, body = self.post("sim-screenshot-read", {"run_id": run["run_id"], "max_bytes": 8})
+        page = json.loads(body)
+        self.assertEqual(base64.b64decode(page["data_base64"]), b"\x89PNG\r\n\x1a\n")
+        self.assertFalse(page["eof"])
+
     def test_build_replies_at_once_then_status_waits(self):
         self.behave(xcodebuild="slow")
         start = time.monotonic()
@@ -699,6 +771,173 @@ class Http(Case):
         status, body = self.post("status", {"run_id": first["run"]["run_id"], "wait_seconds": 20})
         final = json.loads(body)
         self.assertEqual((final["ok"], final["run"]["state"], final["run"]["tier"]), (True, "succeeded", "build"))
+
+
+SIM = {"name": "iPhone 18 Pro", "os": "27.0"}
+SIM_UDID = "11111111-2222-3333-4444-555555555555"
+
+
+class Simulator(Case):
+    def setUp(self):
+        super().setUp()
+        self.config["simulatorAllowed"] = True
+        self.write_config()
+
+    def simctl(self, sub=None):
+        return [c["argv"][2:] for c in self.calls("xcrun")
+                if c["argv"][1] == "simctl" and (sub is None or c["argv"][2] == sub)]
+
+    def sim_build(self):
+        out = self.build("build-sim")
+        self.assertTrue(out["ok"], out)
+        return out["run"]["run_id"]
+
+    def test_off_unless_the_allowlist_says_so(self):
+        self.config["simulatorAllowed"] = False
+        self.write_config()
+        for verb, body in (("sim-list", {}), ("sim-boot", {"simulator": SIM}),
+                           ("sim-screenshot", {"project": "sample", "simulator": SIM})):
+            with self.subTest(verb=verb):
+                self.assertEqual(self.code(self.call(verb, body)), "SIMULATOR_DISABLED")
+        self.assertEqual(self.calls(), [])
+
+    def test_list_is_available_ios_simulators_by_name_and_os(self):
+        out = self.call("sim-list", {})
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["simulators"], [
+            {"name": "iPhone 18 Pro", "os": "26.5", "state": "shutdown"},
+            {"name": "iPhone 18 Pro", "os": "27.0", "state": "shutdown"},
+            {"name": "iPhone Duo", "os": "27.0", "state": "shutdown"},
+            {"name": "iPhone Duo", "os": "27.0", "state": "shutdown"},
+        ])  # no watchOS, nothing unavailable, no UDIDs
+        self.assertNotIn("udid", json.dumps(out).lower())
+
+    def test_a_simulator_is_picked_from_simctl_never_passed_through(self):
+        attempts = [
+            ({"name": "iPhone 18 Pro; rm -rf /", "os": "27.0"}, "BAD_ARGUMENT"),
+            ({"name": "--set /tmp", "os": "27.0"}, "BAD_ARGUMENT"),
+            ({"name": "iPhone 18 Pro", "os": "27"}, "BAD_ARGUMENT"),
+            ({"name": "iPhone 18 Pro", "os": "27.0", "udid": SIM_UDID}, "BAD_ARGUMENT"),
+            ({"name": "iPhone 18 Pro"}, "BAD_ARGUMENT"),
+            (SIM_UDID, "BAD_ARGUMENT"),
+            ({"name": "iPhone 18 Pro", "os": "28.0"}, "SIMULATOR_NOT_FOUND"),
+            ({"name": "iPhone Duo", "os": "27.0"}, "SIMULATOR_NOT_FOUND"),  # two of them: no guessing
+            ({"name": "iPhone Gone", "os": "27.0"}, "SIMULATOR_NOT_FOUND"),  # unavailable
+            ({"name": "Apple Watch Series 12", "os": "12.0"}, "SIMULATOR_NOT_FOUND"),  # not iOS
+        ]
+        for sim, code in attempts:
+            with self.subTest(sim=sim):
+                self.assertEqual(self.code(self.call("sim-boot", {"simulator": sim})), code)
+        out = self.call("sim-screenshot", {"project": "sample", "simulator": SIM, "path": "/tmp/x.png"})
+        self.assertEqual(self.code(out), "BAD_ARGUMENT")
+        self.assertEqual({c[0] for c in self.simctl()}, {"list"})
+        self.assertFalse(any((self.state / "runs").iterdir()))
+
+    def test_boot_install_launch_screenshot_terminate_shutdown(self):
+        build_id = self.sim_build()
+        out = self.call("sim-install", {"build_run_id": build_id, "simulator": SIM})
+        self.assertEqual((self.code(out), out["run"]["tier"]), ("SIMULATOR_UNAVAILABLE", "build"))
+        self.assertTrue(out["error"]["retryable"])
+
+        out = self.call("sim-boot", {"simulator": SIM})
+        self.assertEqual((out["ok"], out["simulator"]), (True, dict(SIM, state="booted")))
+        self.assertIn(["bootstatus", SIM_UDID, "-b"], self.simctl())
+
+        out = self.call("sim-install", {"build_run_id": build_id, "simulator": SIM, "launch": True})
+        run = out["run"]
+        self.assertTrue(out["ok"], out)
+        self.assertEqual((run["kind"], run["state"], run["tier"], run["build_run_id"], run["process_id"]),
+                         ("sim-install", "succeeded", "launch", build_id, 777))
+        self.assertEqual(run["simulator"], dict(SIM, state="booted"))
+        self.assertIsNone(run["device"])
+        self.assertEqual(self.simctl("install")[0][:2], ["install", SIM_UDID])  # UDID from simctl's list
+        self.assertEqual(self.simctl("launch")[0], ["launch", "--terminate-running-process", SIM_UDID, BUNDLE])
+
+        out = self.call("sim-screenshot", {"project": "sample", "simulator": SIM})
+        run = out["run"]
+        self.assertTrue(out["ok"], out)
+        self.assertEqual((run["kind"], run["tier"], run["artifact"]["kind"]), ("sim-screenshot", "none", "png"))
+        self.assertIn("proves no install", run["tier_note"])
+        png = self.handoff / run["run_id"] / "screenshot.png"
+        self.assertEqual(run["artifact"]["path"], str(png))
+        self.assertEqual((run["artifact"]["bytes"], run["artifact"]["sha256"]), tree_digest(png))
+
+        data, offset = b"", 0
+        while True:
+            page = self.call("sim-screenshot-read", {"run_id": run["run_id"], "offset": offset, "max_bytes": 100000})
+            self.assertTrue(page["ok"], page)
+            self.assertEqual((page["media_type"], page["sha256"]), ("image/png", run["artifact"]["sha256"]))
+            data += base64.b64decode(page["data_base64"])
+            offset += page["bytes"]
+            if page["eof"]:
+                break
+        self.assertEqual(data, png.read_bytes())
+
+        out = self.call("sim-terminate", {"project": "sample", "simulator": SIM})
+        self.assertEqual((out["ok"], out["terminated"]), (True, True))
+        self.assertEqual(self.simctl("terminate")[0], ["terminate", SIM_UDID, BUNDLE])
+
+        out = self.call("sim-shutdown", {"simulator": SIM})
+        self.assertEqual((out["ok"], out["simulator"]["state"]), (True, "shutdown"))
+        out = self.call("sim-shutdown", {"simulator": SIM})  # already off: no second shutdown call
+        self.assertTrue(out["ok"])
+        self.assertEqual(len(self.simctl("shutdown")), 1)
+
+    def booted_install(self, **extra):
+        build_id = self.sim_build()
+        self.call("sim-boot", {"simulator": SIM})
+        return self.call("sim-install", {"build_run_id": build_id, "simulator": SIM, **extra})
+
+    def test_install_is_proved_by_simctl_listing_the_app(self):
+        self.behave(simctl_install="noop")  # exits 0 but installs nothing
+        out = self.booted_install()
+        self.assertEqual((self.code(out), out["run"]["state"], out["run"]["tier"]), ("INSTALL_FAILED", "failed", "build"))
+
+    def test_install_without_launch_stops_at_install(self):
+        out = self.booted_install()
+        self.assertEqual((out["ok"], out["run"]["tier"]), (True, "install"))
+        self.assertIn("Not launched", out["run"]["tier_note"])
+        self.assertEqual(self.simctl("launch"), [])
+
+    def test_launch_without_a_process_is_tier_install(self):
+        self.behave(simctl_launch="nopid")
+        out = self.booted_install(launch=True)
+        self.assertEqual((self.code(out), out["run"]["tier"]), ("LAUNCH_FAILED", "install"))
+
+    def test_launch_alone_needs_the_app_installed(self):
+        self.call("sim-boot", {"simulator": SIM})
+        out = self.call("sim-launch", {"project": "sample", "simulator": SIM})
+        self.assertEqual((self.code(out), out["run"]["tier"]), ("LAUNCH_FAILED", "none"))
+        self.assertEqual(self.simctl("launch"), [])
+        self.booted_install()
+        out = self.call("sim-launch", {"project": "sample", "simulator": SIM})
+        self.assertEqual((out["ok"], out["run"]["tier"], out["run"]["commit"]), (True, "launch", None))
+        self.assertIn("was not checked", out["run"]["tier_note"])
+
+    def test_only_a_finished_simulator_build_installs(self):
+        device_build = self.build("build-device")["run"]["run_id"]
+        out = self.call("sim-install", {"build_run_id": device_build, "simulator": SIM})
+        self.assertEqual(self.code(out), "NOT_INSTALLABLE")
+
+    def test_screenshot_must_be_a_png_and_unchanged(self):
+        self.call("sim-boot", {"simulator": SIM})
+        self.behave(simctl_io="notpng")
+        out = self.call("sim-screenshot", {"project": "sample", "simulator": SIM})
+        self.assertEqual((self.code(out), out["run"]["artifact"]), ("SCREENSHOT_FAILED", None))
+        self.assertEqual(self.code(self.call("sim-screenshot-read", {"run_id": out["run"]["run_id"]})), "BAD_ARGUMENT")
+        self.behave()
+        run = self.call("sim-screenshot", {"project": "sample", "simulator": SIM})["run"]
+        (self.handoff / run["run_id"] / "screenshot.png").write_bytes(b"\x89PNG\r\n\x1a\nswapped")
+        self.assertEqual(self.code(self.call("sim-screenshot-read", {"run_id": run["run_id"]})), "ARTIFACT_MISSING")
+        build_id = self.sim_build()
+        self.assertEqual(self.code(self.call("sim-screenshot-read", {"run_id": build_id})), "BAD_ARGUMENT")
+        self.assertEqual(self.code(self.call("sim-screenshot-read", {"run_id": run["run_id"], "max_bytes": 262145})),
+                         "BAD_ARGUMENT")
+
+    def test_screenshot_needs_a_booted_simulator(self):
+        out = self.call("sim-screenshot", {"project": "sample", "simulator": SIM})
+        self.assertEqual(self.code(out), "SIMULATOR_UNAVAILABLE")
+        self.assertEqual(self.simctl("io"), [])
 
 
 class Source(unittest.TestCase):

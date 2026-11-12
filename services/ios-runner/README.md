@@ -22,6 +22,13 @@ The allowlist path comes from `$JORAH_IOS_RUNNER_CONFIG`, default `~/.config/jor
 | `POST /v1/status` | `{ run_id?, wait_seconds? }` (0 to 120) | `run`, or `{ runs }` (newest 10) |
 | `POST /v1/log` | `{ run_id, offset?, max_bytes? }` (at most 262144) | `{ offset, bytes, total_bytes, eof, text }` |
 | `POST /v1/devices` | `{}` | `{ devices: [{ alias, model, os_version, connected }] }` |
+| `POST /v1/sim-list` | `{}` | `{ simulators: [{ name, os, state }] }`, available iOS simulators |
+| `POST /v1/sim-boot`, `/v1/sim-shutdown` | `{ simulator: { name, os } }` | `{ simulator }`, state checked after |
+| `POST /v1/sim-install` | `{ build_run_id, simulator, launch? }` | `run`, when done |
+| `POST /v1/sim-launch` | `{ project, simulator }` | `run`, when done |
+| `POST /v1/sim-terminate` | `{ project, simulator }` | `{ project, simulator, terminated }` |
+| `POST /v1/sim-screenshot` | `{ project, simulator }` | `run` with a `png` artifact |
+| `POST /v1/sim-screenshot-read` | `{ run_id, offset?, max_bytes? }` (at most 262144) | `{ offset, bytes, total_bytes, eof, sha256, media_type, data_base64 }` |
 | `GET /v1/health` | | `{ contract, runner_version, busy }`, unsigned |
 
 Every reply is `{ contract: "jorah-ios/1", ok, …, error }`, where `error` is `{ code, message, retryable }` with a code from contract section 3.
@@ -62,13 +69,21 @@ Every reply is `{ contract: "jorah-ios/1", ok, …, error }`, where `error` is `
 
 An install run checks that the build's artifact still has its `sha256` (`ARTIFACT_MISSING` otherwise), and that the phone is listed, paired and booted (`DEVICE_UNAVAILABLE` otherwise). A failed install after a good build is `state: failed`, `tier: build`. A failed launch after a good install is `tier: install`, `LAUNCH_FAILED`.
 
+## Simulators
+
+ADR 0002 D4 allows all simulator use for allowlisted projects; the allowlist must also say `"simulatorAllowed": true`. A request names a simulator as `{ name, os }`, exactly as `sim-list` shows it. The runner finds it in `xcrun simctl list --json devices runtimes` (available iOS runtimes only) and uses the UDID simctl gave. It refuses a name or OS that fails its pattern, one that isn't listed, and two simulators with the same name and OS. Install, launch and screenshot need the simulator booted; boot it with `sim-boot`.
+
+- `sim-install` claims `install` only when `simctl get_app_container` lists the bundle ID afterwards, and `launch` only when `simctl launch` printed a process ID.
+- `sim-launch` alone reaches `launch` for whatever copy is installed; its note says the build was not checked.
+- `sim-screenshot` writes `<handoff>/<run-id>/screenshot.png`, stays at tier `none`, and `sim-screenshot-read` returns it in base64 pages from that fixed path after rechecking its `sha256`.
+
 ## Archives and Transporter
 
 `archive` makes an `.xcarchive` signed for Development, in `<handoff>/<run-id>/`. Nothing is exported or uploaded. A Development-signed build cannot go to App Store Connect, because uploads need distribution signing. So the upload path for a Production build is still Adam's own: his distribution signing in Xcode, or the app's own release script under his account, then Transporter.
 
 ## Tests
 
-`just unit` runs `services/ios-runner/tests`: 56 tests with stand-ins for `xcodebuild`, `xcrun simctl`, `xcrun devicectl`, `codesign`, `pnpm`, `npx` and `pod`, real git against throwaway repositories, and the HTTP server on a free loopback port. No Xcode, device or network is needed, so they run on the Linux CI too.
+`just unit` runs `services/ios-runner/tests`: 68 tests with stand-ins for `xcodebuild`, `xcrun simctl`, `xcrun devicectl`, `codesign`, `pnpm`, `npx` and `pod`, real git against throwaway repositories, and the HTTP server on a free loopback port. No Xcode, device or network is needed, so they run on the Linux CI too.
 
 `tests/fixtures/Sample` is a tiny SwiftUI app. On the Mac:
 
@@ -77,3 +92,5 @@ just ios-runner-sample
 ```
 
 It starts `serve` on a free loopback port with a temp allowlist and key, sends a signed `build-sim` for the fixture at `HEAD`, waits through `status`, and prints the final reply. Expect `"state": "succeeded"` and `"tier": "build"`. The fixture folder must have no uncommitted changes.
+
+`just ios-runner-sample-sim` goes on to a real simulator: it picks an iPhone simulator that is shut down now (newest iOS, unique name), boots it, installs and launches the build, takes a screenshot, reads it back in pages, stops the app and shuts the simulator down. Expect `sim-install` at tier `launch` and `"sha256_matches_artifact": true`.

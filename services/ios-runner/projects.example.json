@@ -1,6 +1,7 @@
 {
   "contract": "jorah-ios/1",
   "installAllowed": false,
+  "simulatorAllowed": false,
   "team": "ABCDE12345",
   "stateDir": "~/Library/Application Support/jorah-ios-runner",
   "handoffDir": "/Users/Shared/jorah-handoff",
@@ -17,7 +18,8 @@
     "install": 300,
     "launch": 120,
     "devices": 60,
-    "codesign": 60
+    "codesign": 60,
+    "simulator": 300
   },
   "projects": {
     "example-app": {

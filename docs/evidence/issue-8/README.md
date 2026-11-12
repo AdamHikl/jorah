@@ -1,5 +1,16 @@
 # Issue 8 evidence: the Mac iOS runner
 
+## Third pass, 2026-11-12: simulator verbs, after ADR 0002 D4 "all simulator use" (runner 2.1.0)
+
+| Check | Result |
+|---|---|
+| `just check` | passes; `services/ios-runner/tests`: 68 tests, 12 of them new for the simulator with a stubbed `simctl` (selection by name and OS only, duplicates and non-iOS refused, `simulatorAllowed` off by default, install proved by `get_app_container`, launch by a process ID, screenshot PNG check, tamper check, paged read, one signed round trip over HTTP). Also on `/usr/bin/python3` 3.9.6 |
+| `just ios-runner-sample-sim` on f89821a: real `simctl`, loopback HTTP, signed requests, simulator "iPhone 17" on iOS 27.0, shut down at the start | `build-sim` **build** (`bytes` 200272); `sim-boot` booted; `sim-install` with `launch` **launch**, `process_id` 79575; `sim-screenshot` succeeded at tier `none`, PNG 76943 bytes; `sim-screenshot-read` pages joined match the artifact `sha256`; `sim-terminate` ok; `sim-shutdown` shut down. [`sim-over-http.json`](sim-over-http.json) (temp paths as `<temp>`), and the screenshot itself, [`sim-screenshot.png`](sim-screenshot.png): the fixture's "Jorah runner fixture" screen |
+
+Tiers on the simulator: build, install and launch, through HTTP on loopback, as Adam's user. A simulator tier proves nothing about the phone. Not proved: any of this as `jorah-build` under the LaunchAgent (CoreSimulator may need that user's GUI session [inference]), from the PC, or through the plugin and its cards.
+
+Open, Adam's: whether simulator actions go without an approval card (the contract keeps a card for each until he says), and whether to amend waiver condition (1) for the proposed fourth tool `ios_simulator` (contract section 1). Until then the contract folds simulator actions into `ios_install` and `ios_status`.
+
 ## Second pass, 2026-11-11: to contract `jorah-ios/1`, with the HTTP front end (commit e104d46)
 
 | Check | Result |
@@ -59,3 +70,4 @@ First noted against issue 7's draft at 73819a7; the status column is after the s
 - Adam's decisions on rows 4, 5 and 11 (proposed defaults built in).
 - Source access for `sync` (runbook section 6, decision S1). The runner fetches with whatever git credentials `jorah-build` has; no per-run token is passed yet.
 - Device build, archive, install and launch on real signing and a real phone, as `jorah-build` through the LaunchAgent, and the route from the PC: issues 10 and 12.
+- Simulator: whether actions need a card each, the fourth-tool proposal, and the simulator verbs as `jorah-build` (third pass above).

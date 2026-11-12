@@ -12,7 +12,9 @@ from .auth import Verifier
 from .config import CONTRACT
 from .core import Runner, envelope, error_dict
 
-VERBS = ("sync", "build-sim", "build-device", "archive", "install-device", "status", "log", "devices")
+VERBS = ("sync", "build-sim", "build-device", "archive", "install-device", "status", "log", "devices",
+         "sim-list", "sim-boot", "sim-shutdown", "sim-install", "sim-launch", "sim-terminate", "sim-screenshot",
+         "sim-screenshot-read")
 MAX_BODY = 8 * 1024
 
 

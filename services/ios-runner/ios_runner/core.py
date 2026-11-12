@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 from .config import CONTRACT, DEVICE_RE, PREPARE_STEPS, PROJECT_RE, Config, Project
 
-RUNNER_VERSION = "2.0.0"
+RUNNER_VERSION = "2.1.0"
 
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -42,6 +42,8 @@ RETRYABLE = {
     "DEVICE_NOT_ALLOWED": False, "DEVICE_UNAVAILABLE": True, "RUN_NOT_FOUND": False, "NOT_INSTALLABLE": False,
     "ARTIFACT_MISSING": False, "INSTALL_FAILED": False, "LAUNCH_FAILED": False, "TIMEOUT": False,
     "RUNNER_ERROR": False, "CONTRACT_MISMATCH": False,
+    "SIMULATOR_DISABLED": False, "SIMULATOR_NOT_FOUND": False, "SIMULATOR_UNAVAILABLE": True,
+    "TERMINATE_FAILED": False, "SCREENSHOT_FAILED": False,
 }
 
 SIGNING_HINTS = ("signing certificate", "provisioning profile", "no profiles for", "code signing", "codesign",
@@ -392,6 +394,12 @@ TIER_NOTES = {
     ("install", "build"): "The build was proved earlier. This install was not.",
     ("install", "install"): "Installed on the device. Not launched.",
     ("install", "launch"): "Launched on the device. Says nothing about whether any feature works.",
+    ("sim-install", "build"): "The simulator build was proved earlier. This install was not.",
+    ("sim-install", "install"): "Installed on the simulator. Not launched.",
+    ("sim-install", "launch"): "Launched on the simulator. Says nothing about whether any feature works.",
+    ("sim-launch", "launch"): "Launched the copy already on the simulator; which build that is was not checked. "
+                              "Says nothing about whether any feature works.",
+    ("sim-screenshot", "none"): "A screenshot of the simulator's screen. It proves no install or launch.",
 }
 
 
@@ -399,7 +407,11 @@ def tier_note(kind, tier):
     return TIER_NOTES.get((kind, tier), "Nothing was proved.")
 
 
-class Runner:
+# Imported here, after the helpers it uses are defined, because it imports them from this module.
+from .simulator import SimulatorVerbs  # noqa: E402
+
+
+class Runner(SimulatorVerbs):
     def __init__(self, config: Config, background: bool):
         self.config = config
         self.background = background  # serve: builds run in a thread and the reply comes at once
@@ -428,12 +440,14 @@ class Runner:
             env["DEVELOPER_DIR"] = self.config.developer_dir
         return env
 
-    def quick(self, argv, cwd, timeout_key="git"):
-        """A short command whose output is needed (git queries, devicectl
-        lists). Returns (exit code or None on timeout/missing, output)."""
+    def quick(self, argv, cwd, timeout_key="git", merge=True):
+        """A short command whose output is needed (git queries, devicectl and
+        simctl lists). Returns (exit code or None on timeout/missing, output).
+        merge=False drops stderr, for output that must parse as JSON."""
         try:
             proc = subprocess.Popen(argv, cwd=str(cwd), env=self.env(), stdin=subprocess.DEVNULL,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT if merge else subprocess.DEVNULL, start_new_session=True,
                                     shell=False)
         except OSError:
             return None, b""
@@ -457,6 +471,14 @@ class Runner:
                 "status": self.status,
                 "log": self.log,
                 "devices": self.devices,
+                "sim-list": self.sim_list,
+                "sim-boot": self.sim_boot,
+                "sim-shutdown": self.sim_shutdown,
+                "sim-install": self.sim_install,
+                "sim-launch": self.sim_launch,
+                "sim-terminate": self.sim_terminate,
+                "sim-screenshot": self.sim_screenshot,
+                "sim-screenshot-read": self.sim_screenshot_read,
             }.get(verb)
             if handler is None:
                 raise ApiError("BAD_ARGUMENT", "Unknown verb.")
@@ -531,6 +553,7 @@ class Runner:
             "finished_at": None,
             "artifact": None,
             "device": None,
+            "simulator": None,
             "summary": {"errors": None, "warnings": None, "first_errors": []},
             "log": {"bytes": 0, "tail": "", "complete": False},
             **extra,
@@ -574,6 +597,8 @@ class Runner:
             ctx.set(state="running")
             if ctx.run["kind"] == "install":
                 self._install(ctx)
+            elif ctx.run["kind"].startswith("sim-"):
+                self._sim_work(ctx)
             else:
                 self._build(ctx)
             ctx.set(state="succeeded")
@@ -818,14 +843,18 @@ class Runner:
         except (OSError, ValueError):
             return {}
 
-    def _install(self, ctx: RunContext):
-        alias, udid, launch, artifact = ctx.install_target
+    def _check_artifact(self, artifact) -> Path:
         app = Path(artifact["path"])
         if not app.exists():
             raise StepFailed("ARTIFACT_MISSING", "The built app is gone from the handoff folder.")
         size, digest = tree_digest(app)
         if digest != artifact.get("sha256"):
             raise StepFailed("ARTIFACT_MISSING", "The built app changed since it was built.")
+        return app
+
+    def _install(self, ctx: RunContext):
+        alias, udid, launch, artifact = ctx.install_target
+        app = self._check_artifact(artifact)
         ctx.set(artifact=dict(artifact), tier="build", tier_note=tier_note("install", "build"))
         seen = self.device_list()
         info = (seen or {}).get(udid.upper())
@@ -858,7 +887,7 @@ class Runner:
         pid = ((result.get("result") or {}).get("process") or {}).get("processIdentifier")
         if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
             raise StepFailed("LAUNCH_FAILED", "devicectl did not report a process for the app. Is the phone locked?")
-        ctx.set(tier="launch", tier_note=tier_note("install", "launch"))
+        ctx.set(process_id=pid, tier="launch", tier_note=tier_note("install", "launch"))
 
     # status and log
 

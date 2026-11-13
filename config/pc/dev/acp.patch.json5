@@ -1,0 +1,31 @@
+// P5.4, jorah-dev only: Claude Code jobs through a copy of acpx, with their own config dir
+// (scripts/pc/p5-dev-acp-setup.sh) and work folder ~/scratch-dev/work. Same adapter and Claude
+// Code binary as live (config/pc/acp-claude-code.patch.json5). Never apply to live.
+{
+  acp: { enabled: true, backend: "acpx", defaultAgent: "claude", allowedAgents: ["claude"] },
+  plugins: {
+    allow: ["anthropic", "memory-core", "active-memory", "memory-wiki", "device-pair", "talk-voice",
+            "browser", "duckduckgo", "jorah-guard-spike", "jorah-guard", "jorah-github-standin", "acpx"],
+    load: { paths: ["/home/jorah/scratch-dev/p5/plugins/jorah-guard-spike", "/home/jorah/scratch-dev/p5/plugins/jorah-guard",
+                    "/home/jorah/scratch-dev/p5/plugins/jorah-github-standin", "/home/jorah/scratch-dev/p5/extensions/acpx-project/node_modules/@openclaw/acpx"] },
+    entries: {
+      acpx: {
+        enabled: true,
+        config: {
+          probeAgent: "claude",
+          nonInteractivePermissions: "deny",
+          cwd: "/home/jorah/scratch-dev/work",
+          timeoutSeconds: 1800,
+          agents: {
+            claude: {
+              command: "/usr/bin/env",
+              args: ["CLAUDE_CONFIG_DIR=/home/jorah/.claude-jorah-dev",
+                     "CLAUDE_CODE_EXECUTABLE=/opt/jorah-tools/claude-code/2.1.300/claude",
+                     "/opt/jorah-tools/claude-agent-acp/node_modules/.bin/claude-agent-acp"],
+            },
+          },
+        },
+      },
+    },
+  },
+}

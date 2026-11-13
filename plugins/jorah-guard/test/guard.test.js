@@ -380,3 +380,14 @@ test("an unwritable state folder blocks every call that records taint, not just 
   assert.equal(p.call("before_tool_call", { toolName: "web_search", params: { query: "bike routes" } }, s1), undefined);
   assert.match(readFileSync(join(p.dir, "taint.json"), "utf8"), /tainted/);
 });
+
+test("a wrapped MCP call without a requester takes it from the same run, never from another (P5.4)", () => {
+  const p = loadPlugin();
+  const turn = { ...TELEGRAM, sessionId: "r1", runId: "run-1" };
+  p.call("before_agent_run", { prompt: "Remember this: the plant needs water on Fridays" }, turn);
+  const bare = { agentId: "main", sessionKey: "agent:main:main", sessionId: "r1", runId: "run-1" };
+  const save = { toolName: "agentmemory__memory_save", params: { content: "the plant needs water on Fridays" } };
+  assert.equal(p.call("before_tool_call", save, bare), undefined);
+  const other = { ...bare, runId: "run-2" };
+  assert.equal(p.call("before_tool_call", save, other).requireApproval.title, "Jorah wants to save to memory");
+});

@@ -53,8 +53,22 @@ export default {
       frozen: () => state.frozen(),
     };
 
-    api.on("before_tool_call", (event, ctx) => {
+    // MCP tools called through the search wrapper arrive without a requester (P5.4, agentmemory on
+    // jorah-dev), though the same run's other calls carry one. The run id is set by the Gateway, not
+    // the model, so a missing requester is taken from the same run; with no match it stays missing.
+    const runs = new Map(); // runId -> requester
+    const remember = (ctx) => {
+      if (!ctx?.runId || !ctx?.requester) return;
+      runs.set(ctx.runId, ctx.requester);
+      if (runs.size > 500) runs.delete(runs.keys().next().value);
+    };
+    const withRequester = (ctx) =>
+      ctx && !ctx.requester && ctx.runId && runs.has(ctx.runId) ? { ...ctx, requester: runs.get(ctx.runId) } : ctx;
+
+    api.on("before_tool_call", (event, rawCtx) => {
       const tool = event?.toolName;
+      remember(rawCtx);
+      const ctx = withRequester(rawCtx);
       try {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
@@ -101,6 +115,7 @@ export default {
     api.on("before_agent_run", (event, ctx) => {
       try {
         const key = ctx?.sessionKey ?? event?.sessionKey;
+        remember(ctx);
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
         // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;

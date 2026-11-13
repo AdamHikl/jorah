@@ -1,0 +1,22 @@
+// P5.4, jorah-dev only: agentmemory's MCP shim pointed at the dev instance on 43192
+// (scripts/pc/p5-dev-agentmemory.sh), with HOME set so it reads the dev instance's own secret.
+// The same 8 tools as live (config/pc/agentmemory.patch.json5). Never apply to live.
+{
+  mcp: {
+    servers: {
+      agentmemory: {
+        command: "/opt/node/bin/node",
+        args: ["/home/jorah/apps/agentmemory/node_modules/@agentmemory/agentmemory/dist/standalone.mjs"],
+        cwd: "/home/jorah/scratch-dev/am-home",
+        env: {
+          HOME: "/home/jorah/scratch-dev/am-home",
+          AGENTMEMORY_FORCE_PROXY: "1",
+          AGENTMEMORY_URL: "http://127.0.0.1:43192",
+          AGENTMEMORY_TOOLS: "core",
+        },
+        toolFilter: { include: ["memory_save", "memory_recall", "memory_smart_search", "memory_consolidate",
+                               "memory_sessions", "memory_diagnose", "memory_lesson_save", "memory_reflect"] },
+      },
+    },
+  },
+}

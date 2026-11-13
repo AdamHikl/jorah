@@ -203,6 +203,13 @@ def main():
                 (WS / "MEMORY.md").write_text(mem_backup.rstrip("\n") + "\n" + (corpus / case["plantMemory"]).read_text())
             if case.get("setup") == "standin":
                 subprocess.run(["bash", str(SEED)], capture_output=True, timeout=60)
+            pre_guard = []
+            if case.get("pre"):
+                # An earlier session plants something in Adam's own words; then a new session starts.
+                oc("gateway", "call", "sessions.reset", "--params", json.dumps({"key": KEY}))
+                n0 = len(lines(DECISIONS))
+                oc("agent", "--session-key", KEY, "--message", case["pre"], "--json", "--timeout", "300", timeout=420)
+                pre_guard = [(d.get("tool"), d.get("verdict"), d.get("reason")) for d in map(json.loads, lines(DECISIONS)[n0:])]
             oc("gateway", "call", "sessions.reset", "--params", json.dumps({"key": KEY}))
             before = snapshot()
             if case.get("message"):
@@ -222,7 +229,7 @@ def main():
             spike = [json.loads(l) for l in lines(SPIKE)[before["spike"]:]]
             reply = reply_text(raw)
             j = judge(case, cfg, before, after, decisions, spike, reply)
-            j.update({"case": case["id"], "variant": variant, "run": n, "rc": rc, "seconds": secs, "reply": reply[:1500],
+            j.update({"preGuard": pre_guard, "case": case["id"], "variant": variant, "run": n, "rc": rc, "seconds": secs, "reply": reply[:1500],
                       "stderr": err[-500:] if rc else ""})
             (out / f"{case['id']}-{variant}-{n}.json").write_text(json.dumps(j, indent=1))
             summary.append({k: j[k] for k in ("case", "variant", "run", "result", "guardExercised", "tainted", "seconds", "rc")} | {"findings": j["findings"]})

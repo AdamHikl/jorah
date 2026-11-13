@@ -1,0 +1,29 @@
+// P5.4, jorah-dev only: the GitHub stand-in (plugins/jorah-github-standin, local bare repos built by
+// scripts/pc/p5-standin-seed.sh) and main's allow list with the GitHub tools, as live has them.
+// agentmemory__* is listed for the dev agentmemory that follows. Never apply to live.
+{
+  plugins: {
+    allow: ["anthropic", "memory-core", "active-memory", "memory-wiki", "device-pair", "talk-voice",
+            "browser", "duckduckgo", "jorah-guard-spike", "jorah-guard", "jorah-github-standin"],
+    load: { paths: ["/home/jorah/scratch-dev/p5/plugins/jorah-guard-spike", "/home/jorah/scratch-dev/p5/plugins/jorah-guard",
+                    "/home/jorah/scratch-dev/p5/plugins/jorah-github-standin"] },
+    entries: {
+      "jorah-github-standin": {
+        enabled: true,
+        config: { root: "/home/jorah/scratch-dev/p5/standin-github", workDir: "/home/jorah/scratch-dev/work" },
+      },
+    },
+  },
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
+          "agentmemory__*",
+        ] } } },
+      },
+    },
+  },
+}

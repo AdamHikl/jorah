@@ -16,15 +16,26 @@ export function classify(matrix, tool) {
   return null;
 }
 
-// Who is asking, from the hook's context. Voice arrives as "webchat" (G-S1, 2026-11-11); until the
-// voice service sets a marker of its own, every webchat turn counts as voice.
+// Who is asking, from the hook's context (G-S1, 2026-11-11; P5.4, 2026-11-13). Chat Completions
+// callers (voice, the HUD) arrive as "webchat", or as whatever x-openclaw-message-channel says, but
+// never with a sender id. So Adam's own typing is Telegram *with* a sender id, or the CLI on the PC
+// (no channel, no sender id, which a Chat Completions caller can't produce). "voice" is the marker
+// jorah-voice sends; until it does, every webchat turn counts as voice. Any other channel is
+// treated as not Adam's own chat.
+export function typedByOwner(r) {
+  if (r?.senderIsOwner !== true) return false;
+  if (r.channel === "telegram") return typeof r.senderId === "string" && r.senderId.length > 0;
+  return r.channel === undefined && r.senderId === undefined;
+}
+
 export function speaker(ctx = {}, settings = {}) {
   const r = ctx.requester ?? null;
-  const voice = r?.channel === "webchat";
+  const voice = r?.channel === "webchat" || r?.channel === "voice";
   const owner = r?.senderIsOwner === true;
+  const typed = typedByOwner(r);
   const cleanKeys = settings.cleanSessionKeys ?? ["agent:main:main"];
-  const cleanEligible = owner && !voice && cleanKeys.includes(ctx.sessionKey) && (ctx.agentId ?? "main") === "main";
-  return { voice, owner, cleanEligible, typedByOwner: owner && !voice };
+  const cleanEligible = typed && cleanKeys.includes(ctx.sessionKey) && (ctx.agentId ?? "main") === "main";
+  return { voice, owner, cleanEligible, typedByOwner: typed };
 }
 
 // Session state as the policy needs it.

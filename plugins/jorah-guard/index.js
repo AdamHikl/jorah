@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide } from "./lib/policy.js";
+import { decide, typedByOwner } from "./lib/policy.js";
 import { findUrls, normalise, onSiteAllowlist, strings, urlsIn } from "./lib/urls.js";
 
 const PRIORITY = 1000;
@@ -104,7 +104,7 @@ export default {
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
         // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;
-        if (!(r?.senderIsOwner === true && r?.channel !== "webchat")) { state.setWords(key, ""); return undefined; }
+        if (!typedByOwner(r)) { state.setWords(key, ""); return undefined; }
         const prompt = typeof event?.prompt === "string" ? event.prompt : strings(event?.prompt).join("\n");
         state.setWords(key, prompt);
         state.addSeen(key, findUrls(prompt).map(normalise).filter(Boolean));

@@ -1,0 +1,13 @@
+{
+  "name": "@jorah/openclaw-jorah-github-standin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "jorah-dev only: Jorah's GitHub tools against local bare repos, for P5's attack tests",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": { "pluginApi": ">=2026.10.9", "minGatewayVersion": "2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9", "pluginSdkVersion": "2026.10.9" }
+  }
+}

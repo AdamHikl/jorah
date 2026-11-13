@@ -20,7 +20,7 @@ const matrix = JSON.parse(readFileSync(MATRIX_FILE, "utf8"));
 const WS = "/home/jorah/workspace";
 const settings = { workspace: WS, cleanSessionKeys: ["agent:main:main"] };
 
-const TELEGRAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderIsOwner: true } };
+const TELEGRAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
 const VOICE = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "webchat", senderIsOwner: true } };
 const CHILD = { agentId: "background", sessionKey: "agent:background:subagent:x", requester: { senderIsOwner: false } };
 
@@ -354,4 +354,29 @@ test("skills_read and skills_search are reads (Adam, 2026-11-13)", () => {
   const { run } = fresh();
   assert.equal(run("skills_read", { name: "x" }).verdict, "allow");
   assert.equal(run("tool_call", { id: "openclaw:core:skills_search", args: { query: "x" } }).verdict, "allow");
+});
+
+test("only Telegram with a sender id or the PC's CLI counts as Adam typing; a claimed channel doesn't (P5.4 voice-marker probe)", () => {
+  const { run } = fresh();
+  const claimed = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderIsOwner: true } };
+  const voice = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "voice", senderIsOwner: true } };
+  const cli = { agentId: "main", sessionKey: "agent:main:main", requester: { senderIsOwner: true } };
+  const memory = { path: "MEMORY.md", edits: [{ newText: "x" }] };
+  assert.equal(run("edit", memory, claimed).verdict, "confirm");
+  assert.match(run("edit", memory, voice).description, /Asked by voice/);
+  assert.equal(run("edit", memory, cli).verdict, "allow");
+});
+
+test("an unwritable state folder blocks every call that records taint, not just the first (P5.4 fault run)", () => {
+  const p = loadPlugin();
+  const s1 = { ...TELEGRAM, sessionId: "w1" };
+  chmodSync(p.dir, 0o500);
+  try {
+    assert.equal(p.call("before_tool_call", { toolName: "web_fetch", params: { url: "https://wttr.in/x" } }, s1).block, true);
+    assert.equal(p.call("before_tool_call", { toolName: "web_search", params: { query: "bike routes" } }, s1).block, true);
+  } finally {
+    chmodSync(p.dir, 0o700);
+  }
+  assert.equal(p.call("before_tool_call", { toolName: "web_search", params: { query: "bike routes" } }, s1), undefined);
+  assert.match(readFileSync(join(p.dir, "taint.json"), "utf8"), /tainted/);
 });

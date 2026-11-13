@@ -15,6 +15,7 @@ export class GuardState {
     this.freezeFile = join(dir, "FROZEN");
     this.now = now;
     this.broken = null;
+    this.unsaved = false;
     this.data = { sessions: {}, parents: {} };
     this.seen = new Map(); // sessionKey -> Set(normalised URL)
     this.words = new Map(); // sessionKey -> { text, at }
@@ -40,8 +41,17 @@ export class GuardState {
       for (const k of keys.slice(0, keys.length - MAX_SESSIONS)) delete this.data.sessions[k];
     }
     const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data), { mode: 0o600 });
-    renameSync(tmp, this.file);
+    try {
+      writeFileSync(tmp, JSON.stringify(this.data), { mode: 0o600 });
+      renameSync(tmp, this.file);
+      this.unsaved = false;
+    } catch (error) {
+      // The memory copy is ahead of the disk now; until a save succeeds, every call that records
+      // anything tries again and is blocked if it fails (P5.4: an unwritable folder let the second
+      // call through on the memory copy alone).
+      this.unsaved = true;
+      throw error;
+    }
   }
 
   // Taint as recorded: { tainted, source, at } or null for "never touched". Throws if broken.
@@ -94,7 +104,7 @@ export class GuardState {
   markTainted(sessionKey, source) {
     if (!sessionKey) return;
     const cur = this.data.sessions[sessionKey];
-    if (cur?.tainted) return;
+    if (cur?.tainted) { if (this.unsaved) this.persist(); return; }
     this.data.sessions[sessionKey] = { ...(cur ?? {}), tainted: true, source: String(source).slice(0, 120), at: this.now(), sessionId: this.current.get(sessionKey) ?? cur?.sessionId };
     this.persist();
   }

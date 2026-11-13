@@ -1,0 +1,16 @@
+{
+  "id": "jorah-github-standin",
+  "name": "Jorah GitHub stand-in",
+  "description": "jorah-dev only (P5.4): the five jorah-github tools against local bare repos. Push and pull request ask for approval like the real plugin; nothing reaches GitHub.",
+  "categories": ["developer-tools"],
+  "contracts": { "tools": ["github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos"] },
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "root": { "type": "string", "description": "Folder of <repo>.git bare repos and repos.json" },
+      "workDir": { "type": "string" }
+    }
+  }
+}

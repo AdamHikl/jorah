@@ -349,3 +349,9 @@ test("the search wrapper's namespaced inner ids are read by their last part (P5.
   assert.equal(run("tool_call", { id: "openclaw:core:gateway", args: {} }).verdict, "block");
   assert.equal(run("tool_call", { id: "openclaw:core:web_fetch", args: { url: "http://127.0.0.1:43181/" } }).verdict, "block");
 });
+
+test("skills_read and skills_search are reads (Adam, 2026-11-13)", () => {
+  const { run } = fresh();
+  assert.equal(run("skills_read", { name: "x" }).verdict, "allow");
+  assert.equal(run("tool_call", { id: "openclaw:core:skills_search", args: { query: "x" } }).verdict, "allow");
+});

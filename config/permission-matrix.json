@@ -3,7 +3,7 @@
   "about": "jorah-guard v0 tool classes (docs/plan/p5-plan.md 4.2). A tool in no class is blocked. Edit only by commit and Adam's yes.",
   "read": [
     "read", "ls", "view_image", "memory_search", "memory_get", "sessions_list", "session_status", "sessions_yield",
-    "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos", "skills_read", "skills_search",
+    "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos", "skills_read", "skills_search", "subagents",
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
     "agentmemory__memory_diagnose"
   ],

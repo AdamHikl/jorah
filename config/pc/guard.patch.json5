@@ -1,0 +1,24 @@
+// P5.5: jorah-guard on live Jorah (docs/plan/p5-plan.md section 4), enforcing. The plugin and the
+// permission list are read from root-owned /opt/jorah, so Jorah can't change them; its state and
+// decision log go to /home/jorah/.jorah-guard (mode 700). allowConversationAccess lets it see Adam's
+// typed words, so "remember X" saves without a card. scripts/pc/install-guard.sh applies this and
+// adds "jorah-guard" to the live plugins.allow at run time (not a fixed list here, so another
+// session's plugin is never dropped). It also removes the leftover config entry of jorah-hook-probe
+// (the 2026-11-09 probe, not loaded since). Undo: install-guard.sh --undo.
+{
+  plugins: {
+    entries: {
+      "jorah-hook-probe": null,
+      "jorah-guard": {
+        enabled: true,
+        hooks: { allowConversationAccess: true },
+        config: {
+          matrixFile: "/opt/jorah/config/permission-matrix.json",
+          stateDir: "/home/jorah/.jorah-guard",
+          workspace: "/home/jorah/workspace",
+          cleanSessionKeys: ["agent:main:main"],
+        },
+      },
+    },
+  },
+}

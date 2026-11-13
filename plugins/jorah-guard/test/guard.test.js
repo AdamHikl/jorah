@@ -391,3 +391,14 @@ test("a wrapped MCP call without a requester takes it from the same run, never f
   const other = { ...bare, runId: "run-2" };
   assert.equal(p.call("before_tool_call", save, other).requireApproval.title, "Jorah wants to save to memory");
 });
+
+test("subagents (list, wait, cancel) is a read; the log says how the sender was classed, without ids", () => {
+  const { run } = fresh();
+  assert.equal(run("subagents", { action: "cancel", runId: "r" }).verdict, "allow");
+  const p = loadPlugin();
+  p.call("before_tool_call", { toolName: "read", params: { path: "x" } }, TELEGRAM);
+  const last = JSON.parse(readFileSync(join(p.dir, "decisions.jsonl"), "utf8").trim().split("\n").at(-1));
+  assert.equal(last.from, "adam-typed");
+  assert.equal(last.channel, "telegram");
+  assert.ok(!JSON.stringify(last).includes("owner-id"));
+});

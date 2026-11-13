@@ -310,6 +310,65 @@ Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gat
 
 From P5.1's read-only baseline (`docs/evidence/p5/2026-11-11-g-s0.md`), applied on Adam's "fix everything" [measured]: the disabled `llama-cpp` plugin's folder moved to `~/backups/removed/` and its config entry removed, so `security audit --deep` is back to 0 critical; `browser.evaluateEnabled: false` (`config/pc/p5-fixes.patch.json5`, Gateway restarted 19:56, health ok), so the Control UI's Inspect, scrolling and back/forward on agent browser tabs no longer work; the Mac-era admin `cli` device removed. **Correction to this runbook:** the iPhone has been paired since 2026-11-08 14:13, as a node with operator scopes including approvals; device commands stay denied. Paired now: `Jorah HUD`, the Mac's Control UI, the iPhone.
 
+## P5.5: the guard on live Jorah (prepared 2026-11-13, not applied)
+
+Adam's call of 2026-11-13: run the guard on live, **enforcing**, log every decision, and review the log after about a week, instead of more testing on `jorah-dev` first. The tests behind it: `docs/evidence/p5/2026-11-12-p5.4-jorah-dev-attacks.md` and `2026-11-13-p5.4-jorah-dev-github-memory-faults.md`.
+
+**What changes in daily use:**
+- **Nothing, until a chat reads outside text:** a web page, a search, a cloned repo, or a job's result. Asking "remember X" in your own words still saves without a card.
+- **After that, a Telegram card first, showing the exact text,** for:
+  - saving Jorah's own wording to memory,
+  - changing its rules or learned skills,
+  - creating a recurring schedule,
+  - briefing `background` or `deep`,
+  - starting a Claude Code job,
+  - typing into a web page.
+- **Addresses nobody gave are refused.** Local and home-network addresses are refused always.
+- **Pushes are refused** to Jorah's own repo, and to one repo after reading another. Ordinary pushes keep jorah-github's card as now.
+- **Voice counts as voice:** a job, memory line or schedule asked for by voice waits for a Telegram tap. Voice confirmation comes after the voiceprint test (G-S8).
+- **Freeze and status:** `/jorah-freeze` in Telegram stops everything except reading, and `/jorah-status` shows the state. Unfreeze at a terminal with `scripts/pc/guard-unfreeze.sh`.
+
+**Steps (Adam's yes needed for each):**
+1. **Claude copies the reviewed commit to root-owned `/opt/jorah`:**
+   - `plugins/jorah-guard`;
+   - `config/permission-matrix.json` and `config/pc/guard.patch.json5`;
+   - `scripts/pc/install-guard.sh`, `guard-unfreeze.sh` and `guard-report.py`.
+
+   It then checks the SHA-256 of each against `main`. Before that, it checks that no other session has a live change open, and tells the github-all-repos session.
+2. **Adam runs the install, as root, in a Terminal attached to no agent.** (Or tells Claude to run it, as with jorah-github on 2026-11-10.)
+   `ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-guard.sh`
+   Add `--dry-run` first to validate without writing. Claude's dry run as `jorah` on 2026-11-13: 1 and 7 updates validated.
+
+   **Expected:**
+   - `jorah-guard: matrix loaded; state ok`;
+   - `jorah-guard` listed as enabled;
+   - health ok;
+   - audit 0 critical;
+   - the config backup `openclaw.json.pre-guard`.
+3. **First check, in Telegram:**
+   - Send `/jorah-status`. Expected: "Frozen: no", "This chat hasn't read outside text", "Permission list: loaded".
+   - Ask Jorah to search the web for anything, then send `/jorah-status` again. Expected: "This chat has read outside text: web_search results".
+
+**Rollback:**
+- **Quickest:** `/jorah-freeze` from Telegram.
+- **Full:** the same install command with `--undo`. It removes the plugin and restores `openclaw.json.pre-guard`, and keeps the log.
+
+**The review, after about a week:** ask Claude, or run `python3 -I /opt/jorah/scripts/pc/guard-report.py` as `jorah`. It shows:
+- verdicts per day;
+- how each sender was classed: Telegram should say `adam-typed`, and if it doesn't, Telegram turns lack a sender id and every chat counts as outside text;
+- tools blocked as unknown;
+- every card and its reason;
+- guard errors;
+- removed links;
+- whether the hash chain is intact.
+
+It prints no arguments, addresses or messages.
+
+**Known before going live:**
+- `jorah-ios`'s tools (`ios_build`, `ios_install`, `ios_status`) aren't in the permission list yet. Once that plugin is on live, they're blocked until added, and adding them needs Adam's yes.
+- The jorah-github card doesn't say the chat has read outside text.
+- Recalled memory is trusted (plan 4.4).
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

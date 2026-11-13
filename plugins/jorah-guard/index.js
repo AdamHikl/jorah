@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, typedByOwner } from "./lib/policy.js";
+import { decide, speaker, typedByOwner } from "./lib/policy.js";
 import { findUrls, normalise, onSiteAllowlist, strings, urlsIn } from "./lib/urls.js";
 
 const PRIORITY = 1000;
@@ -76,7 +76,10 @@ export default {
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
+        // For the review: how the sender was classed, and the channel's name only (never ids).
+        const who = speaker(ctx ?? {}, settings);
+        const from = who.voice ? "voice" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
+        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
         return {

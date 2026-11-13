@@ -310,7 +310,7 @@ Deployed 2026-11-10 [measured]: `/opt/jorah` at `1ca027d` (27/27 on the PC), Gat
 
 From P5.1's read-only baseline (`docs/evidence/p5/2026-11-11-g-s0.md`), applied on Adam's "fix everything" [measured]: the disabled `llama-cpp` plugin's folder moved to `~/backups/removed/` and its config entry removed, so `security audit --deep` is back to 0 critical; `browser.evaluateEnabled: false` (`config/pc/p5-fixes.patch.json5`, Gateway restarted 19:56, health ok), so the Control UI's Inspect, scrolling and back/forward on agent browser tabs no longer work; the Mac-era admin `cli` device removed. **Correction to this runbook:** the iPhone has been paired since 2026-11-08 14:13, as a node with operator scopes including approvals; device commands stay denied. Paired now: `Jorah HUD`, the Mac's Control UI, the iPhone.
 
-## P5.5: the guard on live Jorah (prepared 2026-11-13, not applied)
+## P5.5: the guard on live Jorah (live since 2026-11-13 18:35)
 
 Adam's call of 2026-11-13: run the guard on live, **enforcing**, log every decision, and review the log after about a week, instead of more testing on `jorah-dev` first. The tests behind it: `docs/evidence/p5/2026-11-12-p5.4-jorah-dev-attacks.md` and `2026-11-13-p5.4-jorah-dev-github-memory-faults.md`.
 
@@ -348,6 +348,17 @@ Adam's call of 2026-11-13: run the guard on live, **enforcing**, log every decis
 3. **First check, in Telegram:**
    - Send `/jorah-status`. Expected: "Frozen: no", "This chat hasn't read outside text", "Permission list: loaded".
    - Ask Jorah to search the web for anything, then send `/jorah-status` again. Expected: "This chat has read outside text: web_search results".
+
+**Applied 2026-11-13 on Adam's yes ("Yes, you run it")** [measured]:
+- **Before:** no Jorah session was running, and the github-all-repos session was told.
+- **Files:** the 13 files were copied to `/opt/jorah` as root (root-owned, not group-writable), and their SHA-256 matches `main` at `0006288`.
+- **Install:**
+  - `install-guard.sh --dry-run`: 1 and 7 updates validated.
+  - The install linked the plugin, applied both patches (the backup is `openclaw.json.pre-guard`) and restarted the Gateway.
+  - Gateway log: `jorah-guard: matrix loaded; state ok`. `jorah-guard` is enabled.
+  - Audit: 0 critical, 4 warnings. Health ok; `openclaw-gateway`, `jorah-voice`, `jorah-voice-qwen` and `jorah-agentmemory` are active.
+- **Test turns:** in a named session (`agent:main:p5-live-check`, deleted afterwards and forgotten from memory, never Adam's chat), `web_fetch` of `wttr.in` was allowed and `http://127.0.0.1:43181/` was refused ("private or local address"). Both logged `from: adam-typed` (the CLI). The report shows the hash chain intact.
+- **Still to see in Adam's own use:** a Telegram card, `/jorah-status` and `/jorah-freeze`, and whether Telegram turns log as `adam-typed`.
 
 **Rollback:**
 - **Quickest:** `/jorah-freeze` from Telegram.

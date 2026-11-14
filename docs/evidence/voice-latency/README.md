@@ -102,7 +102,21 @@ Not proposed: a shorter end-of-turn pause. The 2026-11-06 benchmark (`docs/evide
 
 ## After
 
-To be filled in once deployed.
+**Deployed 2026-11-14 16:07** [measured]: the 13 files of `8874bcf` copied to `/opt/jorah` (SHA-256 match), voice tests 110/110 on the PC's Python, `jorah-voice-qwen` restarted (`Qwen3-TTS ready`, the streaming path ran at start), `jorah-voice` restarted (`Speaking with Qwen3-TTS`, listening on `127.0.0.1:43210`), and the first check logged `warmed the Gateway in 2.2s, 3869s after it started`. That Gateway was already warm, so 2.2 s is one plain model call.
+
+**Speaking, first sentence** [measured on the live service, median of 3 each]:
+
+| First sentence | Speech | Before: whole sentence | After: first streamed piece |
+|---|---|---|---|
+| 5 characters | 0.8 s | 0.36 s | 0.31 s |
+| 19 characters | 0.9 s | 0.39 s | 0.31 s |
+| 38 characters | 2.4 s | 0.85 s | 0.31 s |
+| 87 characters | 5.2 s | 1.71 s | 0.31 s |
+
+**Not measured yet:**
+
+- The warm-up across a real Gateway restart. Expected: the next start logs `warmed the Gateway in` about 9 s (the 7 s plugin load plus one call), and the first voice turn after it shows `first_token` near 2.3 s instead of about 10 s. One open question: the warm-up runs on a sandboxed session while Adam's `agent:main:main` is not. The probe showed the load is once per process for sandboxed sessions, but a first unsandboxed run after a start was never isolated, so this needs that restart.
+- Real spoken turns end to end, and whether streamed speech sounds as smooth as whole sentences. Adam's test.
 
 ## Rerun
 

@@ -1,8 +1,10 @@
 """The small protocol between jorah-voice and its Qwen3-TTS service, plus the client side.
 
-Request: one JSON line, {"text": "..."} or {"ping": true}.
+Request: one JSON line, {"text": "..."} or {"ping": true}, or {"text": "...", "stream": true}.
 Reply: 4-byte big-endian sample rate, 4-byte big-endian length, then that many bytes of 16-bit mono PCM.
 An empty reply (length 0) means it couldn't speak; callers fall back to Kokoro.
+A stream reply is a run of such frames, each a piece of the sentence as soon as it's made, ended by an
+empty frame. A service that predates streaming answers with one frame and hangs up, which reads the same.
 """
 
 import json
@@ -30,11 +32,13 @@ def write_reply(stream, rate, pcm):
     stream.flush()
 
 
-def _read_exact(sock, count):
+def _read_exact(sock, count, eof_ok=False):
     data = b""
     while len(data) < count:
         chunk = sock.recv(count - len(data))
         if not chunk:
+            if eof_ok and not data:
+                return None
             raise ConnectionError("Qwen3-TTS service closed the connection")
         data += chunk
     return data
@@ -90,3 +94,24 @@ class QwenSpeaker:
             raise RuntimeError("Qwen3-TTS returned no audio")
         self._rate = rate
         return pcm
+
+    def stream(self, text):
+        """Yield the sentence's audio in pieces as the service makes them. Stopping early hangs up,
+        which stops the service too."""
+        got_audio = False
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(self._timeout)
+            sock.connect(str(self._path))
+            sock.sendall(json.dumps({"text": text, "stream": True}).encode() + b"\n")
+            while True:
+                header = _read_exact(sock, 8, eof_ok=got_audio)
+                if header is None:
+                    break
+                rate, length = struct.unpack(">II", header)
+                if not length:
+                    break
+                self._rate = rate
+                got_audio = True
+                yield _read_exact(sock, length)
+        if not got_audio:
+            raise RuntimeError("Qwen3-TTS returned no audio")

@@ -54,6 +54,13 @@ async def serve(args):
         speaker = Speaker(root, args.tts_provider, voice=args.voice, speed=args.speed)
     # The GPU's first run of each model is slow while it picks kernels, so do it before anyone talks.
     warm_up(listener, speaker)
+    warmer = None
+    if args.warm_every > 0:
+        from .warm import WARMUP_SESSION, Warmer, gateway_uptime
+        warmer = Warmer(lambda: JorahBrain(args.gateway_url, args.gateway_token_file, session_key=WARMUP_SESSION),
+                        lambda: gateway_uptime(args.gateway_url), every=args.warm_every,
+                        log=lambda line: print(line, flush=True))
+        warmer.start()
     one_at_a_time = asyncio.Lock()
 
     async def handler(ws):
@@ -69,6 +76,9 @@ async def serve(args):
             await ws.close(4409, "another session is open")
             return
         async with one_at_a_time:
+            if warmer:
+                # Catches a Gateway that restarted since the last check, while Adam is still talking.
+                warmer.poke()
             session = VoiceSession(
                 Ears(root, pauses=(args.early_pause, args.finished_pause, args.unfinished_pause)), listener, speaker, JorahBrain(args.gateway_url, args.gateway_token_file),
                 send_json=lambda message: ws.send(json.dumps(message)),
@@ -81,6 +91,7 @@ async def serve(args):
                 input_rate=hello["input_rate"],
                 filler_seconds=args.filler,
                 client_ends=hello["client_ends"],
+                stream_speech=args.stream_speech,
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())
@@ -118,6 +129,11 @@ def main():
     parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")
     parser.add_argument("--gateway-token-file", default=os.path.expanduser("~/.config/jorah-voice/gateway-token"))
     parser.add_argument("--filler", type=float, default=2.5, help="seconds without reply text before saying 'One moment.' once; 0 turns it off")
+    parser.add_argument("--warm-every", type=float, default=20,
+                        help="seconds between checks for a Gateway restart, each followed by one short warm-up turn "
+                             "on its own session (about $0.003); 0 turns it off")
+    parser.add_argument("--no-stream-speech", dest="stream_speech", action="store_false",
+                        help="make each sentence's audio whole before sending it, instead of sending it as it's made")
     parser.add_argument("--idle", type=int, default=60, help="seconds of quiet before the session closes")
     parser.add_argument("--early-pause", type=float, default=EARLY_PAUSE,
                         help="seconds of quiet before transcribing starts, so the text is ready when the turn ends")

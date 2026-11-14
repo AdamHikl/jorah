@@ -558,3 +558,64 @@ class Hello(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamingSpeaker(FakeSpeaker):
+    """Qwen3-TTS's way: a sentence's audio in pieces as it's made."""
+
+    def __init__(self):
+        super().__init__()
+        self.closed = 0
+
+    def stream(self, text):
+        self.lines.append(text)
+        try:
+            for _ in range(3):
+                yield b"\0\0" * 1600
+        finally:
+            self.closed += 1
+
+
+class StreamedSpeech(unittest.IsolatedAsyncioTestCase):
+    async def test_each_piece_is_sent_as_it_comes(self):
+        h = Harness()
+        h.speaker = h.session._speaker = StreamingSpeaker()
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["Hi Adam.", "All good."])
+        self.assertEqual(len(h.audio), 6)
+        self.assertEqual(h.speaker.closed, 2)
+        self.assertEqual(len(h.session.numbers["first_audio"]), 1)
+        self.assertEqual(h.states(), ["thinking", "speaking", "listening"])
+
+    async def test_switched_off_it_makes_each_sentence_whole(self):
+        h = Harness(stream_speech=False)
+        h.speaker = h.session._speaker = StreamingSpeaker()
+        h.speaker.synthesize = lambda text: b"\0\0" * 4800
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, [])
+        self.assertEqual(len(h.audio), 4)
+
+
+class TurnLog(unittest.IsolatedAsyncioTestCase):
+    async def test_one_line_a_turn_with_timings_and_never_words(self):
+        lines = []
+        h = Harness(text="Turn on the heating", log=lines.append)
+        await h.say()
+        await h.settle()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("turn: "))
+        marks = json.loads(lines[0][len("turn: "):])
+        for name in ("end_pause", "transcribe", "first_token", "first_sentence", "reply_done", "first_audio", "reply_chars"):
+            self.assertIn(name, marks)
+        self.assertNotIn("heating", lines[0])
+        self.assertNotIn("Adam", lines[0])
+        self.assertEqual(len(h.session.numbers["first_sentence"]), 1)
+
+    async def test_a_failed_brain_is_logged_as_such(self):
+        lines = []
+        h = Harness(brain=FakeBrain(error=BrainError("down")), log=lines.append)
+        await h.say()
+        await h.settle()
+        self.assertIn("brain_failed", json.loads(lines[0][len("turn: "):]))

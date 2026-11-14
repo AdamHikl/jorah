@@ -67,6 +67,14 @@ Adam asked for every agent on the API key "until I tell you to switch back to th
 
 **Fix:** `deploy/openclaw-gateway.service` runs `podman info` (60 s cap) as `ExecStartPre`, so the refresh is done before the Gateway starts. A failure there doesn't block the Gateway, and the sandbox still fails closed. `scripts/pc/install-gateway-unit.sh` installs it (`--dry-run`, `--undo`), backup `openclaw-gateway.service.pre-podman-warmup`, no restart. Verified with `systemd-analyze verify` on the PC. **Installed 2026-11-14 15:28 on Adam's yes** [measured]: `/opt/jorah` files match `8b7dfe6` by SHA-256, dry run then install, `systemctl show` lists the `ExecStartPre`, Gateway still active, not restarted. Not tested across a reboot: after the next boot, expect no Telegram warning and `Heartbeat (main)` `ok` in `cron list`. Undo: the script's `--undo`.
 
+## Voice latency, 2026-11-14
+
+**Measured** (`docs/evidence/voice-latency/`, from logs and 49 probe turns on `agent:main:voice-probe` on Adam's yes): about 3 to 3.5 s from Adam's last word to first audio on a simple turn, but about 12 s on the first voice turn after any Gateway start. OpenClaw loads its plugins on the first HTTP chat request of each Gateway process, which takes about 7 s. Tool turns took 8 to 16 s to the first text. `/think:low` and `/think:off` gave no gain, the reply text arrives in one piece when the model is done, and Active Memory blocked probe tool turns for 2.6 to 3.0 s with no result.
+
+**Built on Adam's yes ("Yes, build 1–4")**: `jorah-voice` warms the Gateway after each start (`/readyz` uptime every 20 s, then one short turn on `agent:main:voice-warmup`, about $0.003 per start, plus a check when a voice session opens), Qwen3-TTS streams each sentence's audio, and each turn logs one timing line, never words. Deployment and after-numbers: see the evidence file. Follow-ups needing a yes, all live config: stream reply text from the endpoint, Active Memory on voice, tools outside tool search, one-hour prompt cache.
+
+**Undo:** add `--warm-every 0` or `--no-stream-speech` to `ExecStart` in `jorah-voice.service`, or copy the previous `jorah_voice/` files back into `/opt/jorah` and restart `jorah-voice-qwen` and `jorah-voice`.
+
 ## Case fans
 
 The PC is an ASRock B760M Steel Legend WiFi with an i7-14700K, which idles at about 3% load under Jorah (measured 2026-11-06), so the fans spin from the board's default curve, not from work. The fix is a fan curve in the BIOS. It works with nobody signed in to Windows and needs no driver or app, unlike Windows fan tools. The PC needs a monitor and keyboard for it, and Jorah is offline until Windows is back.

@@ -1,7 +1,10 @@
 """One conversation, from audio arriving to audio going back. Knows nothing about the network."""
 
 import asyncio
+import json
+import threading
 import time
+from contextlib import aclosing
 
 from .brain import BrainError
 from .core import FollowUp, IdleClock, Resampler, SentenceChunker, TurnEnd, classify, join_waiting, percentile
@@ -29,7 +32,8 @@ class VoiceSession:
     def __init__(self, ears, listener, speaker, brain, send_json, send_audio, on_close, *,
                  barge_in=False, idle_seconds=60, max_seconds=1800,
                  clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None,
-                 follow_up=False, input_rate=16000, filler_seconds=None, client_ends=False):
+                 follow_up=False, input_rate=16000, filler_seconds=None, client_ends=False,
+                 stream_speech=True, log=None):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -57,10 +61,13 @@ class VoiceSession:
         self._resampler = Resampler(input_rate)
         self._filler_seconds = filler_seconds
         self._client_ends = client_ends
+        # Speakers that can (Qwen3-TTS) send a sentence's audio as it's made, not when it's done.
+        self._stream_speech = stream_speech
+        self._log = log or (lambda line: print(line, flush=True))
         # On standby, audio is dropped unheard until the client hangs up.
         self.standby = False
         self.closed = False
-        self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_audio": []}
+        self.numbers = {"transcribe": [], "end_pause": [], "first_token": [], "first_sentence": [], "first_audio": []}
 
     def busy(self):
         return self._turn is not None and not self._turn.done()
@@ -111,7 +118,8 @@ class VoiceSession:
         self.numbers["transcribe"].append(seconds)
         self.numbers["end_pause"].append(quiet)
         await self.interrupt(quiet=True)
-        self._turn = asyncio.create_task(self._run_turn(text))
+        marks = {"end_pause": round(quiet, 2), "transcribe": round(seconds, 2)}
+        self._turn = asyncio.create_task(self._run_turn(text, marks))
 
     async def interrupt(self, quiet=False):
         """Stop thinking and speaking at once."""
@@ -178,7 +186,7 @@ class VoiceSession:
     async def _state(self, state):
         await self._send_json({"type": "state", "state": state})
 
-    async def _run_turn(self, text):
+    async def _run_turn(self, text, marks=None):
         await self._state("thinking")
         heard_at = self._clock()
         kind = classify(text)
@@ -205,7 +213,12 @@ class VoiceSession:
             self._replied("")
             await self._state("listening")
             return
-        reply = await self._reply(text, heard_at)
+        marks = dict(marks or {})
+        try:
+            reply = await self._reply(text, heard_at, marks)
+        finally:
+            # Timing only, one line a turn. What was said is never logged.
+            self._log(f"turn: {json.dumps(marks)}")
         self._idle.touch()
         self._replied(reply)
         await self._state("listening")
@@ -221,16 +234,28 @@ class VoiceSession:
         self._replied("")
         await self._state("listening")
 
-    async def _reply(self, text, heard_at):
+    async def _reply(self, text, heard_at, marks=None):
+        """Stream Jorah's answer and speak it. Fills `marks` with seconds from `heard_at`."""
+        marks = {} if marks is None else marks
         sentences = asyncio.Queue()
-        speaking = asyncio.create_task(self._speak_queue(sentences, heard_at, record=True))
+        speaking = asyncio.create_task(self._speak_queue(sentences, heard_at, record=True, marks=marks))
         chunker = SentenceChunker()
         reply = []
         got_text = asyncio.Event()
 
+        def since_heard():
+            return round(self._clock() - heard_at, 2)
+
+        def queue_sentence(sentence):
+            if "first_sentence" not in marks:
+                marks["first_sentence"] = since_heard()
+                self.numbers["first_sentence"].append(marks["first_sentence"])
+            sentences.put_nowait(sentence)
+
         async def filler():
             await self._sleep(self._filler_seconds)
             if not got_text.is_set():
+                marks["filler"] = since_heard()
                 sentences.put_nowait(Filler(FILLER_LINE))
 
         waiting = asyncio.create_task(filler()) if self._filler_seconds else None
@@ -243,23 +268,28 @@ class VoiceSession:
                         waiting.cancel()
                     first_token = self._clock()
                     self.numbers["first_token"].append(first_token - heard_at)
+                    marks["first_token"] = round(first_token - heard_at, 2)
                 reply.append(delta)
                 for sentence in chunker.feed(delta):
-                    sentences.put_nowait(sentence)
+                    queue_sentence(sentence)
+            marks["reply_done"] = since_heard()
             for sentence in chunker.flush():
-                sentences.put_nowait(sentence)
+                queue_sentence(sentence)
             if not reply:
                 sentences.put_nowait(EMPTY_LINE)
             sentences.put_nowait(None)
             await speaking
+            marks["reply_chars"] = sum(len(part) for part in reply)
             return "".join(reply)
         except BrainError as error:
             print(f"brain failed: {error}", flush=True)
+            marks["brain_failed"] = since_heard()
             sentences.put_nowait(FAILURE_LINE)
             sentences.put_nowait(None)
             await speaking
             return FAILURE_LINE
         except asyncio.CancelledError:
+            marks["cut"] = since_heard()
             if waiting:
                 waiting.cancel()
             speaking.cancel()
@@ -296,7 +326,7 @@ class VoiceSession:
         sentences.put_nowait(None)
         await self._speak_queue(sentences, heard_at, record)
 
-    async def _speak_queue(self, sentences, heard_at, record):
+    async def _speak_queue(self, sentences, heard_at, record, marks=None):
         first = True
         ended = False
         while not ended:
@@ -305,7 +335,9 @@ class VoiceSession:
                 break
             if isinstance(sentence, Filler):
                 await self._send_json({"type": "reply", "text": str(sentence)})
-                await self._send_paced(await asyncio.to_thread(self._speaker.synthesize, str(sentence)))
+                async with aclosing(self._sound(str(sentence))) as sound:
+                    async for pcm in sound:
+                        await self._send_paced(pcm)
                 continue
             if not first:
                 # Kokoro shapes tone within one piece of text only, so sentences that are already
@@ -313,15 +345,55 @@ class VoiceSession:
                 limit = getattr(self._speaker, "chunk_chars", SPOKEN_CHUNK_CHARS)
                 sentence, ended = join_waiting(sentence, sentences, limit)
             await self._send_json({"type": "reply", "text": sentence})
-            pcm = await asyncio.to_thread(self._speaker.synthesize, sentence)
-            if first:
-                first = False
-                if record:
-                    self.numbers["first_audio"].append(self._clock() - heard_at)
-                await self._state("speaking")
-            await self._send_paced(pcm)
+            async with aclosing(self._sound(sentence)) as sound:
+                async for pcm in sound:
+                    if first:
+                        first = False
+                        if record:
+                            self.numbers["first_audio"].append(self._clock() - heard_at)
+                            if marks is not None:
+                                marks["first_audio"] = round(self._clock() - heard_at, 2)
+                        await self._state("speaking")
+                    await self._send_paced(pcm)
         # What's already sent is still playing at the far end.
         await self._sleep(self._lead)
+
+    async def _sound(self, text):
+        """Yield the audio for one piece of text: in pieces as it's made when the speaker can stream,
+        otherwise all at once. Stopping early (Adam talks over Jorah) stops the speaker too."""
+        stream = getattr(self._speaker, "stream", None) if self._stream_speech else None
+        if stream is None:
+            yield await asyncio.to_thread(self._speaker.synthesize, text)
+            return
+        loop = asyncio.get_running_loop()
+        pieces = asyncio.Queue()
+        stop = threading.Event()
+
+        def pump():
+            source = stream(text)
+            try:
+                for pcm in source:
+                    if stop.is_set():
+                        break
+                    loop.call_soon_threadsafe(pieces.put_nowait, ("audio", pcm))
+                loop.call_soon_threadsafe(pieces.put_nowait, ("end", None))
+            except Exception as error:
+                loop.call_soon_threadsafe(pieces.put_nowait, ("error", error))
+            finally:
+                source.close()
+
+        loop.run_in_executor(None, pump)
+        try:
+            while True:
+                kind, value = await pieces.get()
+                if kind == "audio":
+                    yield value
+                elif kind == "end":
+                    return
+                else:
+                    raise value
+        finally:
+            stop.set()
 
     async def _send_paced(self, pcm):
         """Send at about playing speed, so a cut-off is heard straight away and the mic stays shut until he's done."""

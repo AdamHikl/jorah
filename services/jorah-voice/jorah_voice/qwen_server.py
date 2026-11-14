@@ -32,6 +32,12 @@ def main():
 
         def generate(text):
             return fast.generate_voice_clone(text=text, language="English", ref_audio=ref_audio, ref_text=ref_text)
+
+        def generate_pieces(text):
+            # Measured 2026-11-08 (tools/fast_qwen_bench.py): first audio 0.29 s with chunk_size 8.
+            for chunk, sr, _timing in fast.generate_voice_clone_streaming(
+                    text=text, language="English", ref_audio=ref_audio, ref_text=ref_text, chunk_size=8):
+                yield chunk, sr
     except ImportError:
         from qwen_tts import Qwen3TTSModel
 
@@ -42,8 +48,16 @@ def main():
         def generate(text):
             return model.generate_voice_clone(text=text, language="English", voice_clone_prompt=prompt)
 
+        def generate_pieces(text):
+            wavs, sr = generate(text)
+            yield wavs[0], sr
+
     lock = threading.Lock()
     rate = {"value": 24000}
+
+    def to_pcm(samples):
+        samples = np.clip(np.asarray(samples, dtype=np.float32).reshape(-1), -1, 1)
+        return (samples * 32767).astype(np.int16).tobytes()
 
     def speak(text):
         text = clean_for_speech(text)
@@ -52,15 +66,46 @@ def main():
         with lock:
             wavs, sr = generate(text)
         rate["value"] = sr
-        samples = np.clip(np.asarray(wavs[0], dtype=np.float32), -1, 1)
-        return (samples * 32767).astype(np.int16).tobytes()
+        return to_pcm(wavs[0])
+
+    def speak_pieces(text):
+        """Yield the audio as it's made. The GPU does one sentence at a time, so this holds the lock
+        until the sentence is done or the caller hangs up."""
+        text = clean_for_speech(text)
+        if not text:
+            return
+        with lock:
+            for samples, sr in generate_pieces(text):
+                rate["value"] = sr
+                pcm = to_pcm(samples)
+                if pcm:
+                    yield pcm
 
     speak("Ready when you are.")  # first run is slow while kernels are picked
+    for _ in speak_pieces("Ready when you are."):  # and the streaming path's
+        pass
 
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
             request = read_request(self.rfile)
             if request is None:
+                return
+            if request.get("stream"):
+                pieces = speak_pieces(str(request.get("text", ""))[:2000])
+                try:
+                    for pcm in pieces:
+                        write_reply(self.wfile, rate["value"], pcm)
+                    write_reply(self.wfile, rate["value"], b"")
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # jorah-voice stopped listening, such as Adam talking over him
+                except Exception as error:  # report, end the stream, keep serving
+                    print(f"speak failed: {error}", flush=True)
+                    try:
+                        write_reply(self.wfile, rate["value"], b"")
+                    except OSError:
+                        pass
+                finally:
+                    pieces.close()  # frees the GPU for the next sentence
                 return
             try:
                 pcm = b"" if request.get("ping") else speak(str(request.get("text", ""))[:2000])

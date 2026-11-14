@@ -15,6 +15,11 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=PATH=/home/jorah/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=CLAUDE_CONFIG_DIR=/home/jorah/.claude-jorah
 Environment=ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1
+# Wake rootless Podman before OpenClaw's 5 s engine probe (SANDBOX_ENGINE_PROBE_TIMEOUT_MS in
+# 2026.10.9). The first podman command after a boot runs `system refresh`. On 2026-11-14 that took
+# 4.6 s, so the first heartbeat's sandbox probe aborted and Telegram got "The background check did
+# not complete". The "-" means a failure here doesn't stop the Gateway; the sandbox still fails closed.
+ExecStartPre=-/usr/bin/timeout 60 /usr/bin/podman info --format {{.Host.Arch}}
 ExecStart=/usr/local/bin/openclaw --profile jorah gateway run
 Restart=on-failure
 RestartSec=10

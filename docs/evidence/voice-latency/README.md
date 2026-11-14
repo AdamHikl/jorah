@@ -113,10 +113,13 @@ Not proposed: a shorter end-of-turn pause. The 2026-11-06 benchmark (`docs/evide
 | 38 characters | 2.4 s | 0.85 s | 0.31 s |
 | 87 characters | 5.2 s | 1.71 s | 0.31 s |
 
+**Warm-up across a Gateway restart, 2026-11-14 16:20, on Adam's yes** [measured]: `systemctl restart openclaw-gateway` at 16:20:28, Gateway ready at 16:20:51, Telegram polling at 16:20:51, `/readyz` 200. The warm-up request went out at about 16:21:03.7. The plugin load it triggered followed at 16:21:03.854 (`jorah-guard: matrix loaded`), then the tool catalog at 16:21:09.9 and the run's end at 16:21:12.7. `jorah-voice` logged `warmed the Gateway in 9.0s, 19s after it started`. The roughly 7 s load now happens in the background, about 35 s after a restart, instead of on Adam's first turn.
+
 **Not measured yet:**
 
-- The warm-up across a real Gateway restart. Expected: the next start logs `warmed the Gateway in` about 9 s (the 7 s plugin load plus one call), and the first voice turn after it shows `first_token` near 2.3 s instead of about 10 s. One open question: the warm-up runs on a sandboxed session while Adam's `agent:main:main` is not. The probe showed the load is once per process for sandboxed sessions, but a first unsandboxed run after a start was never isolated, so this needs that restart.
+- Whether Adam's own unsandboxed `agent:main:main` turn is warm after the sandboxed warm-up. Expected: no further `matrix loaded` line, and `first_token` near 2.3 s. The next spoken turn shows it.
 - Real spoken turns end to end, and whether streamed speech sounds as smooth as whole sentences. Adam's test.
+- A turn that arrives in the first 30 to 45 s after a Gateway start still meets the cold path, because the Gateway is ready about 20 s after the restart and the check runs every 20 s. A shorter `--warm-every`, such as 5 s, would narrow that; `/readyz` is a local request with no session or model.
 
 ## Rerun
 

@@ -89,14 +89,15 @@ proxy with real sockets.
 
 ### C. Tests on jorah-dev (Adam runs the root steps)
 
-1. Copy the commit to `/opt/jorah` (root-owned). Install users, firewall and the proxy unit:
-   `install-site-readers.sh --dry-run`, read it, then run it. This applies to the live profile too,
-   but adds no site: with no private file entry, nothing is set up.
-2. jorah-dev: copy `plugins/jorah-sites` and the updated `plugins/jorah-guard` to
-   `~/scratch-dev/p5/plugins/`, copy `workspace-site-reader/` to `~/scratch-dev/workspace-site-reader`,
-   `openclaw --profile jorah-dev agents add reader-site --workspace ~/scratch-dev/workspace-site-reader
-   --non-interactive`, apply `config/pc/dev/site-readers.patch.json5` (dry run first), add `site_read`
-   and `sites_list` to jorah-dev main's tool list, start jorah-dev (`dev-gateway.sh start`).
+1. Copy the commit to `/opt/jorah` (root-owned). Adam, as root: `install-site-readers.sh
+   --system-only --dry-run`, read it, then `install-site-readers.sh --system-only`: the two users, the
+   private file (empty), `/var/lib/jorah-sites`, the firewall rules and the unit files. Nothing in
+   OpenClaw and no service started; live Jorah only gains loopback access to 43220-43229.
+2. jorah-dev, as jorah: `site-readers-dev-setup.sh --dry-run`, then without it. It copies
+   `jorah-guard`, `jorah-sites` and the permission list to `~/scratch-dev/p5`, the reader's rules to
+   `~/scratch-dev/workspace-site-reader`, adds `reader-site` with the stored key, applies
+   `config/pc/dev/site-readers.patch.json5`, adds `site_read` and `sites_list` to jorah-dev main's
+   tools, and restarts jorah-dev.
 3. Run: `python3 /opt/jorah/scripts/pc/site-readers-dev-test.py --runs 3` as root. It starts the
    fake school, a test proxy on 43218 and the fake school's browser, then:
    - isolation checks: jorah can't read the cookies or reach the proxy; the browser user reaches

@@ -10,6 +10,9 @@
 #   5. the reader-site agent, its stored-key profile, the jorah-sites plugin, site_read and sites_list
 #      on main's live tool list, and config/pc/site-reader.patch.json5; then a Gateway restart.
 # Adding a site afterwards: site.sh set-host / add / signin (no rerun of this script).
+#   --system-only            steps 1 to 4 only (users, private file, firewall, unit files), nothing
+#                            in OpenClaw and no service started: what jorah-dev's tests need (stage C).
+#   --system-only --dry-run  checks the firewall file with nft -c and says what it would do.
 #   --dry-run  checks files and validates the config changes against the live config; writes nothing.
 #   --undo     stops the site browsers and the proxy, removes the plugin, restores the config from
 #              before. Users, firewall rules and signed-in profiles stay (site.sh remove --wipe clears one).
@@ -58,6 +61,39 @@ check_user() {
 check_user jorah-sites 1101
 check_user jorah-proxy 1102
 
+system_steps() {
+  # 1. Users, no login, no home.
+  id jorah-sites >/dev/null 2>&1 || useradd --system --uid 1101 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin jorah-sites
+  id jorah-proxy >/dev/null 2>&1 || useradd --system --uid 1102 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin jorah-proxy
+  # 2. The private file: root-owned, readable by the guard (jorah), the proxy and the browsers.
+  install -d -o root -g root -m 755 /etc/jorah
+  [ -f /etc/jorah/sites.private.json ] || printf '{ "version": 1, "sites": {} }\n' > /etc/jorah/sites.private.json
+  chown root:root /etc/jorah/sites.private.json; chmod 644 /etc/jorah/sites.private.json
+  install -d -o jorah-sites -g jorah-sites -m 700 /var/lib/jorah-sites
+  # 3. Firewall (the old file is kept for undo).
+  [ -f /etc/nftables.conf.pre-sites ] || cp -p /etc/nftables.conf /etc/nftables.conf.pre-sites
+  cp "$SRC/deploy/jorah-firewall.nft" /etc/nftables.conf
+  systemctl restart nftables
+  echo "firewall: $(nft list chain inet jorah_out output | grep -cE 'skuid (1101|1102)') site-reader rules loaded; undo: cp /etc/nftables.conf.pre-sites /etc/nftables.conf && systemctl restart nftables"
+  # 4. Unit files.
+  install -m 644 "$SRC/deploy/jorah-site-proxy.service" "$SRC/deploy/jorah-site-browser@.service" /etc/systemd/system/
+  systemctl daemon-reload
+}
+
+if [ "$MODE" = --system-only ]; then
+  if [ "${2:-}" = --dry-run ]; then
+    nft -c -f "$SRC/deploy/jorah-firewall.nft" && echo "firewall file: valid (nft -c)"
+    diff <(grep -v '^\s*#' /etc/nftables.conf) <(grep -v '^\s*#' "$SRC/deploy/jorah-firewall.nft") || true
+    echo "Would create users jorah-sites (1101) and jorah-proxy (1102) unless present, /etc/jorah/sites.private.json if missing,"
+    echo "/var/lib/jorah-sites, load the firewall above (keeping /etc/nftables.conf.pre-sites), and install the two unit files."
+    echo "Nothing in OpenClaw, no service started. Dry run only: nothing written."
+    exit 0
+  fi
+  system_steps
+  echo "System part done. jorah-dev next: scripts/pc/site-readers-dev-setup.sh as jorah."
+  exit 0
+fi
+
 # main's live tool list plus site_read and sites_list, as a JSON5 patch in a root-only temp file.
 TMP=$(mktemp -d /tmp/site-readers.XXXXXX); trap 'rm -rf "$TMP"' EXIT
 chmod 755 "$TMP"
@@ -95,24 +131,8 @@ fi
 
 [ -f "$CFG.pre-sites" ] || cp -p "$CFG" "$CFG.pre-sites"
 
-# 1. Users, no login, no home.
-id jorah-sites >/dev/null 2>&1 || useradd --system --uid 1101 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin jorah-sites
-id jorah-proxy >/dev/null 2>&1 || useradd --system --uid 1102 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin jorah-proxy
-
-# 2. The private file: root-owned, readable by the guard (jorah), the proxy and the browsers.
-install -d -o root -g root -m 755 /etc/jorah
-[ -f /etc/jorah/sites.private.json ] || printf '{ "version": 1, "sites": {} }\n' > /etc/jorah/sites.private.json
-chown root:root /etc/jorah/sites.private.json; chmod 644 /etc/jorah/sites.private.json
-install -d -o jorah-sites -g jorah-sites -m 700 /var/lib/jorah-sites
-
-# 3. Firewall.
-cp "$SRC/deploy/jorah-firewall.nft" /etc/nftables.conf
-systemctl restart nftables
-nft list chain inet jorah_out output | grep -cE 'skuid (1101|1102)' | xargs -I{} echo "firewall: {} site-reader rules loaded"
-
-# 4. Services.
-install -m 644 "$SRC/deploy/jorah-site-proxy.service" "$SRC/deploy/jorah-site-browser@.service" /etc/systemd/system/
-systemctl daemon-reload
+# 1 to 4: users, private file, firewall, unit files. Then the proxy.
+system_steps
 systemctl enable --now jorah-site-proxy
 sleep 1; systemctl is-active jorah-site-proxy
 

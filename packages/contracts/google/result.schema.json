@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-google/result/v1",
+  "title": "What a Google reader tool (calendar_read, mail_read, mail_open, contact_search) hands Jorah",
+  "description": "One schema for all four tools: v and status always; the rest by tool and by detail. Strings are other people's text, cleaned and capped. Missing values are null, never zero.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "status"
+  ],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "signed_out",
+        "unavailable",
+        "not_set_up",
+        "app_only",
+        "refused"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "detail": {
+      "enum": [
+        "full",
+        "summary"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "today",
+            "tomorrow",
+            "week",
+            "days"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 14
+        }
+      }
+    },
+    "tz": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50
+    },
+    "all_day": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50
+    },
+    "first_start": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{2}:[0-9]{2}$"
+    },
+    "times": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{2}:[0-9]{2}$"
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{2}:[0-9]{2}$"
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "start",
+          "end",
+          "all_day",
+          "weekday",
+          "local_date",
+          "local_time",
+          "local_end_time",
+          "location",
+          "organizer",
+          "attendees",
+          "attendee_names",
+          "my_response",
+          "tentative",
+          "type",
+          "has_description"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "start": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40
+          },
+          "all_day": {
+            "type": "boolean"
+          },
+          "weekday": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 3
+          },
+          "local_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "local_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{2}:[0-9]{2}$"
+          },
+          "local_end_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{2}:[0-9]{2}$"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "organizer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "attendees": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attendee_names": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "my_response": {
+            "enum": [
+              "accepted",
+              "declined",
+              "tentative",
+              "needsAction",
+              null
+            ]
+          },
+          "tentative": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "default",
+              "birthday",
+              "focus-time",
+              "out-of-office",
+              "working-location",
+              "from-gmail"
+            ]
+          },
+          "has_description": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "search": {
+      "enum": [
+        "unread",
+        "today",
+        "important",
+        "inbox",
+        "custom"
+      ]
+    },
+    "unread": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "important": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "threads": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from_name",
+          "from_email",
+          "subject",
+          "received",
+          "unread",
+          "important",
+          "starred",
+          "category",
+          "messages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{6,64}$"
+          },
+          "from_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60
+          },
+          "from_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 140
+          },
+          "received": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "important": {
+            "type": "boolean"
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "category": {
+            "enum": [
+              "primary",
+              "social",
+              "promotions",
+              "updates",
+              "forums",
+              "other"
+            ]
+          },
+          "messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 999
+          }
+        }
+      }
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{6,64}$"
+    },
+    "messages_in_thread": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from_name",
+          "from_email",
+          "date",
+          "subject",
+          "text",
+          "attachments"
+        ],
+        "properties": {
+          "from_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60
+          },
+          "from_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 140
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1500
+          },
+          "attachments": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          }
+        }
+      }
+    },
+    "contacts": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "email",
+          "phone",
+          "birthday"
+        ],
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40
+          },
+          "birthday": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20
+          }
+        }
+      }
+    }
+  }
+}

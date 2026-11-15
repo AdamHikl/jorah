@@ -8,7 +8,8 @@
     "agentmemory__memory_diagnose", "sites_list", "phone_today",
     "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due"
   ],
-  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read"],
+  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read",
+    "calendar_read", "mail_read", "mail_open", "contact_search"],
   "search": ["web_search", "x_search"],
   "url": ["web_fetch", "browser"],
   "fileWrite": ["write", "edit", "apply_patch"],

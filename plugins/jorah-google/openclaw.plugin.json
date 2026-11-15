@@ -1,0 +1,21 @@
+{
+  "id": "jorah-google",
+  "name": "Jorah Google readers",
+  "description": "Read Adam's Google Calendar, Gmail and Contacts, read-only, through gog with a read-only grant. No model reads the data on the way in: gog's JSON is mapped to fixed, capped fields in code (links removed, one-time codes masked). Full detail only in the OpenClaw app's chat (Adam's decision D4); elsewhere counts and times. Every tool marks the chat as having read outside text (jorah-guard).",
+  "categories": ["other"],
+  "contracts": { "tools": ["calendar_read", "mail_read", "mail_open", "contact_search"] },
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "gogPath": { "type": "string", "default": "/opt/jorah-tools/gog/gog", "description": "gog v0.48.0, root-owned" },
+      "gogHome": { "type": "string", "default": "/home/jorah/.local/share/jorah-google/gog", "description": "gog's own home: config, file keyring with the read-only token" },
+      "passwordFile": { "type": "string", "default": "/home/jorah/.config/jorah-google/keyring-password", "description": "The file keyring's password, mode 600, read per call. Never the password itself" },
+      "account": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,39}$", "default": "adam", "description": "A gog account alias; the address stays in gog's own config" },
+      "timeZone": { "type": "string", "default": "Europe/Bratislava" },
+      "detailChannels": { "type": "array", "items": { "type": "string" }, "default": ["webchat"], "description": "Channels that get full detail (D4: the OpenClaw app's chat). All others get counts and times" },
+      "timeoutMs": { "type": "integer", "minimum": 2000, "maximum": 60000, "default": 20000 }
+    }
+  }
+}

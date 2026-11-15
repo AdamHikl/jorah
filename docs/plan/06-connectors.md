@@ -283,6 +283,15 @@ Patch file: `config/connectors/web.patch.json5`.
 
 ### C3. Google project and Calendar read (M4, 0.5 day)
 
+**Changed 2026-11-15 by Adam's picks; this note wins over C3 to C5 below.** Built as
+`plugins/jorah-google` (`docs/runbooks/google.md`): gog v0.48.0's CLI, read-only three ways (grant,
+`GOG_READONLY=1`, no write tool), with its JSON mapped to fixed fields **in code**, so no reader model
+and no `gog mcp`: calendar and contacts are structured data, mail lists come as sender, subject and
+labels, and one thread's text only through `mail_open`, cleaned by gog and again by the plugin. All
+four tools are `taintRead`. D2: Adam's own account. D4: full detail only in the OpenClaw app's chat,
+enforced from the turn's trusted channel; elsewhere counts and times. Contacts go through `gog
+contacts search`, since gog's MCP server still has no contacts tool. Source and tests only.
+
 **Pick:** `gog mcp` v0.47.1 with a read-only OAuth grant. **Why:** Google enforces read-only through the token, the tools are fixed with no command bridge, and output is wrapped as untrusted [verified: https://gogcli.sh/mcp.html]. It is an OpenClaw-org project, MIT. v0.47.1 is the latest release as of today [verified: GitHub API, 2026-11-02]. **Runner-up:** `gog` CLI through `exec` with an `argPattern` allowlist, rejected because `main` has no shell. **Watch only:** Google's own Workspace MCP servers, Developer Preview with unclear consumer eligibility [verified: https://developers.google.com/workspace/guides/configure-mcp-servers].
 
 **Applies if** Adam's real calendar is Google (D1). If it is iCloud, use CX3.

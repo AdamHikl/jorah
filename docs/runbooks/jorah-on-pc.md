@@ -502,6 +502,12 @@ Files copied to `/opt/jorah` and the Serve route on :43213 added 2026-11-15; the
 waits for Adam's decision H. The proactive layer on top is a separate session
 (`docs/runbooks/proactive.md`).
 
+## Google readers and Share to Jorah, 2026-11-15
+
+Built as source and tests on Adam's picks: `plugins/jorah-google` (Calendar, Gmail, Contacts read-only,
+mapped in code, full detail only in the app; `docs/runbooks/google.md`) and Share to Jorah
+(`POST /share` into its own Shared chat; `docs/runbooks/phone.md`, section S). Neither is installed.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

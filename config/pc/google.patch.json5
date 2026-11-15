@@ -1,0 +1,24 @@
+// Google readers (docs/runbooks/google.md; 06 C3 to C5, changed 2026-11-15), on Adam's picks of
+// 2026-11-15: Adam's own Google account, read-only (D2), and full detail only in the OpenClaw app (D4).
+// Applied by scripts/pc/install-google.sh plugin, only after the P5 gate passes; that script also adds
+// calendar_read, mail_read, mail_open and contact_search to main's live tool list and jorah-google to
+// plugins.allow. jorah-guard lists all four as taintRead: after one, Jorah's actions need a tap.
+// No secret here: the keyring password and the token live in jorah's home, mode 600.
+{
+  plugins: {
+    entries: {
+      "jorah-google": {
+        enabled: true,
+        config: {
+          gogPath: "/opt/jorah-tools/gog/gog",
+          gogHome: "/home/jorah/.local/share/jorah-google/gog",
+          passwordFile: "/home/jorah/.config/jorah-google/keyring-password",
+          account: "adam",
+          timeZone: "Europe/Bratislava",
+          detailChannels: ["webchat"],
+          timeoutMs: 20000,
+        },
+      },
+    },
+  },
+}

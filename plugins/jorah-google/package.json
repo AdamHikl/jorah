@@ -1,0 +1,13 @@
+{
+  "name": "@jorah/openclaw-jorah-google",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jorah's read-only Google Calendar, Gmail and Contacts readers, mapped to fixed fields in code",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": { "pluginApi": ">=2026.10.9", "minGatewayVersion": "2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9", "pluginSdkVersion": "2026.10.9" }
+  }
+}

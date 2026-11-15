@@ -12,8 +12,9 @@ firewall line for 43212. Every step below needs Adam's yes first.
 `/opt/jorah` (root-owned, checksums match), and the Serve route `https://rocket.tail1574a5.ts.net:43213`
 → `http://127.0.0.1:43212` added, tailnet only (`tailscale funnel status`: nothing public). From the
 Mac the route answers 502 with a valid certificate, because the service isn't installed yet; the
-Gateway's route still answers 200. Not done: the service install (A1, Adam), the token (A3, Adam),
-the Shortcut (A4, Adam).
+Gateway's route still answers 200. **Same evening** [measured, `docs/evidence/phone-layer/2026-11-15-ask-jorah.md`]: Adam installed the
+service and made the token; the Shortcut was added from a signed file; the first "Hey Siri, Ask Jorah"
+answered (first text 3.2 s) once Tailscale on the iPhone was on. A2 to A9 not run yet.
 
 | Piece | What it does | Goes live |
 |---|---|---|
@@ -103,6 +104,25 @@ so the token leaves the clipboard. It never goes into a chat, a note or a file. 
 
 ### 4. The Shortcut (Adam, iPhone)
 
+**Before anything: Tailscale on the iPhone must be connected,** or Shortcuts says "A server with the
+specified hostname could not be found" (2026-11-15). Keep it on: in the Tailscale app, **Settings → VPN
+On Demand**, or iOS **Settings → VPN → Tailscale (i) → Connect On Demand**, and **Use Tailscale DNS** on.
+
+**Quickest: the built file (used 2026-11-15).** On the Mac:
+
+```bash
+python3 -I scripts/mac/ask_jorah_shortcut.py /tmp/ask-jorah.shortcut
+```
+
+```bash
+shortcuts sign --mode people-who-know-me --input /tmp/ask-jorah.shortcut --output ~/Desktop/"Ask Jorah.shortcut"
+```
+
+AirDrop **Ask Jorah.shortcut** to the iPhone and tap **Add Shortcut**. Then open it (the **⋯** on its
+tile) and paste the token, only the token, into the first step, the empty **Text** box; tap **Done**.
+The signed file carries Adam's iCloud signature, so it never goes in the repo; delete it afterwards.
+
+**Or by hand,** the same five steps without the Text box (the token goes straight into the header).
 Shortcut and action names are from iOS 26; check them on iOS 27 as you go.
 
 1. **Shortcuts** → **+**. Name it **Ask Jorah** (the name is what you say to Siri).
@@ -141,6 +161,7 @@ only ask questions and post phone events, and it is revoked in one command.
 | # | Do | Expected |
 |---|---|---|
 | A1 | Phone unlocked: "Hey Siri, Ask Jorah" → "What's the weather in Bratislava this afternoon?" | A short spoken answer within about 20 s. The chat in the OpenClaw app shows the question and the answer once |
+| | **A1 run 2026-11-15 20:34: answered**, first text 3.2 s (service log). The "once in the chat" half not checked | |
 | A2 | AirPods in, phone in a pocket, locked | Same as A1, or Siri asks to unlock. Note which |
 | A3 | "Ask Jorah" → "What do you remember about my week?" | "It's in the app." spoken; details only in the chat |
 | A4 | "Ask Jorah" → "Think hard: should I...", a question that goes to Opus | "I'm still on it. The answer will be in the app." if it takes over 20 s; the full answer lands in the chat later |

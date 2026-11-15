@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/ask-response/v1",
+  "title": "Ask Jorah: what the phone says back",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "status", "say", "in_app"],
+  "properties": {
+    "v": { "const": 1 },
+    "status": {
+      "enum": ["ok", "partial", "busy", "unavailable", "refused"],
+      "description": "ok: the whole spoken part. partial: the deadline passed, the rest lands in the chat. busy: another question is running or too many were asked. unavailable: the Gateway couldn't be reached or failed. refused: bad token or bad request"
+    },
+    "say": { "type": "string", "maxLength": 600, "description": "The text the Shortcut speaks. Always present, never empty" },
+    "in_app": { "type": "boolean", "description": "More of the answer is in the chat (the iOS app or Telegram) than is spoken" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/event/v1",
+  "title": "One phone event from a Shortcuts personal automation (POST /ingest/event)",
+  "description": "arrive and leave need place and take no focus; focus_on and focus_off need focus and take no place; alarm_stopped and wake take neither. The service checks these rules in code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "kind", "at"],
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "enum": ["arrive", "leave", "alarm_stopped", "wake", "focus_on", "focus_off"] },
+    "place": { "enum": ["home", "school", "other"], "description": "A name the phone's geofence stands for. Coordinates never leave the phone" },
+    "focus": { "enum": ["sleep", "work", "personal", "school", "driving", "fitness", "reading", "do_not_disturb", "other"] },
+    "at": { "type": "string", "maxLength": 40, "format": "date-time", "description": "ISO 8601 with an offset, from Shortcuts' Current Date" }
+  }
+}

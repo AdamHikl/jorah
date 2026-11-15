@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/health/v1",
+  "title": "Last night's health samples from a Shortcuts automation (POST /ingest/health)",
+  "description": "Accepted only while the service runs with --health on (Adam's decision H). The service turns the samples into one row per day and keeps no sample. Empty lists are allowed: they mean no data, never zero.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "sent_at", "sleep", "hrv", "resting_hr", "workouts"],
+  "properties": {
+    "v": { "const": 1 },
+    "sent_at": { "type": "string", "maxLength": 40, "format": "date-time" },
+    "sleep": {
+      "type": "array", "maxItems": 400,
+      "description": "Asleep intervals only (the Shortcut filters out In Bed and Awake). Overlaps from several sources are merged",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["start", "end"],
+        "properties": {
+          "start": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "end": { "type": "string", "maxLength": 40, "format": "date-time" }
+        }
+      }
+    },
+    "hrv": {
+      "type": "array", "maxItems": 300,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["at", "ms"],
+        "properties": {
+          "at": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "ms": { "type": "number", "minimum": 1, "maximum": 400 }
+        }
+      }
+    },
+    "resting_hr": {
+      "type": "array", "maxItems": 60,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["at", "bpm"],
+        "properties": {
+          "at": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "bpm": { "type": "number", "minimum": 20, "maximum": 250 }
+        }
+      }
+    },
+    "workouts": {
+      "type": "array", "maxItems": 30,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["start", "end", "type"],
+        "properties": {
+          "start": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "end": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "type": { "type": "string", "minLength": 1, "maxLength": 40, "description": "Health's workout name; the service maps it to a fixed list" }
+        }
+      }
+    }
+  }
+}

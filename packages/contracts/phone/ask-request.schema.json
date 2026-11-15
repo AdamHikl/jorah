@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/ask-request/v1",
+  "title": "Ask Jorah: one question from the iPhone (POST /ask)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "text"],
+  "properties": {
+    "v": { "const": 1 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 500, "description": "What Adam dictated. Never stored or logged by the service" }
+  }
+}

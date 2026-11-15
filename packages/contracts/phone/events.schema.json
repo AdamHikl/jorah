@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/events/v1",
+  "title": "Stored phone events after a point in time (GET /events, local callers only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "events"],
+  "properties": {
+    "v": { "const": 1 },
+    "events": {
+      "type": "array", "maxItems": 200,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "kind", "place", "focus", "at", "received_at"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "kind": { "enum": ["arrive", "leave", "alarm_stopped", "wake", "focus_on", "focus_off"] },
+          "place": { "enum": ["home", "school", "other", null] },
+          "focus": { "enum": ["sleep", "work", "personal", "school", "driving", "fitness", "reading", "do_not_disturb", "other", null] },
+          "at": { "type": "string", "format": "date-time" },
+          "received_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

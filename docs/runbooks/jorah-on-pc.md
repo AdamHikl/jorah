@@ -498,7 +498,7 @@ Built as source and unit tests on Adam's yes ("Yes, build A–C"): `services/jor
 from Siri through Chat Completions, typed phone events and an optional daily health upload, no model
 in that path), `plugins/jorah-phone` (`phone_today`), `scripts/pc/install-phone.sh`. Contract
 `docs/contracts/jorah-phone-v1.md`; steps, Shortcut recipes and tests in `docs/runbooks/phone.md`.
-Nothing installed. Ask Jorah may go live on Adam's yes; phone events wait for the P5 gate; health
+Files copied to `/opt/jorah` and the Serve route on :43213 added 2026-11-15; the service isn't installed yet. Ask Jorah may go live on Adam's yes; phone events wait for the P5 gate; health
 waits for Adam's decision H. The proactive layer on top is a separate session
 (`docs/runbooks/proactive.md`).
 
@@ -509,7 +509,7 @@ waits for Adam's decision H. The proactive layer on top is a separate session
 - Linger gives `jorah` a systemd user manager, so it could create user services. Shell runs in the sandbox, which can't reach it, but step 2 should check `systemctl --user list-units` as part of the soak.
 - `/run/WSL/2_interop` stays world-writable, but the Gateway, voice and backup units all set `InaccessiblePaths=/run/WSL`. The installed Gateway unit matches `deploy/openclaw-gateway.service` [measured 2026-11-08].
 - Delegated coding's sandbox, 2026-11-08: `socat` installed from Ubuntu's archive (`bubblewrap` was already there), and `scripts/pc/setup-permissions.sh`, the Linux version, wrote `/home/jorah/.claude-jorah/settings.json` (mode 600): sandbox on and failing closed, no unsandboxed commands, no network, home unreadable except `~/sandbox` and `~/work` (both mode 700). ACP stays off until a coding job is shown to run inside that sandbox [not tested: needs a real Claude Code run].
-- Remote clients reach the PC through Serve routes owned by Windows, with `gateway.trustedProxies`: the Gateway on 443 and voice on 43211 since 2026-11-08 ("Serve is on"). The phone layer's route, 43213 → 127.0.0.1:43212, is planned in `docs/runbooks/phone.md` and not added.
+- Remote clients reach the PC through Serve routes owned by Windows, with `gateway.trustedProxies`: the Gateway on 443 and voice on 43211 since 2026-11-08 ("Serve is on"). The phone layer's route, 43213 → 127.0.0.1:43212, added 2026-11-15 (`docs/runbooks/phone.md`).
 - `/usr/lib/wsl/drivers` is a read-only mount from Windows, kept for the GPU. It also puts Windows `.exe` files inside the distro.
 - Public internet is open to the agent on web ports only, once `apply-talk.sh` has run (see "Talk from the iPhone").
 - SEC-T17, the packet capture from P3's gate, the GPU spike (P1.3) and the 7-day soak.

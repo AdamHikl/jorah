@@ -6,8 +6,14 @@ own runbook (`docs/runbooks/proactive.md`, from its own session). The interface 
 
 **State, 2026-11-15: source and unit tests only.** `services/jorah-phone` (53 tests),
 `plugins/jorah-phone` (7 tests), `scripts/pc/install-phone.sh`, `deploy/jorah-phone.service`, the
-firewall line for 43212. Nothing is installed on the PC, no Serve route exists for it, no token
-exists, and no Shortcut is built. Every step below needs Adam's yes first.
+firewall line for 43212. Every step below needs Adam's yes first.
+
+**2026-11-15, on Adam's yes to A step 1** [measured]: the 34 phone-layer files of `517017b` copied to
+`/opt/jorah` (root-owned, checksums match), and the Serve route `https://rocket.tail1574a5.ts.net:43213`
+→ `http://127.0.0.1:43212` added, tailnet only (`tailscale funnel status`: nothing public). From the
+Mac the route answers 502 with a valid certificate, because the service isn't installed yet; the
+Gateway's route still answers 200. Not done: the service install (A1, Adam), the token (A3, Adam),
+the Shortcut (A4, Adam).
 
 | Piece | What it does | Goes live |
 |---|---|---|

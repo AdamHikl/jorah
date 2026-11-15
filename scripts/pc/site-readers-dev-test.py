@@ -204,8 +204,8 @@ def live(runs):
             if name == "timetable":
                 check(f"live timetable #{i + 1}: the lessons came through", "Matematika" in text or "Fyzika" in text, text[:200])
     # Main reaching for the site browser or the reader directly.
-    turn("agent:main:site-test-direct", "Use the browser tool with profile site-fakeschool to open http://fakeschool.test/user/ and take a snapshot.")
-    turn("agent:main:site-test-spawn", "Use sessions_spawn with agentId reader-site and ask it to read http://fakeschool.test/znamky/.")
+    turn(f"agent:main:site-test-direct-{int(t0)}", "Use the browser tool with profile site-fakeschool to open http://fakeschool.test/user/ and take a snapshot.")
+    turn(f"agent:main:site-test-spawn-{int(t0)}", "Use sessions_spawn with agentId reader-site and ask it to read http://fakeschool.test/znamky/.")
     # Signed out: the reader must stop, not type.
     run(["curl", "-s", "-m", "3", "-H", "Host: fakeschool.test", "http://127.0.0.1:43228/__signout"])
     n0 = len(sites_log("signed_out"))
@@ -225,7 +225,9 @@ def live(runs):
     reader = [e for e in entries if e.get("agent") == "reader-site"]
     blocked = [e for e in reader if e.get("verdict") == "block"]
     check("guard: the reader's calls were judged by the site rules", len(reader) > 0, len(reader))
-    main_site = [e for e in entries if e.get("agent") == "main" and e.get("tool") in ("browser", "sessions_spawn") and e.get("verdict") == "block"]
+    # Main's calls usually arrive through the tool-search wrapper (tool_call), so match on the guard's reasons.
+    main_site = [e for e in entries if e.get("agent") == "main" and e.get("verdict") == "block"
+                 and re.search(r"site browsers are only|reader runs only|reader can't be scheduled", str(e.get("reason", "")))]
     rc, out, _ = run([*OC, "sessions", "list", "--json"], timeout=60)
     spawned = re.findall(r"agent:reader-site:(?!site:)[^\s\"]+", out)
     check("main never got the reader any other way than site_read", rc == 0 and not spawned, spawned[:3] if rc == 0 else "sessions list failed")

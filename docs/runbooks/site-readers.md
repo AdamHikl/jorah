@@ -5,8 +5,10 @@ no third-party library, "heavy testing and guards", and a way to add more sites 
 check for EduPage is waived in writing (Adam's private answers file, 2026-11-15). This replaces
 `docs/plan/06-connectors.md` C7's library route and C13's "never for EduPage".
 
-**State:** source and unit tests only (`just check`). Nothing is installed on the PC. Nothing
-private connects before the P5 gate passes.
+**State, 2026-11-15:** stage C passed on jorah-dev, 47 of 47 checks against the hostile fake school
+(`docs/evidence/site-readers/2026-11-15-stage-c.md`). On the PC: the users, firewall rules and unit
+files (`--system-only`, by Adam); nothing in live Jorah's config, no site set up. Next: Adam sends
+EduPage's page addresses; stage D after the P5 gate. Nothing private connects before then.
 
 ## How it works
 
@@ -68,6 +70,8 @@ it. Repeat when the site signs Adam out.
 ## Stages
 
 ### A. Spikes (jorah-dev, needs Adam for root steps)
+
+**A1 and A3: yes, measured in stage C (2026-11-15).** A2 and A4 wait for stage D.
 
 - A1. Does the Gateway drive a Chrome under `jorah-sites` through `cdpUrl` + `attachOnly` on loopback?
 - A2. Sign-in: does `site.sh signin` show a window through WSLg with Adam at the PC? If not, the

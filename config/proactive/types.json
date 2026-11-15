@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "about": "Jorah's proactive types (docs/plan/01-vision-and-ux.md section 11, docs/runbooks/proactive.md). Every type is OFF until Adam adds it to plugins.entries.jorah-proactive.config.enabledTypes, after reading its preview card (title, trigger, channel, frequency, off). Lines of render \"code\" are written by code with counts and times only; render \"text\" lines are Jorah's own wording, checked for length and links. Edit only by commit and Adam's yes.",
+  "types": {
+    "morning_brief": {
+      "title": "Morning brief",
+      "class": "digest",
+      "render": "code",
+      "maxPerDay": 1,
+      "trigger": "On a school day when your phone reports the alarm stopped; otherwise at 07:30. Not after 10:00. Needs the Morning brief automation.",
+      "channel": "Telegram: one line with counts and times, for example \"Morning brief: 2 open loops due today, 1 overdue. Woke 06:42. Detail in the Jorah app.\" The detail (weather, loops, the digest) is the run's session in the Jorah app or Control UI.",
+      "frequency": "Once a day",
+      "off": "Say \"stop the morning brief\", or remove morning_brief from enabledTypes; disable the automation with openclaw --profile jorah automations disable <id>."
+    },
+    "evening_wrap": {
+      "title": "Evening wrap-up",
+      "class": "digest",
+      "render": "code",
+      "maxPerDay": 1,
+      "trigger": "At the time you set (eveningAt). Needs the Evening wrap-up automation.",
+      "channel": "Telegram: one line with counts, for example \"Evening wrap: 1 open loop due tomorrow. 3 digest items. Detail in the Jorah app.\" Detail in the app.",
+      "frequency": "Once a day",
+      "off": "Say \"stop the evening wrap-up\", or remove evening_wrap from enabledTypes; disable its automation."
+    },
+    "home_loops": {
+      "title": "Open loops when you get home",
+      "class": "P2",
+      "render": "code",
+      "maxPerDay": 1,
+      "trigger": "Your phone reports arriving home, and open loops are due today or overdue. Needs the Proactive tick automation.",
+      "channel": "Telegram: \"Home. 2 open loops due today. They're in the app.\" Counts only, never who or what.",
+      "frequency": "At most once a day, and only within the five checks and the budget of 5 pushes a day",
+      "off": "Say \"stop telling me this\" after one, or remove home_loops from enabledTypes."
+    },
+    "left_home_loops": {
+      "title": "Open loops when you leave in the morning",
+      "class": "P2",
+      "render": "code",
+      "maxPerDay": 1,
+      "trigger": "Your phone reports leaving home before noon, and open loops are due today or overdue. Needs the Proactive tick automation.",
+      "channel": "Telegram: \"On your way: 1 open loop due today. They're in the app.\" Counts only.",
+      "frequency": "At most once a day, within the five checks and the budget",
+      "off": "Say \"stop telling me this\" after one, or remove left_home_loops from enabledTypes."
+    },
+    "job_finished": {
+      "title": "A job you started finished",
+      "class": "P2",
+      "render": "text",
+      "trigger": "A background job, coding job or build Adam started has finished, noticed by the heartbeat or a scheduled run.",
+      "channel": "Telegram: one neutral line in Jorah's words, at most 300 characters, no links. Detail in the app.",
+      "frequency": "Only when a job finishes, within the five checks and the budget of 5 pushes a day",
+      "off": "Say \"stop telling me this\" after one, or remove job_finished from enabledTypes."
+    },
+    "job_blocked": {
+      "title": "A job is blocked and will lose work",
+      "class": "P1",
+      "render": "text",
+      "trigger": "A job Adam started is stuck on something only Adam can do (a sign-in, an approval that timed out), and waiting loses work.",
+      "channel": "Telegram: one neutral line in Jorah's words. Held for the morning digest during quiet hours.",
+      "frequency": "Only when it happens; no daily budget",
+      "off": "Say \"stop telling me this\" after one, or remove job_blocked from enabledTypes."
+    },
+    "learned": {
+      "title": "Things Jorah learned or suggests",
+      "class": "P3",
+      "render": "text",
+      "trigger": "Jorah learned something worth mentioning, noticed a cost, or has a suggestion.",
+      "channel": "The digest only: listed in the next morning brief or evening wrap-up, never a message of its own.",
+      "frequency": "Whenever; read in the next digest",
+      "off": "Say \"stop telling me this\", or remove learned from enabledTypes."
+    }
+  }
+}

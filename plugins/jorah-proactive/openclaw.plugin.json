@@ -1,0 +1,138 @@
+{
+  "id": "jorah-proactive",
+  "name": "Jorah proactive",
+  "description": "Jorah's proactive layer: today's picture built by code, open loops saved only after Adam's card, restraint in code (classes, budget, the five checks, quiet hours, digest, stop and demote, and a record for every decision), and the triggers' tools. It sends nothing itself and reads only the phone service on 127.0.0.1. Every proactive type is off until Adam turns it on.",
+  "categories": [
+    "other"
+  ],
+  "contracts": {
+    "tools": [
+      "today_picture",
+      "loops_list",
+      "loop_propose",
+      "loop_done",
+      "loop_drop",
+      "proactive_notify",
+      "proactive_feedback",
+      "proactive_resume",
+      "proactive_why",
+      "digest_list",
+      "proactive_due",
+      "proactive_tick"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "stateDir": {
+        "type": "string",
+        "description": "Loops, decisions, the outbox and the digest; mode 700"
+      },
+      "typesFile": {
+        "type": "string",
+        "description": "config/proactive/types.json: the catalogue of proactive types"
+      },
+      "enabledTypes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Types Adam turned on, one by one after reading each preview card. Empty: Jorah says nothing unasked"
+      },
+      "timeZone": {
+        "type": "string",
+        "description": "Adam's time zone"
+      },
+      "includeHealth": {
+        "type": "boolean",
+        "description": "Pass health fields from the phone service (Adam's decision H); off by default"
+      },
+      "phoneServiceUrl": {
+        "type": "string",
+        "description": "jorah-phone on loopback, http://127.0.0.1:43212"
+      },
+      "phoneTokenFile": {
+        "type": "string",
+        "description": "The read-only token for the phone service, mode 600"
+      },
+      "contractsDir": {
+        "type": "string",
+        "description": "packages/contracts/phone: the schemas the phone's answers are checked against"
+      },
+      "phoneTimeoutMs": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 20000
+      },
+      "quietStart": {
+        "type": "string",
+        "description": "Quiet hours start, HH:MM (proposal 22:30 until Adam sets it)"
+      },
+      "quietEnd": {
+        "type": "string",
+        "description": "Quiet hours end, HH:MM (proposal 07:30)"
+      },
+      "quietSetByAdam": {
+        "type": "boolean",
+        "description": "True once Adam has chosen the quiet hours"
+      },
+      "awakeEndsQuiet": {
+        "type": "boolean",
+        "description": "The phone's alarm-stopped or wake event ends the morning's quiet hours"
+      },
+      "p2PushPerDay": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 20
+      },
+      "p2SpokenPerDay": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 20
+      },
+      "soonHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 24
+      },
+      "freshMinutes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 240
+      },
+      "ignoreAfterHours": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 48
+      },
+      "busyFocuses": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Focus modes that count as busy for P2"
+      },
+      "schoolDays": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "description": "1 Monday to 7 Sunday"
+      },
+      "briefFallback": {
+        "type": "string",
+        "description": "Morning brief time when no alarm is seen, HH:MM"
+      },
+      "briefLatest": {
+        "type": "string",
+        "description": "No morning brief after this time, HH:MM"
+      }
+    }
+  }
+}

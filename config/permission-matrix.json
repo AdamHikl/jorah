@@ -5,7 +5,8 @@
     "read", "ls", "view_image", "memory_search", "memory_get", "sessions_list", "session_status", "sessions_yield",
     "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos", "skills_read", "skills_search", "subagents",
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
-    "agentmemory__memory_diagnose", "sites_list", "phone_today"
+    "agentmemory__memory_diagnose", "sites_list", "phone_today",
+    "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due"
   ],
   "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read"],
   "search": ["web_search", "x_search"],
@@ -22,6 +23,22 @@
   "message": ["message"],
   "sandboxShell": ["exec", "process"],
   "blocked": ["sessions_send", "gateway", "nodes", "computer"],
+  "proactiveSend": ["proactive_notify", "proactive_feedback"],
+  "localWrite": ["loop_done", "loop_drop"],
+  "confirmAlways": ["loop_propose", "proactive_resume"],
+  "cronOnly": ["proactive_tick"],
+  "cardTitles": {
+    "loop_propose": "Jorah wants to note an open loop",
+    "proactive_resume": "Jorah wants to start telling you this again",
+    "loop_done": "Jorah wants to close an open loop",
+    "loop_drop": "Jorah wants to drop an open loop"
+  },
+  "proactive": {
+    "about": "Runs Adam didn't start (docs/runbooks/proactive.md): message is blocked there; they speak only through sendTool.",
+    "triggers": ["cron", "heartbeat"],
+    "sessionKinds": ["cron", "hook", "proactive"],
+    "sendTool": "proactive_notify"
+  },
   "readActions": ["list", "view", "get", "status", "runs", "show", "describe", "search"],
   "memoryFiles": ["MEMORY.md", "USER.md", "DREAMS.md", "memory/"],
   "rulesFiles": ["AGENTS.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.md", "BOOTSTRAP.md", "TOOLS.md", "skills/"],

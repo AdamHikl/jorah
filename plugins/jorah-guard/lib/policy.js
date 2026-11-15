@@ -11,7 +11,7 @@ const CARD_MAX = 500;
 
 export function classify(matrix, tool) {
   for (const cls of ["read", "taintRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
-    "github", "message", "sandboxShell", "blocked"]) {
+    "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "confirmAlways", "cronOnly"]) {
     if ((matrix[cls] ?? []).includes(tool)) return cls;
   }
   return null;
@@ -38,6 +38,36 @@ export function speaker(ctx = {}, settings = {}) {
   const cleanEligible = typed && cleanKeys.includes(ctx.sessionKey) && (ctx.agentId ?? "main") === "main";
   return { voice, owner, cleanEligible, typedByOwner: typed };
 }
+
+// Proactive runs (docs/runbooks/proactive.md, spike of 2026-11-15 on OpenClaw 2026.10.9 source):
+// before_agent_run's context carries the run's trigger ("user", "heartbeat", "cron", "event", ...)
+// and runId, but before_tool_call's carries only runId, so index.js remembers the trigger per run
+// and hands it in as run.trigger. Isolated cron runs use agent:<id>:cron:<jobId> and webhook turns
+// agent:<id>:hook:..., but a heartbeat runs in agent:main:main like Adam's own chat, so only the
+// trigger tells them apart. A main-agent run with no requester and no recorded trigger can't be
+// shown to be Adam's, so it counts as proactive too. Children of a proactive session inherit it.
+const sessionRest = (key) => {
+  const k = String(key ?? "");
+  const m = /^agent:[^:]+:(.*)$/.exec(k);
+  return m ? m[1] : k;
+};
+
+export function proactiveRun({ ctx = {}, run = {}, matrix = {}, parentOf = () => null }) {
+  const p = matrix.proactive ?? {};
+  const triggers = p.triggers ?? ["cron", "heartbeat"];
+  const kinds = p.sessionKinds ?? ["cron", "hook", "proactive"];
+  const keyed = (key) => kinds.some((kind) => sessionRest(key).startsWith(`${kind}:`));
+  if (run.trigger && triggers.includes(run.trigger)) return { proactive: true, why: `a ${run.trigger} run` };
+  if (keyed(ctx.sessionKey)) return { proactive: true, why: `a ${sessionRest(ctx.sessionKey).split(":")[0]} session` };
+  let parent = parentOf(ctx.sessionKey);
+  for (let i = 0; parent && i < 10; i++, parent = parentOf(parent)) {
+    if (keyed(parent)) return { proactive: true, why: `started from ${sessionRest(parent).split(":")[0]} session` };
+  }
+  if ((ctx.agentId ?? "main") === "main" && !ctx.requester && !run.trigger) return { proactive: true, why: "a run with no requester and no known trigger" };
+  return { proactive: false };
+}
+
+const isCronSession = (key) => sessionRest(key).startsWith("cron:");
 
 // Session state as the policy needs it.
 export function sessionState(view, ctx, settings) {
@@ -82,6 +112,13 @@ function card(title, lines) {
   let description = lines.filter(Boolean).join("\n");
   if (description.length > CARD_MAX) description = `${description.slice(0, CARD_MAX - 1)}…`;
   return { verdict: "confirm", title: short(title, 78), description };
+}
+
+const cardTitle = (matrix, tool) => matrix.cardTitles?.[tool] ?? `Jorah wants to use ${tool}`;
+
+// The exact arguments, one line each, in a fixed order: what Adam approves is what runs.
+function paramLines(params = {}) {
+  return Object.keys(params).sort().map((k) => `${short(k, 20)}: ${short(textOf(params[k]), 160)}`);
 }
 
 const why = (s) => (s.voice ? "Asked by voice: confirm only if this was you." : `This chat has read outside text (${short(s.source, 80)}).`);
@@ -160,7 +197,7 @@ export function checkUrls(value, state, view, sessionKey, matrix) {
  * @returns {{ verdict: "allow"|"block"|"confirm", reason?: string, title?: string, description?: string,
  *             taint?: string, readRepo?: string }}
  */
-export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {} }) {
+export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {}, run = {} }) {
   if (!matrix || typeof matrix !== "object") return { verdict: "block", reason: "permission matrix unreadable" };
   if (typeof tool !== "string" || tool.length === 0) return { verdict: "block", reason: "no tool name" };
 
@@ -179,7 +216,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     const raw = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : null;
     const inner = raw ? raw.split(":").pop() : null;
     if (!inner) return { verdict: "allow", reason: "wrapper without a named tool" };
-    const d = decide({ tool: inner, params: params.args ?? params.arguments ?? {}, ctx, matrix, view, settings });
+    const d = decide({ tool: inner, params: params.args ?? params.arguments ?? {}, ctx, matrix, view, settings, run });
     return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${inner}` };
   }
 
@@ -292,6 +329,10 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     }
 
     case "message": {
+      const pro = proactiveRun({ ctx, run, matrix, parentOf: (k) => view.parentOf?.(k) ?? null });
+      if (pro.proactive && !readAction) {
+        return { verdict: "block", reason: `this is ${pro.why}: scheduled and background runs tell Adam things only through ${matrix.proactive?.sendTool ?? "proactive_notify"}` };
+      }
       const target = params.to ?? params.target ?? params.chatId ?? params.recipient;
       if (target === undefined) return { verdict: "allow" };
       return card("Jorah wants to send a message", [state.tainted ? why(state) : "", `To: ${short(target, 60)}`, `Text: ${short(params.text ?? params.message ?? params.content, 300)}`]);
@@ -302,6 +343,23 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
 
     case "blocked":
       return { verdict: "block", reason: `${tool} is not allowed` };
+
+    // Proactive layer (docs/runbooks/proactive.md). proactive_notify decides in code and only
+    // queues, so it is allowed even after outside text; frozen still blocks it (above).
+    case "proactiveSend":
+      return { verdict: "allow" };
+
+    // The plugin's own small records (closing a loop): free in a clean chat, a card after outside text.
+    case "localWrite":
+      return state.tainted ? card(cardTitle(matrix, tool), [why(state), ...paramLines(params)]) : { verdict: "allow" };
+
+    // Always a card with the exact fields, whoever asks (a loop is saved only on Allow once).
+    case "confirmAlways":
+      return card(cardTitle(matrix, tool), [state.tainted ? why(state) : "", ...paramLines(params)]);
+
+    // The tick drains the outbox; outside its automation the lines would be lost.
+    case "cronOnly":
+      return isCronSession(key) ? { verdict: "allow" } : { verdict: "block", reason: `${tool} runs only in its automation` };
 
     default:
       return { verdict: "block", reason: `${tool} isn't in Jorah's permission list yet` };

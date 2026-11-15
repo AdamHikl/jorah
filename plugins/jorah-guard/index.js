@@ -65,6 +65,7 @@ export default {
       readRepos: (k) => state.readRepos(k),
       countAcp: (k) => state.countAcp(k),
       frozen: () => state.frozen(),
+      parentOf: (k) => state.parentOf(k),
     };
 
     // MCP tools called through the search wrapper arrive without a requester (P5.4, agentmemory on
@@ -79,6 +80,15 @@ export default {
     const withRequester = (ctx) =>
       ctx && !ctx.requester && ctx.runId && runs.has(ctx.runId) ? { ...ctx, requester: runs.get(ctx.runId) } : ctx;
 
+    // The run's trigger ("user", "heartbeat", "cron", ...) reaches before_agent_run but not
+    // before_tool_call (OpenClaw 2026.10.9), so it is kept per run id, which the Gateway sets.
+    const triggers = new Map(); // runId -> trigger
+    const rememberTrigger = (ctx) => {
+      if (!ctx?.runId || typeof ctx.trigger !== "string") return;
+      triggers.set(ctx.runId, ctx.trigger.slice(0, 40));
+      if (triggers.size > 500) triggers.delete(triggers.keys().next().value);
+    };
+
     api.on("before_tool_call", (event, rawCtx) => {
       const tool = event?.toolName;
       remember(rawCtx);
@@ -86,14 +96,15 @@ export default {
       try {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
-        const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings });
+        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null };
+        const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings);
         const from = who.voice ? "voice" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
+        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
         return {
@@ -133,6 +144,7 @@ export default {
       try {
         const key = ctx?.sessionKey ?? event?.sessionKey;
         remember(ctx);
+        rememberTrigger(ctx);
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
         // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;

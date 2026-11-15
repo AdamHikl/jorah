@@ -1,0 +1,32 @@
+// Proactive layer (docs/runbooks/proactive.md), step C of the phone-layer plan of 2026-11-15. DRAFT:
+// not applied. scripts/pc/install-proactive.sh applies it, after linking plugins/jorah-proactive and
+// adding its twelve tools to main's live tool list (never a fixed copy of that list here).
+//
+// Nothing is turned on: enabledTypes is empty, so every proactive_notify answers "off" and the tick
+// has nothing to send. Each type is added later on its own yes, after Adam reads its preview card
+// (runbook, "Turn a type on"). Quiet hours are the proposal 22:30 to 07:30 until Adam sets them.
+// Health stays off (Adam's decision H). The automations are separate, each with its own yes.
+//
+// Dry run on the PC: install-proactive.sh --dry-run. Undo: install-proactive.sh --undo.
+{
+  plugins: {
+    entries: {
+      "jorah-proactive": {
+        enabled: true,
+        config: {
+          stateDir: "/home/jorah/.jorah-proactive",
+          typesFile: "/opt/jorah/config/proactive/types.json",
+          contractsDir: "/opt/jorah/packages/contracts/phone",
+          phoneServiceUrl: "http://127.0.0.1:43212",
+          phoneTokenFile: "/home/jorah/.config/jorah-phone/read-token",
+          timeZone: "Europe/Bratislava",
+          includeHealth: false,
+          enabledTypes: [],
+          quietStart: "22:30",
+          quietEnd: "07:30",
+          quietSetByAdam: false,
+        },
+      },
+    },
+  },
+}

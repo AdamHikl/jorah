@@ -88,6 +88,9 @@ test("output: links, addresses and numbers are removed from every text field", (
   assert.match(r.items[0].text, /here/);
   // Dates and times survive.
   assert.equal(stripLinks("Test 2026-11-20 at 08:00, room 12"), "Test 2026-11-20 at 08:00, room 12");
+  // Bare addresses with any ending go (found on jorah-dev, 2026-11-15: "evil.test" passed); names and abbreviations stay.
+  for (const s of ["Open evil.test now", "see evil.test/rozvrh?who=adam", "go to Evil.Test", "x.y.zz"]) assert.ok(!/evil|\.zz/i.test(stripLinks(s)), s);
+  for (const s of ["J.Novák učí", "firma s.r.o. platí", "Workbook p. 32", "o 7:30, U12", "Lab 2. poschodie", "e.g. this"]) assert.equal(stripLinks(s), s, s);
 });
 
 test("output: people's names are hidden, except names Adam chose to keep", () => {

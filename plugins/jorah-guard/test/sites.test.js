@@ -190,6 +190,9 @@ test("reader: no other tool, and the search wrapper is judged by its inner call"
     "sessions_spawn", "sessions_send", "cron", "automations", "site_read", "sites_list", "github_push_branch", "nodes", "x_search"]) {
     assert.equal(reader({ url: T }, tool).verdict, "block", tool);
   }
+  // Looking up its tools is allowed; it changes nothing.
+  assert.equal(reader({ query: "browser" }, "tool_search").verdict, "allow");
+  assert.equal(reader({ name: "browser" }, "tool_describe").verdict, "allow");
   assert.equal(reader({ id: "openclaw:core:browser", args: nav(T) }, "tool_call").verdict, "allow");
   assert.equal(reader({ id: "browser", args: { action: "act", profile: "site-edupage", request: { kind: "click", ref: "e1" } } }, "tool_call").verdict, "block");
   assert.equal(reader({ id: "web_fetch", args: { url: T } }, "tool_call").verdict, "block");

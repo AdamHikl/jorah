@@ -5,6 +5,12 @@
   "categories": [
     "other"
   ],
+  "contracts": {
+    "tools": [
+      "site_read",
+      "sites_list"
+    ]
+  },
   "activation": {
     "onStartup": true
   },

@@ -20,6 +20,8 @@ PORT=$(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1]))["cdpPort"]
 DATA=/var/lib/jorah-sites/$NAME
 mkdir -p "$DATA"
 chmod 700 "$DATA"
+# jorah-sites has no home; Chrome keeps its certificate store and caches under HOME, so use the profile's own folder.
+export HOME="$DATA" XDG_CONFIG_HOME="$DATA/.config" XDG_CACHE_HOME="$DATA/.cache"
 
 ARGS=(
   --user-data-dir="$DATA"

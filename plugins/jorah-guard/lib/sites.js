@@ -260,6 +260,8 @@ export function siteDecision({ tool, params = {}, agent, sessionKey, sites }) {
   const site = sites?.get?.(name);
   if (!site) return block(`no site called ${name}`);
   if (!site.enabled) return block(`${site.title} isn't set up: ${site.disabledReason}`);
+  // Looking up how its tools work changes nothing (found on jorah-dev, 2026-11-15: the reader asks).
+  if (tool === "tool_search" || tool === "tool_describe") return { verdict: "allow" };
   if (tool !== "browser") return block("the site reader can only read pages");
   if (prof !== profileOf(name)) return block(`the site reader must use the ${profileOf(name)} browser`);
   if (p.node != null || (p.target != null && p.target !== "host") || p.dashboard != null) return block("only the site's own browser");

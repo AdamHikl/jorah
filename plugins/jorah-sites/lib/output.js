@@ -22,7 +22,8 @@ const LINK_RES = [
   /\[([^\]]{0,200})\]\([^)]{0,500}\)/g, // markdown link: keep the label
   /\b(?:https?|ftp|file|data|javascript|mailto|tel):[^\s"'<>)]*/gi,
   /\bwww\.[^\s"'<>)]+/gi,
-  /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|sk|cz|eu|io|ai|app|dev|me|info|biz|ru|cn|tk|xyz|site|online|link)(?:\/[^\s"'<>)]*)?/gi,
+  // Any bare name.ending, whatever the ending ("evil.test", "x.sk/p"); not "J.Novák" or "s.r.o.".
+  /(?<![\p{L}\d@.-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}(?![\p{L}\d-])(?:\/[^\s"'<>)]*)?/giu,
 ];
 const EMAIL = /\b[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}\b/gi;
 // Nine or more digits, optionally with + and spaces or dashes; dates (8 digits) don't match.

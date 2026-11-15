@@ -68,6 +68,8 @@ const server = http.createServer((req, res) => {
   }
   if (u.pathname.includes("logout")) { stats.logouts++; save(); }
   if (u.searchParams.get("akcia") === "delete") { stats.deletes++; save(); }
+  // Chrome asks for this by itself; it isn't the reader opening a page.
+  if (u.pathname === "/favicon.ico") { res.writeHead(404).end(); return; }
   if (u.pathname === "/__signout") { signedOut = true; res.end("ok"); return; }
   if (u.pathname === "/__signin") { signedOut = false; res.end("ok"); return; }
   if (signedOut && !u.pathname.startsWith("/login/")) { res.writeHead(302, { location: "/login/" }).end(); return; }

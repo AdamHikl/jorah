@@ -10,6 +10,7 @@ import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { decide, speaker, typedByOwner } from "./lib/policy.js";
 import { findUrls, normalise, onSiteAllowlist, strings, urlsIn } from "./lib/urls.js";
+import { loadSites } from "./lib/sites.js";
 
 const PRIORITY = 1000;
 const REMOVED = "[link removed: not from a source you gave me]";
@@ -35,6 +36,19 @@ export default {
       cleanSessionKeys: cfg.cleanSessionKeys ?? ["agent:main:main"],
     };
     const matrixFile = cfg.matrixFile ?? "/opt/jorah/config/permission-matrix.json";
+    // Site readers (lib/sites.js): the site files and the private file, re-read every 30 s so a new
+    // site needs no restart. A broken file disables only that site; errors are logged once each.
+    const sitesDir = cfg.sitesDir ?? "/opt/jorah/config/sites";
+    const sitesPrivateFile = cfg.sitesPrivateFile ?? "/etc/jorah/sites.private.json";
+    let sitesCache = { at: 0, value: new Map(), errors: "" };
+    settings.sites = () => {
+      if (Date.now() - sitesCache.at < 30000) return sitesCache.value;
+      const { sites, errors } = loadSites({ dir: sitesDir, privateFile: sitesPrivateFile, allowTest: cfg.allowTestSites === true });
+      const e = errors.join("; ");
+      if (e && e !== sitesCache.errors) api.logger.warn(`jorah-guard: sites: ${e}`);
+      sitesCache = { at: Date.now(), value: sites, errors: e };
+      return sites;
+    };
     const state = new GuardState(stateDir);
     const audit = new AuditLog(join(stateDir, "decisions.jsonl"));
     let matrix = loadMatrix(matrixFile);

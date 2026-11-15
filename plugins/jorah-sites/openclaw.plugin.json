@@ -1,0 +1,33 @@
+{
+  "id": "jorah-sites",
+  "name": "Jorah site readers",
+  "description": "Reads Adam's signed-in sites (EduPage first) through the reader-site agent, which jorah-guard limits to opening and reading each site's listed pages. Only checked fields come back: no links, people's names hidden, nothing typed or clicked.",
+  "categories": [
+    "other"
+  ],
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "sitesDir": {
+        "type": "string",
+        "description": "config/sites: one file per signed-in site"
+      },
+      "sitesPrivateFile": {
+        "type": "string",
+        "description": "Root-owned file with the sites' private parts; never in the repo"
+      },
+      "allowTestSites": {
+        "type": "boolean",
+        "description": "jorah-dev only: load test sites"
+      },
+      "timeZone": {
+        "type": "string",
+        "description": "Adam's time zone, for 'today' in the reader's brief"
+      }
+    }
+  }
+}

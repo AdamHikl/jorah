@@ -1,0 +1,41 @@
+// Site readers (docs/runbooks/site-readers.md), 2026-11-15, on Adam's decision: read signed-in sites
+// (EduPage first) through a browser, no third-party library, with guard rules and heavy tests.
+// Applied by scripts/pc/install-site-readers.sh after `openclaw agents add reader-site`; it also adds
+// site_read and sites_list to main's live tool list (never a fixed copy of that list here).
+//
+// reader-site: Haiku on the API key (other people's text belongs on API terms, never the Max login),
+// one tool, the browser. No sandbox: it has no shell, and the browser it drives is the site's own
+// Chrome under the jorah-sites user, reached over CDP. jorah-guard limits it to opening and reading
+// the listed pages of the one site its session names; jorah-sites deletes each session after use.
+// Per-site browser profiles (browser.profiles.site-<name>) are added by scripts/pc/site.sh add.
+{
+  agents: {
+    entries: {
+      "reader-site": {
+        models: { "anthropic/claude-haiku-5-5": { agentRuntime: { id: "openclaw" } } },
+        model: { primary: "anthropic/claude-haiku-5-5", fallbacks: [] },
+        identity: { name: "Jorah (site reader)" },
+        sandbox: { mode: "off" },
+        tools: { allow: ["browser"] },
+      },
+    },
+  },
+  plugins: {
+    entries: {
+      "jorah-sites": {
+        enabled: true,
+        config: {
+          sitesDir: "/opt/jorah/config/sites",
+          sitesPrivateFile: "/etc/jorah/sites.private.json",
+          timeZone: "Europe/Bratislava",
+        },
+      },
+      "jorah-guard": {
+        config: {
+          sitesDir: "/opt/jorah/config/sites",
+          sitesPrivateFile: "/etc/jorah/sites.private.json",
+        },
+      },
+    },
+  },
+}

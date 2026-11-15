@@ -466,6 +466,14 @@ Flags come from `cli/cron.md`, which puts the schedule first and the prompt seco
 
 ### C7. EduPage (M4, 2 to 3 h for the feed, about 1 day for the wrapper)
 
+**Changed 2026-11-15 by Adam's decisions; this note wins over the rest of C7.** EduPage is read
+through the site readers (`docs/runbooks/site-readers.md`): a signed-in browser under its own Linux
+user, a network fence, guard rules that allow only opening and reading listed pages, and checked
+output. No third-party library: Adam chose against `edupage-api`. The terms gate below is waived in
+writing (no EduPage terms on automated access could be found; Adam's private answers file,
+2026-11-15). The role and age gate (D5) is answered and passes; the answers are in the private file.
+The Webcal feed stays a possible addition for the timetable.
+
 **The terms gate is default deny, and it is M4's gate.** The wrapper and C13 for EduPage stay off unless the terms clearly allow it or the school or aSc says yes in writing. Silence counts as no. Allowed without that yes: the feature EduPage itself offers (Webcal, if Adam's login shows it and the school has not disallowed it), alert emails Adam already receives, and screenshots Adam shares by hand. **Anthropic's rules on minors' data are a pass or stop condition: until read and compatible, school data goes to a local model only.** If Adam is under 18, a parent or guardian joins that decision.
 
 **The role gate comes next** (D5) [inference, same as research/security.md §13]:
@@ -713,7 +721,7 @@ Flags are from gog's safety model [verified: gog docs/mcp.md]. No `--allow-gmail
 
 ### C13. Logged-in browsing (on demand, per site, roadmap M35)
 
-Only when a real task needs it. **A page in a logged-in profile is both attacker text and authority,** so this has its own gate and C2's tests are not enough. **Never for EduPage.**
+Only when a real task needs it. **A page in a logged-in profile is both attacker text and authority,** so this has its own gate and C2's tests are not enough. ~~**Never for EduPage.**~~ **Changed 2026-11-15:** built as the site readers (`docs/runbooks/site-readers.md`), EduPage first, on Adam's decision. Step 4's gate is stage C there: read-only actions only, other sites blocked at the network layer, tested against a hostile fake site.
 
 | # | Who | Step | Accept |
 |---|---|---|---|
@@ -905,7 +913,7 @@ D3, D4 and D5 are items 10, 11, 12 and 13 of list B in `03-security-and-privacy.
 
 | # | Question | Blocks | My pick |
 |---|---|---|---|
-| D1 | Which mailboxes, calendar and contacts do you actually use: Gmail, iCloud, Outlook, school? | C3 to C5 | Tell me. If Google, the plan stands. If not, CX slots in |
+| D1 | Which mailboxes, calendar and contacts do you actually use: Gmail, iCloud, Outlook, school? | C3 to C5 | **Answered 2026-11-15: Gmail and Google Calendar.** The plan stands |
 | D2 | Your own Google account read-only, or a separate account for Jorah? | C3 | Your own, read-only, because the data is only there |
 | D3 | May short summaries of other people's mail reach `main` on the Max login, and may private-class text ever enter the realtime provider? Both per data class | C4 | Realtime: no. `main`: no by default, so `private_show` only. Allow `reader_ask` for a class only if you want Jorah on Telegram to reason over it, after you check the training setting |
 | D4 | Telegram: counts and times only, one-line summaries, or full text? It is not end-to-end encrypted | C4, C6 | Counts and times |

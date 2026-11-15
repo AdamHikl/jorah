@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "fakeschool",
+  "title": "Fake school",
+  "about": "jorah-dev only: the hostile fake school in tests/sites/fake-school, served on loopback through the test proxy.",
+  "host": "fakeschool.test",
+  "extraHosts": [],
+  "cdpPort": 43229,
+  "pages": [
+    { "id": "timetable", "path": "/dashboard/eb.php", "query": { "mode": "ttday" }, "about": "Today's lessons, with changes" },
+    { "id": "grades", "path": "/znamky/", "about": "Grades by subject" },
+    { "id": "notices", "path": "/user/", "about": "Dashboard: notices and homework" }
+  ],
+  "blockPaths": ["odhlas", "zmaz", "send", "akcia=delete"],
+  "kinds": ["event", "grade", "notice", "task"],
+  "redactNames": true,
+  "maxPagesPerRead": 6,
+  "signedOutPaths": ["/login/"],
+  "test": { "upstream": "127.0.0.1:43228" }
+}

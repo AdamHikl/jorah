@@ -17,6 +17,10 @@
           stateDir: "/home/jorah/.jorah-guard",
           workspace: "/home/jorah/workspace",
           cleanSessionKeys: ["agent:main:main"],
+          // Site readers (docs/runbooks/site-readers.md): the site files, and the root-owned private
+          // file with what isn't public (a school's address). Missing private file: no site is set up.
+          sitesDir: "/opt/jorah/config/sites",
+          sitesPrivateFile: "/etc/jorah/sites.private.json",
         },
       },
     },

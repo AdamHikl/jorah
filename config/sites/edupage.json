@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "edupage",
+  "title": "EduPage",
+  "about": "Adam's school: timetable, grades, notices and homework, read only. Added 2026-11-15 on Adam's decision: a signed-in browser with guard rules, no third-party library. The school's address is in the private file. Pages marked confirmed: false are guesses until Adam sends the real addresses.",
+  "host": { "from": "private", "pattern": "^[a-z0-9-]+\\.edupage\\.org$" },
+  "extraHosts": [],
+  "cdpPort": 43220,
+  "pages": [
+    { "id": "timetable", "path": "/dashboard/eb.php", "query": { "mode": "ttday" }, "about": "Today's lessons, with changes and substitutions", "confirmed": false },
+    { "id": "grades", "path": "/znamky/", "about": "Grades by subject", "confirmed": false },
+    { "id": "notices", "path": "/user/", "about": "Dashboard: notices, messages and homework", "confirmed": false }
+  ],
+  "blockPaths": ["odhlas", "zmaz", "send", "posli", "odosl", "akcia=save", "akcia=delete"],
+  "kinds": ["event", "grade", "notice", "task"],
+  "redactNames": true,
+  "maxPagesPerRead": 6,
+  "signedOutPaths": ["/login/"]
+}

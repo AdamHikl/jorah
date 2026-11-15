@@ -40,6 +40,18 @@
           "type": "string"
         },
         "description": "Session keys that can be clean (Adam's own chat)"
+      },
+      "sitesDir": {
+        "type": "string",
+        "description": "config/sites: one file per signed-in site the site reader may read"
+      },
+      "sitesPrivateFile": {
+        "type": "string",
+        "description": "Root-owned file with the sites' private parts (a school's address); never in the repo"
+      },
+      "allowTestSites": {
+        "type": "boolean",
+        "description": "jorah-dev only: load test sites (plain http to a fake site on loopback)"
       }
     }
   }

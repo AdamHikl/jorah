@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "sites": {
+    "edupage": { "host": "yourschool.edupage.org", "keepNames": [] }
+  }
+}

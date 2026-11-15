@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "example",
+  "title": "Example",
+  "about": "What this site is and why Jorah reads it. Copy to <name>.json with a matching name, then follow docs/runbooks/site-readers.md.",
+  "host": "www.example.com",
+  "extraHosts": [],
+  "cdpPort": 43221,
+  "pages": [
+    { "id": "overview", "path": "/account/", "about": "What this page shows" }
+  ],
+  "blockPaths": [],
+  "kinds": ["item"],
+  "redactNames": true,
+  "maxPagesPerRead": 4,
+  "signedOutPaths": ["/login"]
+}

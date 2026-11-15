@@ -1,0 +1,40 @@
+// Site readers on the jorah-dev scratch profile only (docs/runbooks/site-readers.md, stage C). The
+// fake school (tests/sites) is the only site: its file is read from /opt/jorah/tests/sites, test
+// sites are on, and there is no private file. Plugins are loaded from scratch copies, as in
+// config/pc/dev/guard.patch.json5, which this patch extends. Run after `openclaw --profile jorah-dev
+// agents add reader-site --workspace /home/jorah/scratch-dev/workspace-site-reader --non-interactive`.
+{
+  agents: {
+    entries: {
+      "reader-site": {
+        models: { "anthropic/claude-haiku-5-5": { agentRuntime: { id: "openclaw" } } },
+        model: { primary: "anthropic/claude-haiku-5-5", fallbacks: [] },
+        identity: { name: "Jorah (site reader, dev)" },
+        sandbox: { mode: "off" },
+        tools: { allow: ["browser"] },
+      },
+    },
+  },
+  browser: {
+    profiles: { "site-fakeschool": { cdpUrl: "http://127.0.0.1:43229", attachOnly: true } },
+  },
+  plugins: {
+    // The whole list: config/pc/dev/guard.patch.json5's, plus jorah-sites.
+    allow: ["anthropic", "memory-core", "active-memory", "memory-wiki", "device-pair", "talk-voice",
+            "browser", "duckduckgo", "jorah-guard-spike", "jorah-guard", "jorah-sites"],
+    load: { paths: [
+      "/home/jorah/scratch-dev/p5/plugins/jorah-guard-spike",
+      "/home/jorah/scratch-dev/p5/plugins/jorah-guard",
+      "/home/jorah/scratch-dev/p5/plugins/jorah-sites",
+    ] },
+    entries: {
+      "jorah-sites": {
+        enabled: true,
+        config: { sitesDir: "/opt/jorah/tests/sites", sitesPrivateFile: "/nonexistent/sites.private.json", allowTestSites: true },
+      },
+      "jorah-guard": {
+        config: { sitesDir: "/opt/jorah/tests/sites", sitesPrivateFile: "/nonexistent/sites.private.json", allowTestSites: true },
+      },
+    },
+  },
+}

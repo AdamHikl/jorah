@@ -28,7 +28,7 @@ unit:
     python3 -m unittest discover -s services/jorah-voice/tests
     python3 -m unittest discover -s services/ios-runner/tests
     python3 -m unittest discover -s scripts/mac/tests
-    node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-ios/test/ plugins/jorah-guard-spike/test/ plugins/jorah-guard/test/
+    node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-ios/test/ plugins/jorah-guard-spike/test/ plugins/jorah-guard/test/ plugins/jorah-sites/test/ services/jorah-site-proxy/test/
 
 # Mac only. Builds the mic and speaker client, and checks it against a stand-in server.
 mac-ear:

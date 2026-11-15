@@ -1,0 +1,23 @@
+[Unit]
+Description=Jorah: signed-in browser for the site %i (read only, through the site proxy)
+Documentation=file:///opt/jorah/docs/runbooks/site-readers.md
+After=jorah-site-proxy.service nftables.service
+Requires=jorah-site-proxy.service
+
+[Service]
+User=jorah-sites
+Group=jorah-sites
+UMask=0077
+StateDirectory=jorah-sites/%i
+StateDirectoryMode=0700
+ExecStart=/bin/bash /opt/jorah/scripts/pc/site-browser.sh %i
+Restart=always
+RestartSec=5
+# Chrome's own sandbox uses user namespaces in this distro (stage 0), which work with this on.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -5,9 +5,9 @@
     "read", "ls", "view_image", "memory_search", "memory_get", "sessions_list", "session_status", "sessions_yield",
     "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos", "skills_read", "skills_search", "subagents",
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
-    "agentmemory__memory_diagnose"
+    "agentmemory__memory_diagnose", "sites_list"
   ],
-  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync"],
+  "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read"],
   "search": ["web_search", "x_search"],
   "url": ["web_fetch", "browser"],
   "fileWrite": ["write", "edit", "apply_patch"],

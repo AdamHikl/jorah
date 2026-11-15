@@ -5,6 +5,7 @@
 
 import { posix } from "node:path";
 import { forbidden, normalise, onSiteAllowlist, urlsIn } from "./urls.js";
+import { siteDecision } from "./sites.js";
 
 const CARD_MAX = 500;
 
@@ -162,6 +163,14 @@ export function checkUrls(value, state, view, sessionKey, matrix) {
 export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {} }) {
   if (!matrix || typeof matrix !== "object") return { verdict: "block", reason: "permission matrix unreadable" };
   if (typeof tool !== "string" || tool.length === 0) return { verdict: "block", reason: "no tool name" };
+
+  // Site readers (lib/sites.js) come first: the reader agent gets only its own rules, and no one
+  // else may reach for a signed-in site browser. A missing site list means no site is set up.
+  const site = siteDecision({ tool, params, agent: ctx.agentId, sessionKey: ctx.sessionKey, sites: settings.sites?.() ?? new Map() });
+  if (site) {
+    if (site.verdict === "allow" && view.frozen()) return { verdict: "block", reason: "Jorah is frozen (/jorah-freeze). Adam clears it at a terminal." };
+    return site;
+  }
 
   // The search wrapper: decide on the inner call now only to block early; the hook runs again on the
   // inner tool with its real name (G-S2), where cards and taint are handled. Never a card here.

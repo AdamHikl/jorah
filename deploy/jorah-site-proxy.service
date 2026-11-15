@@ -1,0 +1,29 @@
+[Unit]
+Description=Jorah: the site browsers' only way out (hosts in config/sites, HTTPS only)
+Documentation=file:///opt/jorah/docs/runbooks/site-readers.md
+After=network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+User=jorah-proxy
+Group=jorah-proxy
+ExecStart=/usr/bin/node /opt/jorah/services/jorah-site-proxy/proxy.mjs --listen 127.0.0.1:43219 --sites /opt/jorah/config/sites --private /etc/jorah/sites.private.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -14,7 +14,7 @@ Steps marked [measured] ran on the PC on 2026-11-05 or 2026-11-06. The rest have
 | 4 | Move: stop the Mac Gateway, back up, restore here, sign in. **Never two Gateways** | **Done 2026-11-06** [measured]: Mac Gateway down, Claude signed in as Jorah (Max), Gateway on 127.0.0.1/[::1]:43181, health ok, 0 critical, `Heartbeat (main)` hourly on Haiku and `Memory Dreaming` at 03:00. Telegram answered `Hello` at 15:10 on Opus in `agent:main:main`. Recall of a Mac fact and the sandboxed shell through Telegram: see `docs/evidence/p2-cutover/` |
 | 5 | Proof: Mac closed, PC rebooted, Telegram answers and recalls a saved fact | Not run |
 | 6 | Speech feeds Jorah's main session through the Gateway's Chat Completions endpoint | **Running since 2026-11-06 15:56** [measured]: files in `/opt/jorah` match `main` (lockfile unchanged, so no `uv sync`), `jorah-voice.service` **enabled** and active, models loaded in 13 s, listening on `127.0.0.1:43210` only, and Windows reaches that port. Earlier, end to end with a stand-in Gateway and the service's sandbox settings [measured]: heard correctly, reply streamed and spoken, recognition on the CPU (Parakeet v3), speech on the GPU (Kokoro fp32). End of turn: 0.65 s after a finished sentence, 1.2 s after an open word, synthetic speech only (`docs/evidence/voice-endpointing/`). Not run against the real Gateway: Adam's test, see "Voice from the Mac". Undo: `systemctl disable --now jorah-voice` as root |
-| 7 | Pair the iPhone and the Mac as clients | **Mac voice:** `mac-ear` built [measured, stand-in tests pass]. Windows Tailscale Serve route `https://rocket.tail1574a5.ts.net:43211` → `http://127.0.0.1:43210` **not up yet**: Serve isn't enabled on the tailnet, which needs Adam's admin consent. Steps in "Voice from the Mac". iPhone and Gateway route: not run |
+| 7 | Pair the iPhone and the Mac as clients | **Mac voice:** `mac-ear` built [measured, stand-in tests pass]. Windows Tailscale Serve routes up since 2026-11-08 [measured]: `https://rocket.tail1574a5.ts.net` → the Gateway, `:43211` → voice (see "Serve is on" below; this row said "not up yet" until 2026-11-15). iPhone paired, Talk used 2026-11-11. Phone layer (Ask Jorah, phone events): `docs/runbooks/phone.md`, not installed |
 
 ## Waived gate, 2026-11-06
 
@@ -492,6 +492,16 @@ If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `co
 
 **Undo:** `tailscale serve --https=43211 off` on Windows removes only this route (`tailscale serve reset` removes all Serve config, which is only this route today). `systemctl disable --now jorah-voice` as root in the distro stops the service. `security delete-generic-password -s jorah-voice -a adam` on the Mac removes the token.
 
+## Phone layer: Ask Jorah and phone events, 2026-11-15
+
+Built as source and unit tests on Adam's yes ("Yes, build A–C"): `services/jorah-phone` (Ask Jorah
+from Siri through Chat Completions, typed phone events and an optional daily health upload, no model
+in that path), `plugins/jorah-phone` (`phone_today`), `scripts/pc/install-phone.sh`. Contract
+`docs/contracts/jorah-phone-v1.md`; steps, Shortcut recipes and tests in `docs/runbooks/phone.md`.
+Nothing installed. Ask Jorah may go live on Adam's yes; phone events wait for the P5 gate; health
+waits for Adam's decision H. The proactive layer on top is a separate session
+(`docs/runbooks/proactive.md`).
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.
@@ -499,7 +509,7 @@ If `mac-ear` says `the PC refused the token`, step 3 copied the wrong thing. `co
 - Linger gives `jorah` a systemd user manager, so it could create user services. Shell runs in the sandbox, which can't reach it, but step 2 should check `systemctl --user list-units` as part of the soak.
 - `/run/WSL/2_interop` stays world-writable, but the Gateway, voice and backup units all set `InaccessiblePaths=/run/WSL`. The installed Gateway unit matches `deploy/openclaw-gateway.service` [measured 2026-11-08].
 - Delegated coding's sandbox, 2026-11-08: `socat` installed from Ubuntu's archive (`bubblewrap` was already there), and `scripts/pc/setup-permissions.sh`, the Linux version, wrote `/home/jorah/.claude-jorah/settings.json` (mode 600): sandbox on and failing closed, no unsandboxed commands, no network, home unreadable except `~/sandbox` and `~/work` (both mode 700). ACP stays off until a coding job is shown to run inside that sandbox [not tested: needs a real Claude Code run].
-- Remote clients need a Serve route owned by Windows, with `gateway.trustedProxies`. Not tried for the Gateway. Voice has its own route on port 43210, waiting on Adam's Serve consent.
+- Remote clients reach the PC through Serve routes owned by Windows, with `gateway.trustedProxies`: the Gateway on 443 and voice on 43211 since 2026-11-08 ("Serve is on"). The phone layer's route, 43213 → 127.0.0.1:43212, is planned in `docs/runbooks/phone.md` and not added.
 - `/usr/lib/wsl/drivers` is a read-only mount from Windows, kept for the GPU. It also puts Windows `.exe` files inside the distro.
 - Public internet is open to the agent on web ports only, once `apply-talk.sh` has run (see "Talk from the iPhone").
 - SEC-T17, the packet capture from P3's gate, the GPU spike (P1.3) and the 7-day soak.

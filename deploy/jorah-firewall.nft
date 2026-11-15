@@ -48,9 +48,10 @@ table inet jorah_out {
     ct state established,related accept
     # Mirrored networking sends all loopback TCP through this interface, whether it ends up
     # in this distro or on Windows, so only jorah's own ports are allowed.
-    # 43181-43199 is the Gateway and its derived ports, 43210 is speech, 47300-47304 agentmemory,
+    # 43181-43199 is the Gateway and its derived ports, 43210 is speech, 43212 jorah-phone (the
+    # phone_today tool reads /today there), 47300-47304 agentmemory,
     # 43220-43229 the site browsers' DevTools ports, which the Gateway drives for the site reader.
-    oifname "loopback0" tcp dport { 43181-43199, 43210, 43220-43229, 47300-47304 } accept
+    oifname "loopback0" tcp dport { 43181-43199, 43210, 43212, 43220-43229, 47300-47304 } accept
     oifname "loopback0" tcp dport @ephemeral accept
     oifname "loopback0" counter reject
     # WSL's DNS stub, which sits inside 10.0.0.0/8.

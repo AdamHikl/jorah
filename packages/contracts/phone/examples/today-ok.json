@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "generated_at": "2026-11-16T07:40:12+01:00",
+  "tz": "Europe/Bratislava",
+  "date": "2026-11-16",
+  "phone": {
+    "status": "ok",
+    "last_event": { "kind": "leave", "place": "home", "focus": null, "at": "2026-11-16T07:35:02+01:00" },
+    "location": { "state": "left", "place": "home", "since": "2026-11-16T07:35:02+01:00" },
+    "woke_at": "2026-11-16T06:45:10+01:00",
+    "focus": { "value": null, "since": null }
+  },
+  "health": {
+    "status": "ok",
+    "received_at": "2026-11-16T06:46:01+01:00",
+    "night": { "date": "2026-11-16", "bed": "2026-11-15T23:05:00+01:00", "wake": "2026-11-16T06:40:00+01:00", "asleep_min": 431, "median_14d_min": 448 },
+    "hrv_ms": { "value": 47, "median_14d": 52 },
+    "resting_bpm": { "value": 56, "median_14d": 55 },
+    "workouts": [{ "type": "walking", "minutes": 24 }]
+  }
+}

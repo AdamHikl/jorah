@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "jorah-phone/health/v1",
   "title": "Last night's health samples from a Shortcuts automation (POST /ingest/health)",
-  "description": "Accepted only while the service runs with --health on (Adam's decision H). The service turns the samples into one row per day and keeps no sample. Empty lists are allowed: they mean no data, never zero.",
+  "description": "Accepted only while the service runs with --health on (Adam's decision H). The service turns the samples into one row per day and keeps no sample. A list may be empty or left out (Shortcuts drops a list variable with no samples): either means no data, never zero.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["v", "sent_at", "sleep", "hrv", "resting_hr", "workouts"],
+  "required": ["v", "sent_at"],
   "properties": {
     "v": { "const": 1 },
     "sent_at": { "type": "string", "maxLength": 40, "format": "date-time" },

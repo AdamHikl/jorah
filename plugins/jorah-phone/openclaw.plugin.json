@@ -1,0 +1,34 @@
+{
+  "id": "jorah-phone",
+  "name": "Jorah phone",
+  "description": "phone_today: what Adam's iPhone reported today (place by geofence name, wake time, Focus, and, only if Adam turned it on, last night's sleep, HRV, resting heart rate and today's workouts), read from the jorah-phone service on loopback and checked against its schema (docs/contracts/jorah-phone-v1.md). Every field is written by code; missing data is null, never zero.",
+  "categories": ["other"],
+  "contracts": { "tools": ["phone_today"] },
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "serviceUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:43212",
+        "description": "jorah-phone on loopback, no path. Only 127.0.0.1 or localhost is accepted"
+      },
+      "tokenFile": {
+        "type": "string",
+        "default": "/home/jorah/.config/jorah-phone/read-token",
+        "description": "The read-scope token, mode 600, read per call. Never the token itself"
+      },
+      "includeHealth": {
+        "type": "boolean",
+        "default": false,
+        "description": "Pass health fields to Jorah. Off until Adam's decision H; the service has its own switch too"
+      },
+      "contractsDir": {
+        "type": "string",
+        "description": "Where today.schema.json is. Default: packages/contracts/phone next to this plugin in the repo"
+      },
+      "timeoutMs": { "type": "integer", "minimum": 500, "maximum": 20000, "default": 5000 }
+    }
+  }
+}

@@ -99,8 +99,8 @@ summary or the daily upload) is still open, so it starts `off` and answers 403
 `{"ok": false, "error": "health upload is off"}`.
 
 Request: `health.schema.json`: asleep intervals, HRV samples, resting heart rate samples and
-workouts, as Shortcuts' **Find Health Samples** returns them. Lists may be empty: empty means no
-data, never zero.
+workouts, as Shortcuts' **Find Health Samples** returns them. A list may be empty or left out
+(Shortcuts drops a list variable that found no samples): either means no data, never zero.
 
 The service keeps **no samples**. It computes one row for the day `D`, the local date of `sent_at`
 (time zone `Europe/Bratislava` by default), and drops the request:

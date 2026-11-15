@@ -1,0 +1,21 @@
+// Phone layer, step B (docs/runbooks/phone.md, docs/contracts/jorah-phone-v1.md), 2026-11-15, on
+// Adam's yes to build it. Applied by scripts/pc/install-phone.sh plugin, only after the P5 gate
+// passes; that script also adds phone_today to main's live tool list and jorah-phone to
+// plugins.allow (never a fixed copy of either list here). jorah-guard lists phone_today as a read.
+// includeHealth stays false until Adam's decision H; install-phone.sh health-on flips it.
+{
+  plugins: {
+    entries: {
+      "jorah-phone": {
+        enabled: true,
+        config: {
+          serviceUrl: "http://127.0.0.1:43212",
+          tokenFile: "/home/jorah/.config/jorah-phone/read-token",
+          contractsDir: "/opt/jorah/packages/contracts/phone",
+          includeHealth: false,
+          timeoutMs: 5000,
+        },
+      },
+    },
+  },
+}

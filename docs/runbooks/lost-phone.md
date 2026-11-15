@@ -44,6 +44,15 @@ openclaw --profile jorah nodes remove --node <id>
 Expected: `devices list` no longer shows the phone. Revoking a setup link does **not** revoke a
 paired device, so this step is needed even if the pairing code expired long ago.
 
+**Ask Jorah and phone events** (`docs/runbooks/phone.md`): the Shortcuts on the phone hold their own
+token for `jorah-phone`, separate from the Gateway's. Revoke it; it stops working at once, no restart:
+
+```bash
+wsl -d jorah -u jorah -- /usr/bin/python3 -I /opt/jorah/services/jorah-phone/bin/jorah-phone-token revoke iphone
+```
+
+Expected: `Revoked iphone.` A new phone gets a new token (`phone.md`, "Ask Jorah", step 3).
+
 ## 3. Replace the Gateway token (if the phone was paired Full)
 
 A Full pairing can hold `operator.admin`. Replace the shared token too:

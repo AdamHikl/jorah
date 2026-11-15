@@ -3,7 +3,8 @@
 # Run it as jorah, in a Terminal attached to no agent:
 #   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 \
 #     wsl -d jorah -u jorah -- bash -l /opt/jorah/scripts/pc/rotate-gateway-token.sh
-# It never prints the token. jorah-voice gets the same new value in its own file (mode 600).
+# It never prints the token. jorah-voice gets the same new value in its own file (mode 600), written
+# in place: jorah-phone reads that same file (bind-mounted read-only) on every question.
 # The Gateway restart needs root, so the last step prints the command for Adam to run.
 # Every client that used the old token (browser, mac-ear's Keychain entry) needs the new one.
 set -euo pipefail
@@ -25,7 +26,8 @@ oc secrets audit --check && echo "Audit clean."
 
 cat <<'EOF'
 
-Token replaced in the store and in jorah-voice's file. Apply it with a restart, as root:
+Token replaced in the store and in jorah-voice's file (jorah-phone reads that file on each question,
+so it needs no restart). Apply it with a restart, as root:
   wsl -d jorah -u root -- systemctl restart openclaw-gateway jorah-voice
 Then: the browser and mac-ear need the new token (`openclaw --profile jorah gateway auth-token --show`
 in a Terminal attached to no agent, then update mac-ear's Keychain entry).

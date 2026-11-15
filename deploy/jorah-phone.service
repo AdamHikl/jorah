@@ -1,0 +1,39 @@
+[Unit]
+Description=Jorah phone: Ask Jorah from Siri and typed phone events, reached only through Tailscale Serve
+After=network-online.target openclaw-gateway.service
+Wants=network-online.target
+
+[Service]
+User=jorah
+WorkingDirectory=/opt/jorah/services/jorah-phone
+# Switches set by scripts/pc/install-phone.sh: phone events off until the P5 gate passes, health off
+# until Adam's decision H. Missing file: both off.
+Environment=JORAH_PHONE_INGEST=off JORAH_PHONE_HEALTH=off
+EnvironmentFile=-/etc/jorah/phone.env
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-phone/bin/jorah-phone --ingest ${JORAH_PHONE_INGEST} --health ${JORAH_PHONE_HEALTH}
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+# The code is read-only to it; it sees its own store, its token list and the Gateway token file
+# (shared with jorah-voice, kept current by scripts/pc/rotate-gateway-token.sh), and nothing else
+# of the home folder.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/jorah/.local/share/jorah-phone
+BindReadOnlyPaths=/home/jorah/.config/jorah-phone /home/jorah/.config/jorah-voice/gateway-token
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

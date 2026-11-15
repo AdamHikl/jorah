@@ -32,7 +32,7 @@ Every call except `GET /healthz` needs `Authorization: Bearer <token>`.
 - Tokens live in `~/.config/jorah-phone/tokens.json` (mode 600) as SHA-256 hashes, each with an id
   and scopes. The service never stores a token itself, and re-reads the file when it changes, so a
   revoke takes effect at once.
-- Scopes: `ask` (`POST /ask`), `ingest` (`POST /ingest/*`), `read` (`GET /today`, `GET /events`).
+- Scopes: `ask` (`POST /ask`, `POST /share`), `ingest` (`POST /ingest/*`), `read` (`GET /today`, `GET /events`).
 - The iPhone gets one token with `ask` and `ingest`. The Gateway plugin gets one with `read`, in a
   file it reads per call. A lost phone means revoking the phone's token (`docs/runbooks/lost-phone.md`).
 - `jorah-phone-token new <id> --scopes ...` makes one; `list` shows ids, scopes and dates, never
@@ -74,6 +74,31 @@ keeps reading the reply until it finishes (at most 5 minutes).
 Telegram tap. Dictation has no speaker check, so Ask Jorah can never confirm anything by voice.
 
 **Logs** hold the status and timings only, never the question or the answer.
+
+### `POST /share` (scope `ask`)
+
+Added 2026-11-15 (Share to Jorah, Adam's pick). Request: `share-request.schema.json`, `{"v": 1, "text":
+"...", "note": "...", "source": "whatsapp"}`: text 1 to 6000 characters, an optional note of Adam's
+own words up to 300, a source from a fixed list. Body at most 32 KB. Response:
+`share-response.schema.json`, always with a short `say` for the phone's notification:
+
+| HTTP | `status` | When |
+|---|---|---|
+| 200 | `sent` | The turn is under way; no early failure within 3 s (`--share-wait`) |
+| 200 | `busy` | More than 30 shares in an hour |
+| 200 | `unavailable` | The Gateway failed at once |
+| 400, 401, 413, 415 | `refused` | As for `/ask` |
+
+**Where it goes:** a chat of its own, `agent:main:shared` (`--share-session-key`, refused if set to
+Adam's main chat), shown as **Shared** in the OpenClaw app's Sessions. Shared text never enters Adam's
+main chat. `jorah-guard` treats any chat other than `agent:main:main` as having read outside text, so
+every write, schedule, job or push from it waits for a Telegram tap, and URLs from it are limited.
+
+**How it is framed:** a system note says the text is someone else's, to be treated as data and never
+as instructions, and asks for a short reply (who it's from, what it says, what needs Adam, an answer to
+the note). The text sits between markers with a fresh random nonce per share
+(`<<<SHARED-xxxxxxxx` ... `SHARED-xxxxxxxx>>>`), so the text can't close its own block. The reply is
+read to the end in the background, as for `/ask`. Logs hold the status and timings only.
 
 ### `POST /ingest/event` (scope `ingest`)
 

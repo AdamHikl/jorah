@@ -914,9 +914,9 @@ D3, D4 and D5 are items 10, 11, 12 and 13 of list B in `03-security-and-privacy.
 | # | Question | Blocks | My pick |
 |---|---|---|---|
 | D1 | Which mailboxes, calendar and contacts do you actually use: Gmail, iCloud, Outlook, school? | C3 to C5 | **Answered 2026-11-15: Gmail and Google Calendar.** The plan stands |
-| D2 | Your own Google account read-only, or a separate account for Jorah? | C3 | Your own, read-only, because the data is only there |
+| D2 | Your own Google account read-only, or a separate account for Jorah? | C3 | **Answered 2026-11-15: Adam's own account, read-only.** |
 | D3 | May short summaries of other people's mail reach `main` on the Max login, and may private-class text ever enter the realtime provider? Both per data class | C4 | Realtime: no. `main`: no by default, so `private_show` only. Allow `reader_ask` for a class only if you want Jorah on Telegram to reason over it, after you check the training setting |
-| D4 | Telegram: counts and times only, one-line summaries, or full text? It is not end-to-end encrypted | C4, C6 | Counts and times |
+| D4 | Telegram: counts and times only, one-line summaries, or full text? It is not end-to-end encrypted | C4, C6 | **Answered 2026-11-15:** "detailed, with real names and events", shown in the OpenClaw app on the phone, not on Telegram ("no need to use telegram"; an own companion app is a later option). So on Telegram mail and calendar readers give no detail; in the app they give full typed detail |
 | D5 | EduPage role: student, parent or teacher? If a student, under 16 or under 18? How do you log in (password, Google or Microsoft, 2FA)? Does your login show Enable Webcal? Will you read the terms or ask the school? May the timetable go to your own Google Calendar, which the security plan otherwise forbids? | C7 | Feed first, fetched directly, not through Google. Teacher means do not connect |
 | D6 | Is reading your iMessages worth Full Disk Access on a dedicated launcher? Which chats? | C14 | Decide at M22. Hand forwarding is fine |
 | D7 | Should Jorah ever send as you, or only prepare drafts? 20-second hold on or off? | C15 | Drafts only for now |

@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from . import schema
-from .ask import GATEWAY_URL, SESSION_KEY, TOKEN_FILE, AskRun, gateway_stream, spoken
+from .ask import GATEWAY_URL, SESSION_KEY, SHARE_NOTE, SHARE_SESSION_KEY, TOKEN_FILE, AskRun, gateway_stream, share_message, spoken
 from .compute import summarize
 from .store import DEFAULT_DB, Store
 from .tokens import DEFAULT_FILE, Tokens
@@ -28,12 +28,15 @@ LOOPBACK = {"127.0.0.1", "::1"}
 # Any of these means the request came through Tailscale Serve or another proxy, not from this PC.
 FORWARDED = ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded",
              "Tailscale-User-Login", "Tailscale-User-Name", "Tailscale-User-Profile-Pic", "Tailscale-Headers-Info")
-BODY_MAX = {"/ask": 8192, "/ingest/event": 8192, "/ingest/health": 65536}
+BODY_MAX = {"/ask": 8192, "/share": 32768, "/ingest/event": 8192, "/ingest/health": 65536}
 SAY = {
     "bad": "That request didn't make sense to Jorah.",
     "token": "Jorah doesn't know this phone.",
     "busy": "I'm still answering the last one.",
     "many": "That's a lot of questions. Try again in a minute.",
+    "sent": "Sent to Jorah. The reply is in the Shared chat.",
+    "share_many": "That's a lot of shares. Try again later.",
+    "share_down": "Jorah couldn't take that right now.",
 }
 PLACE_KINDS = ("arrive", "leave")
 FOCUS_KINDS = ("focus_on", "focus_off")
@@ -74,15 +77,20 @@ class Window:
 class Phone:
     """What every request needs, shared by the handler threads."""
 
-    def __init__(self, args, stream=None, now=None):
+    def __init__(self, args, stream=None, now=None, share_stream=None):
         self.args = args
+        if args.share_session_key in (args.session_key, "agent:main:main"):
+            raise ValueError("--share-session-key must be its own chat, never Adam's main one")
         self.tz = ZoneInfo(args.tz)
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.tokens = Tokens(args.tokens)
         self.store = Store(args.db, self.tz, args.keep_events_days, args.keep_health_days, now=self.now)
         self.schemas = {name: schema.load(name, args.contracts)
-                        for name in ("ask-request", "ask-response", "event", "health", "today", "events")}
+                        for name in ("ask-request", "ask-response", "share-request", "share-response", "event", "health", "today", "events")}
         self.stream = stream or gateway_stream(args.gateway_url, args.gateway_token_file, args.session_key)
+        self.share_stream = share_stream or gateway_stream(args.gateway_url, args.gateway_token_file, args.share_session_key,
+                                                           reply_seconds=args.reply_seconds, note=SHARE_NOTE)
+        self.shares = Window(30, 3600)
         self.ask_lock = threading.Lock()
         self.asks = Window(args.asks_per_10_min, 600)
         self.ingests = Window(120, 3600)
@@ -116,14 +124,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _share_reply(self, http_status, status, say, close=False):
+        body = {"v": 1, "status": status, "say": say}
+        schema.validate(self.phone.schemas["share-response"], body)
+        self._send(http_status, body, close)
+
     def _ask_reply(self, http_status, status, say, in_app=False, close=False):
         body = {"v": 1, "status": status, "say": say, "in_app": in_app}
         schema.validate(self.phone.schemas["ask-response"], body)
         self._send(http_status, body, close)
 
     def _refuse(self, path, http_status, error, say="bad"):
-        """An error answer: for /ask always something the phone can speak."""
-        if path == "/ask":
+        """An error answer: for /ask and /share always something the phone can say."""
+        if path == "/share":
+            status = "busy" if http_status == 429 else "refused"
+            self._share_reply(http_status, status, SAY["share_many" if http_status == 429 else say], close=True)
+        elif path == "/ask":
             status = "busy" if http_status == 429 else "refused"
             self._ask_reply(http_status, status, SAY["many" if http_status == 429 else say], close=True)
         else:
@@ -211,10 +227,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path not in BODY_MAX:
             return self._send(404, {"ok": False, "error": "not found"}, close=True)
-        scope = "ask" if path == "/ask" else "ingest"
+        scope = "ask" if path in ("/ask", "/share") else "ingest"
         if self._authorised(path, scope) is None:
             return None
-        if path != "/ask":
+        if path.startswith("/ingest/"):
             if self.phone.args.ingest != "on":
                 return self._refuse(path, 403, "phone events are off")
             if path == "/ingest/health" and self.phone.args.health != "on":
@@ -226,6 +242,8 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if path == "/ask":
             return self._ask(body)
+        if path == "/share":
+            return self._share(body)
         if path == "/ingest/event":
             return self._event(body)
         return self._health(body)
@@ -253,6 +271,31 @@ class Handler(BaseHTTPRequestHandler):
         first = f"{run.first_piece_at - run.started_at:.1f}s" if run.first_piece_at else "none"
         log(f"/ask: {status}, first text {first}, answered at {time.monotonic() - run.started_at:.1f}s")
         return self._ask_reply(200, status, say, in_app)
+
+    def _share(self, body):
+        """Shared text goes to its own chat (agent:main:shared), never Adam's main one, so the guard
+        treats that chat as outside text. The phone gets "sent" as soon as the turn is under way; the
+        reply is read to the end in the background and lands in the Shared chat."""
+        if not self._valid("/share", "share-request", body):
+            return None
+        if not self.phone.shares.use():
+            log("/share: busy, rate limit")
+            return self._share_reply(200, "busy", SAY["share_many"])
+        message = share_message(body["text"], body.get("note", ""), body.get("source", "other"))
+        run = AskRun(message, self.phone.share_stream).start()
+        finished, _text, error = run.wait(self.phone.args.share_wait)
+        if finished and error:
+            log(f"/share: unavailable ({error})")
+            return self._share_reply(200, "unavailable", SAY["share_down"])
+
+        def report():
+            run.join(self.phone.args.reply_seconds + 10)
+            if run.finished_at is not None:
+                log(f"/share: run ended after {run.finished_at - run.started_at:.1f}s{f' with an error ({run.error})' if run.error else ''}")
+
+        threading.Thread(target=report, name="share-report", daemon=True).start()
+        log("/share: sent")
+        return self._share_reply(200, "sent", SAY["sent"])
 
     def _event(self, body):
         if not self._valid("/ingest/event", "event", body):
@@ -302,6 +345,7 @@ def parse_args(argv=None):
     p.add_argument("--gateway-url", default=GATEWAY_URL)
     p.add_argument("--gateway-token-file", default=str(TOKEN_FILE), help="the Gateway token, shared with jorah-voice (rotate-gateway-token.sh updates it)")
     p.add_argument("--session-key", default=SESSION_KEY)
+    p.add_argument("--share-session-key", default=SHARE_SESSION_KEY, help="the Shared chat; never Adam's main one")
     p.add_argument("--tokens", default=str(DEFAULT_FILE))
     p.add_argument("--db", default=str(DEFAULT_DB))
     p.add_argument("--contracts", default=str(schema.CONTRACTS))
@@ -310,6 +354,7 @@ def parse_args(argv=None):
     p.add_argument("--health", choices=("on", "off"), default="off", help="the daily health upload (Adam's decision H)")
     p.add_argument("--ask-deadline", type=float, default=20.0, help="seconds before the phone gets what is ready")
     p.add_argument("--reply-seconds", type=float, default=300.0, help="how long a reply is read in the background")
+    p.add_argument("--share-wait", type=float, default=3.0, help="seconds to wait for an early failure before saying a share was sent")
     p.add_argument("--asks-per-10-min", type=int, default=20)
     p.add_argument("--keep-events-days", type=int, default=30)
     p.add_argument("--keep-health-days", type=int, default=90)
@@ -320,7 +365,8 @@ def main(argv=None):
     args = parse_args(argv)
     args.reply_seconds = max(30.0, args.reply_seconds)
     stream = gateway_stream(args.gateway_url, args.gateway_token_file, args.session_key, reply_seconds=args.reply_seconds)
-    phone = Phone(args, stream=stream)
+    share_stream = gateway_stream(args.gateway_url, args.gateway_token_file, args.share_session_key, reply_seconds=args.reply_seconds, note=SHARE_NOTE)
+    phone = Phone(args, stream=stream, share_stream=share_stream)
     if phone.tokens.check("Bearer x", "ask") is None and phone.tokens.problem:
         log(f"token file problem: {phone.tokens.problem}; every request will be refused")
     server = PhoneServer((args.host, args.port), phone)

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/share-response/v1",
+  "title": "Share to Jorah: what the phone shows back",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "status", "say"],
+  "properties": {
+    "v": { "const": 1 },
+    "status": {
+      "enum": ["sent", "busy", "unavailable", "refused"],
+      "description": "sent: Jorah has it and answers in the Shared chat. busy: too many shares. unavailable: the Gateway couldn't be reached. refused: bad token or bad request"
+    },
+    "say": { "type": "string", "minLength": 1, "maxLength": 200, "description": "A short line for the phone's notification" }
+  }
+}

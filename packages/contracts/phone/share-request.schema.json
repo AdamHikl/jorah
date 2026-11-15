@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-phone/share-request/v1",
+  "title": "Share to Jorah: text Adam picked in another app, for the Shared chat (POST /share)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "text"],
+  "properties": {
+    "v": { "const": 1 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 6000, "description": "The shared text, usually someone else's words. Never stored or logged by the service" },
+    "note": { "type": "string", "maxLength": 300, "description": "Adam's own words about it, optional; empty means none" },
+    "source": { "enum": ["whatsapp", "imessage", "mail", "web", "notes", "other"] }
+  }
+}

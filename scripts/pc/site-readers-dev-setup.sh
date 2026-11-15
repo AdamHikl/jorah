@@ -33,10 +33,12 @@ json.dump({"agents": {"entries": {"main": {"tools": {"sandbox": {"tools": {"also
 P
 
 if [ "$MODE" = --dry-run ]; then
-  "${OC[@]}" config patch --file "$SRC/config/pc/dev/site-readers.patch.json5" --dry-run
+  # The site patch validates only against the new plugin copies, which a dry run doesn't make;
+  # the real run validates it right after copying, before applying anything.
   "${OC[@]}" config patch --file "$TMP/main-tools.json5" --dry-run
   "${OC[@]}" agents list 2>&1 | grep -q reader-site && echo "reader-site exists on jorah-dev." || echo "Would add reader-site to jorah-dev (workspace $WS)."
-  echo "Would copy jorah-guard, jorah-sites and the permission list to $DEV/p5, the reader's rules to $WS, and restart jorah-dev."
+  echo "Would copy jorah-guard, jorah-sites and the permission list to $DEV/p5, the reader's rules to $WS,"
+  echo "validate and apply config/pc/dev/site-readers.patch.json5 and the tool list above, and restart jorah-dev."
   echo "Dry run only: nothing written."
   exit 0
 fi
@@ -52,6 +54,7 @@ mv "$DEV/p5/plugins/jorah-sites.new" "$DEV/p5/plugins/jorah-sites"
 cp "$SRC/config/permission-matrix.json" "$DEV/p5/config/permission-matrix.json"
 cp "$SRC"/workspace-site-reader/*.md "$WS/"
 
+"${OC[@]}" config patch --file "$SRC/config/pc/dev/site-readers.patch.json5" --dry-run
 "${OC[@]}" agents list 2>&1 | grep -q reader-site || "${OC[@]}" agents add reader-site --workspace "$WS" --non-interactive
 "${OC[@]}" secrets apply --from "$SRC/config/pc/site-reader-key.plan.json"
 "${OC[@]}" config patch --file "$SRC/config/pc/dev/site-readers.patch.json5"

@@ -29,7 +29,7 @@ The plan fixes them in this order:
 
 ## 1. Max lane (phase 0)
 
-Adam, 2026-11-16: "switch it to the max plan now". `config/pc/max-lane.patch.json5` was updated:
+Adam, 2026-11-16: "switch it to the max plan now". `config/pc/max-lane.patch.json5` was updated and **applied the same evening** [measured: test turns on `main` and `deep` ran through `claude-cli`; details, the cleared key overrides and the undo in `docs/runbooks/jorah-on-pc.md`, "Back on the Max plan"]:
 
 | Agent | Before | After | Why |
 |---|---|---|---|
@@ -40,7 +40,7 @@ Adam, 2026-11-16: "switch it to the max plan now". `config/pc/max-lane.patch.jso
 
 **What this costs and risks:**
 
-- **Shared limits.** Usage on `claude-cli` and `claude -p` draws from the signed-in subscription's limits [docs: `providers/anthropic.md`]. If Jorah's Claude login is Adam's own Max account, Jorah and Adam's own Claude Code sessions share one weekly limit (67% used on 2026-11-16, shortly before that week's reset).
+- **Shared limits.** Usage on `claude-cli` and `claude -p` draws from the signed-in subscription's limits [docs: `providers/anthropic.md`]. Jorah's Claude login is Adam's own Max account [measured], so Jorah and Adam's own Claude Code sessions share one weekly limit (67% used on 2026-11-16, shortly before that week's reset).
 - **Terms.** The recorded decision was typed chat on Max and machine-started work on the API (roadmap 2a, "Decisions recorded"). Heartbeat, Dreaming and the project runner are machine-started, so this widens Adam's accepted risk. OpenClaw's docs recommend an API key for shared automation. Recorded as Adam's choice.
 - **Voice latency** on `claude-cli` is unmeasured. The 3 to 3.5 s figure was measured on the embedded runtime. Test at the end.
 - **Undo:** `api-lane.patch.json5`, plus `deep`'s model entry back to `{ agentRuntime: { id: "openclaw" } }`.
@@ -378,9 +378,9 @@ Physical work and money are counted separately, since they are Adam's by design.
 | S2 | Does a headless run report usage limits with a reset time, and can plan usage be read headless? | WS2 reads Claude Code's docs; measured at install |
 | S3 | Does Gazebo run server-only inside Claude Code's bubblewrap sandbox (`/dev/shm`, no `/dev/dri`)? | Bench smoke test |
 | S4 | Is there enough memory for a headless sim next to the voice models in 16 GB? | Bench install |
-| S5 | Do `deep` and `main`'s cron sessions behave on `claude-cli` as before (tools, guard, `sandbox explain`)? | Phase 0 verification |
+| S5 | Do `deep` and `main`'s cron sessions behave on `claude-cli` as before (tools, guard, `sandbox explain`)? | Partly answered 2026-11-16: test turns ran on `claude-cli`, `sandbox explain` unchanged. Heartbeats, a guard card and tools still to see |
 | S6 | Does the GitHub App lack `workflows`, so a pushed branch can't change CI files? | Test pass |
-| S7 | Is Jorah's Claude login Adam's own Max account, so the weekly limit is shared? | Phase 0: `claude auth status` |
+| S7 | Is Jorah's Claude login Adam's own Max account, so the weekly limit is shared? | **Yes** [measured 2026-11-16, by email hash]: one set of limits for Jorah and Adam's own Claude Code |
 
 ## 15. First founder questions for `tree-watering-robot`
 

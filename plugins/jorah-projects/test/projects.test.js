@@ -125,6 +125,7 @@ function fixture({ registry = true, project = true, repo = true, extra = {} } = 
     writeFileSync(join(work, "project", "backlog.yaml"), BACKLOG);
     writeFileSync(join(work, "project", "questions.yaml"), QUESTIONS);
     writeFileSync(join(work, "project", "adam-tasks.yaml"), TASKS);
+    writeFileSync(join(work, "project", "CHARTER.md"), "# Charter\n");
     writeFileSync(join(work, "project", "DECISIONS.md"), "# Decisions\n\n## 2026-11-01 Old one\nOld.\n\n## 2026-11-14 ROS 2 Jazzy for v0\nBy Jorah under the charter. Reversible.\n");
     writeFileSync(join(work, "project", "log", "2026-11-16.md"), "# 2026-11-16\nRun 1: sized the motors.\nNext: frame.\n");
   }
@@ -155,7 +156,7 @@ function load(fx, now = NOW) {
   const hooks = {};
   const logs = [];
   register({
-    pluginConfig: { registryFile: fx.regFile, stateRoot: fx.state, workRoot: join(fx.root, "work"), guardStateDir: fx.guard, timeZone: "Europe/Bratislava", mediaRoots: [fx.media], workspace: join(fx.root, "workspace") },
+    pluginConfig: { registryFile: fx.regFile, stateRoot: fx.state, workRoot: join(fx.root, "work"), guardStateDir: fx.guard, timeZone: "Europe/Bratislava", mediaRoots: [fx.media], workspace: join(fx.root, "workspace"), procRoot: join(fx.root, "proc") },
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
     on: (name, fn) => { (hooks[name] ??= []).push(fn); },
     registerTool: (t) => tools.set(t.name, t),
@@ -170,7 +171,7 @@ function load(fx, now = NOW) {
   return { tools, hooks, call, logs };
 }
 
-test("manifest, package and registration agree on the nine tools", () => {
+test("manifest, package and registration agree on the twelve tools", () => {
   const manifest = JSON.parse(readFileSync(join(here, "..", "openclaw.plugin.json"), "utf8"));
   assert.deepEqual(manifest.contracts.tools, TOOLS);
   assert.equal(manifest.id, plugin.id);
@@ -268,7 +269,10 @@ function rmQuestions(fx) {
 test("project_status: no work branch yet, a run holding the lock, a usage limit, frozen", async () => {
   const fx = fixture({ extra: { branch: "jorah/other" } });
   mkdirSync(fx.sdir, { recursive: true });
-  writeFileSync(join(fx.sdir, "lock"), "");
+  // The runner keeps its lock file; only a live runner process with the pid in it holds it.
+  mkdirSync(join(fx.root, "proc", "4242"), { recursive: true });
+  writeFileSync(join(fx.root, "proc", "4242", "cmdline"), "/opt/jorah/venv/bin/python\0-m\0jorah_projects\0tick\0");
+  writeFileSync(join(fx.sdir, "lock"), "4242\n");
   writeRun(fx.sdir, "20261116T093000Z-a", { id: "r1", startedAt: "2026-11-16T09:30:00Z", outcome: "usage-limit", usage: { limited: true, resetsAt: "2026-11-16T20:00:00Z" } });
   writeFileSync(join(fx.state, "usage.json"), JSON.stringify({ v: 1, backoffUntil: "2026-11-16T20:00:00Z", reason: "usage limit (five_hour)", skipped: 2, lastSeen: { at: "2026-11-16T09:40:00Z", fiveHour: { utilization: 1, resetsAt: "2026-11-16T20:00:00Z" }, sevenDay: { utilization: 0.71, resetsAt: "2026-11-20T00:00:00Z" } } }));
   writeFileSync(join(fx.guard, "FROZEN"), "frozen\n");
@@ -507,4 +511,177 @@ test("answers the runner already applied don't count as waiting", async () => {
   const [first] = answers(fx);
   writeFileSync(join(fx.sdir, "inbox", "applied.json"), JSON.stringify({ v: 1, answers: [first.id], results: [] }));
   assert.equal((await call("project_status", { project: "tree-watering-robot" })).waiting_for_runner.answers, 1);
+});
+
+test("the runner's lock file alone isn't a run in progress: a dead or foreign pid, an empty file, or no /proc", async () => {
+  const fx = fixture();
+  mkdirSync(fx.sdir, { recursive: true });
+  const status = async () => (await load(fx).call("project_status", { project: "tree-watering-robot" })).run_in_progress;
+  writeFileSync(join(fx.sdir, "lock"), "4243\n");
+  assert.equal(await status(), "unknown"); // no /proc in this fixture yet
+  mkdirSync(join(fx.root, "proc", "4243"), { recursive: true });
+  writeFileSync(join(fx.root, "proc", "4243", "cmdline"), "bash\0");
+  assert.equal(await status(), false);
+  writeFileSync(join(fx.sdir, "lock"), "999\n");
+  assert.equal(await status(), false);
+  writeFileSync(join(fx.sdir, "lock"), "");
+  assert.equal(await status(), false);
+});
+
+// ---- Starting a project (plan section 5.1) ------------------------------------------------------
+
+const WORDS = "A robot that waters young street trees in summer.\nCities first? You decide.";
+
+function startFixture() {
+  const fx = fixture();
+  mkdirSync(join(fx.root, "proc"), { recursive: true });
+  return fx;
+}
+
+test("project_start, local-only: Adam's words verbatim in intake.md, a level-0 entry with repo null, and a run request", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  const answers = [{ question: "Who is it for?", answer: "Landscaping firms, maybe cities.\nYou decide." }, { question: "Money?", answer: "€500 to start" }];
+  const r = await call("project_start", { name: "street-trees", words: WORDS, answers });
+  assert.equal(r.status, "started");
+  assert.equal(r.repo, null);
+  assert.equal(r.local_only, true);
+  assert.equal(r.setup, "pending");
+  assert.match(r.to_github, /scripts\/github\/new-project-repo\.sh street-trees/);
+  const reg = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  assert.deepEqual(reg["street-trees"], {
+    repo: null, workDir: join(fx.root, "work", "street-trees"), branch: "jorah/line", stateDir: "project", level: 0, schedule: [],
+    limits: { runsPerDay: 3, minutesPerRun: 45, maxTurns: 200 }, web: false, bench: null, paused: false,
+  });
+  assert.ok(reg["tree-watering-robot"], "other entries kept");
+  assert.equal(statSync(fx.regFile).mode & 0o777, 0o600);
+  const sdir = join(fx.state, "street-trees");
+  const intake = readFileSync(join(sdir, "inbox", "intake.md"), "utf8");
+  assert.equal(intake, `# Founder input\n\nGiven: ${NOW.toISOString()}\nVia: telegram\n\n${WORDS}\n\n## Answers\n\n### Who is it for?\n\nLandscaping firms, maybe cities.\nYou decide.\n\n### Money?\n\n€500 to start\n`);
+  assert.equal(statSync(join(sdir, "inbox", "intake.md")).mode & 0o777, 0o600);
+  const reqs = readdirSync(join(sdir, "requests")).filter((n) => n.endsWith(".json"));
+  assert.equal(reqs.length, 1);
+  const req = JSON.parse(readFileSync(join(sdir, "requests", reqs[0]), "utf8"));
+  assert.equal(req.type, "run-now");
+  assert.equal(req.via, "telegram");
+  assert.ok(existsSync(join(fx.state, "requests.signal")));
+  // It shows as local-only with setup pending, and the digest line says so.
+  const st = await call("project_status", { project: "street-trees" });
+  assert.equal(st.local_only, true);
+  assert.equal(st.setup, "pending");
+  assert.equal(st.unpushed_commits.status, "local-only");
+  assert.equal(st.backlog.status, "unknown");
+  const d = await call("project_digest", { project: "street-trees" });
+  assert.equal(d.setup, "pending");
+  assert.match(d.line, /local only; setup pending/);
+  assert.equal(checkLine(d.line), null);
+  const list = await call("project_list");
+  assert.deepEqual(list.projects.find((p) => p.name === "street-trees").setup, "pending");
+  assert.equal(list.projects.find((p) => p.name === "tree-watering-robot").setup, "done");
+});
+
+test("project_start with one of Adam's repos: owner filled in, folder named after the repo; via voice and the app", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } };
+  const r = await call("project_start", { name: "robot-tour", repo: "robot_tour", words: "Finish the robot tour." }, VOICE);
+  assert.equal(r.status, "started");
+  assert.equal(r.repo, "AdamHikl/robot_tour");
+  assert.equal(r.to_github, undefined);
+  assert.equal(JSON.parse(readFileSync(fx.regFile, "utf8"))["robot-tour"].workDir, join(fx.root, "work", "robot_tour"));
+  assert.match(readFileSync(join(fx.state, "robot-tour", "inbox", "intake.md"), "utf8"), /\nVia: voice\n/);
+  const r2 = await call("project_start", { name: "site", repo: "https://github.com/adamhikl/site.git", words: "My site." }, { agentId: "main", sessionKey: "agent:main:main" });
+  assert.equal(r2.repo, "AdamHikl/site");
+  assert.match(readFileSync(join(fx.state, "site", "inbox", "intake.md"), "utf8"), /\nVia: app\n/);
+});
+
+test("project_start refuses: a bad or taken name, someone else's repo, a repo or folder in use, no words, leftover state, no registry", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  const no = async (params, re) => {
+    const r = await call("project_start", { words: WORDS, ...params });
+    assert.equal(r.status, "refused", JSON.stringify(params));
+    assert.match(r.reason, re);
+  };
+  await no({ name: "Street Trees" }, /e\.g\. street-trees/);
+  await no({ name: "../x" }, /lower-case/);
+  await no({ name: "tree-watering-robot" }, /already a project called tree-watering-robot/);
+  await no({ name: "fork", repo: "someone/tree" }, /isn't one of Adam's GitHub owners/);
+  await no({ name: "x2", repo: "AdamHikl/.." }, /owner\/name/);
+  await no({ name: "twr2", repo: "adamhikl/Tree-Watering-Robot" }, /already the project tree-watering-robot/);
+  await no({ name: "x3", words: "  " }, /Adam's own words/);
+  await no({ name: "x4", answers: [{ question: "Q?", answer: "" }] }, /needs both/);
+  await no({ name: "x5", answers: Array.from({ length: 6 }, () => ({ question: "q", answer: "a" })) }, /at most 5/);
+  mkdirSync(join(fx.root, "work", "taken"), { recursive: true });
+  await no({ name: "taken" }, /already exists/);
+  mkdirSync(join(fx.state, "old-one", "runs"), { recursive: true });
+  await no({ name: "old-one" }, /earlier project called old-one/);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(fx.regFile, "utf8"))).sort(), ["other-project", "tree-watering-robot"]);
+  execFileSync("rm", [fx.regFile]);
+  const r = await call("project_start", { name: "late", words: WORDS });
+  assert.equal(r.status, "unavailable");
+  assert.ok(!existsSync(join(fx.state, "late")));
+});
+
+test("project_connect: only a local-only project, only Adam's repo, only a repo no other project has", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  await call("project_start", { name: "street-trees", words: WORDS });
+  assert.match((await call("project_connect", { project: "tree-watering-robot", repo: "AdamHikl/x" })).reason, /already on GitHub as AdamHikl\/tree-watering-robot/);
+  assert.match((await call("project_connect", { project: "street-trees", repo: "evil/street-trees" })).reason, /isn't one of Adam's/);
+  assert.match((await call("project_connect", { project: "street-trees", repo: "AdamHikl/tree-watering-robot" })).reason, /already the project tree-watering-robot/);
+  const r = await call("project_connect", { project: "street-trees", repo: "street-trees" });
+  assert.equal(r.status, "connected");
+  assert.equal(r.repo, "AdamHikl/street-trees");
+  const reg = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  assert.equal(reg["street-trees"].repo, "AdamHikl/street-trees");
+  assert.equal(reg["street-trees"].workDir, join(fx.root, "work", "street-trees"));
+  const st = await call("project_status", { project: "street-trees" });
+  assert.equal(st.local_only, undefined);
+  assert.notEqual(st.unpushed_commits.status, "local-only");
+  assert.equal((await call("project_connect", { project: "street-trees", repo: "AdamHikl/other" })).status, "refused");
+});
+
+test("project_set_level: a schedule for level 1, no more times than runsPerDay, level 2 only from 1, and nothing else changes", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  await call("project_start", { name: "street-trees", words: WORDS });
+  const lv = (params) => call("project_set_level", { project: "street-trees", ...params });
+  assert.match((await lv({ level: 1 })).reason, /give the times/);
+  assert.match((await lv({ level: 0, schedule: ["10:30"] })).reason, /takes no schedule/);
+  assert.match((await lv({ level: 1, schedule: ["25:00"] })).reason, /times like 10:30/);
+  assert.match((await lv({ level: 1, schedule: ["02:30", "10:30", "16:30", "20:00"] })).reason, /runsPerDay is 3/);
+  assert.match((await lv({ level: 2, schedule: ["10:30"] })).reason, /only after level 1/);
+  assert.match((await lv({ level: 0 })).reason, /already at level 0/);
+  assert.match((await lv({ level: 3 })).reason, /0, 1 or 2/);
+  const before = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  const r = await lv({ level: 1, schedule: ["16:30", "10:30", "10:30"] });
+  assert.equal(r.status, "changed");
+  assert.deepEqual(r.before, { level: 0, schedule: [] });
+  assert.deepEqual(r.after, { level: 1, schedule: ["10:30", "16:30"] });
+  const after = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  assert.deepEqual({ ...after["street-trees"], level: 0, schedule: [] }, before["street-trees"]);
+  assert.deepEqual(after["tree-watering-robot"], before["tree-watering-robot"]);
+  assert.match((await lv({ level: 2 })).reason, /local-only/);
+  await call("project_connect", { project: "street-trees", repo: "street-trees" });
+  const two = await lv({ level: 2 });
+  assert.equal(two.status, "changed");
+  assert.match(two.note, /still asks/);
+  assert.equal((await lv({ level: 0 })).status, "changed");
+  assert.deepEqual(JSON.parse(readFileSync(fx.regFile, "utf8"))["street-trees"].schedule, ["10:30", "16:30"]);
+});
+
+test("project_digest charter: the charter's text after setup, none before, and setup done once it exists", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  writeFileSync(join(fx.work, "project", "CHARTER.md"), "# Charter\n\n## Mission\nWater young trees.\u0007\n\n\n\nNon-goals: none.\n");
+  const d = await call("project_digest", { project: "tree-watering-robot", charter: true });
+  assert.equal(d.charter.text, "# Charter\n\n## Mission\nWater young trees. \n\nNon-goals: none.".replace(" \n", "\n"));
+  assert.equal(d.setup, "done");
+  assert.equal((await call("project_digest", { project: "tree-watering-robot" })).charter, undefined);
+  await call("project_start", { name: "street-trees", words: WORDS });
+  assert.equal((await call("project_digest", { project: "street-trees", charter: true })).charter.status, "none yet");
+  mkdirSync(join(fx.root, "work", "street-trees", "project"), { recursive: true });
+  writeFileSync(join(fx.root, "work", "street-trees", "project", "CHARTER.md"), "# Draft\n");
+  assert.equal((await call("project_status", { project: "street-trees" })).setup, "done");
 });

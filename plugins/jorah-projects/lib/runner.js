@@ -10,9 +10,11 @@
 import { appendFileSync, chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { writeAtomic } from "./registry.js";
 
 export const OUTCOMES = ["ok", "skipped", "failed", "timeout", "usage-limit", "state-rejected", "secret-found", "error"];
 const PROBLEMS = new Set(["failed", "timeout", "state-rejected", "secret-found", "error"]);
+export const SETUP = ["pending", "running", "done"];
 const REQUEST_TYPES = ["run-now", "pause", "resume"];
 const RUN_LIMIT = 200;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -108,7 +110,7 @@ export function readRuns(dir, limit = RUN_LIMIT) {
 /** The runner's own state for a project: its pause (e.g. after a secret was found) and push block. */
 export function readState(dir) {
   const j = readJson(join(dir, "state.json"));
-  if (!j.ok) return j.missing ? { ok: true, paused: false, pausedReason: null, pushBlocked: false, pushBlockedReason: null, missing: true } : { ok: false, reason: "the runner's state.json can't be read" };
+  if (!j.ok) return j.missing ? { ok: true, paused: false, pausedReason: null, pushBlocked: false, pushBlockedReason: null, setup: null, missing: true } : { ok: false, reason: "the runner's state.json can't be read" };
   const s = j.value ?? {};
   return {
     ok: true,
@@ -117,6 +119,7 @@ export function readState(dir) {
     pausedAt: iso(s.pausedAt),
     pushBlocked: s.pushBlocked === true,
     pushBlockedReason: typeof s.pushBlockedReason === "string" ? s.pushBlockedReason : null,
+    setup: SETUP.includes(s.setup) ? s.setup : null,
   };
 }
 
@@ -137,13 +140,29 @@ export function readUsage(root) {
 }
 
 /** Is a run holding the lock? { held, since } or { held: null } when it can't be told. */
-export function readLock(dir) {
+export function readLock(dir, procRoot = "/proc") {
+  // The runner keeps the lock file and holds an flock on it during a tick, writing its pid when it
+  // takes it; the file stays after the tick. So a run is in progress only while that pid is a live
+  // jorah-projects process. Without /proc (not Linux) that can't be told: unknown.
+  const file = join(dir, "lock");
+  let text;
+  let st;
   try {
-    const st = statSync(join(dir, "lock"));
-    return { held: true, since: st.mtime.toISOString() };
+    st = statSync(file);
+    text = readFileSync(file, "utf8");
   } catch (e) {
     return e?.code === "ENOENT" ? { held: false } : { held: null };
   }
+  const pid = /^(\d{1,9})\s*$/.exec(text)?.[1];
+  if (!pid) return { held: false };
+  if (!existsSync(procRoot)) return { held: null };
+  let cmd;
+  try {
+    cmd = readFileSync(join(procRoot, pid, "cmdline"), "utf8");
+  } catch (e) {
+    return e?.code === "ENOENT" ? { held: false } : { held: null };
+  }
+  return /jorah[-_]projects/.test(cmd) ? { held: true, since: st.mtime.toISOString() } : { held: false };
 }
 
 /** Requests the runner hasn't taken yet (taken ones move to requests/done/). */
@@ -284,4 +303,23 @@ export function writeRequest(root, dir, record) {
   } catch {
     return false; // the request still runs at the runner's next 15-minute tick
   }
+}
+
+/** Adam's words for a new project's setup run: inbox/intake.md, whole, mode 600. */
+export function writeIntake(dir, text) {
+  writeAtomic(join(ensure(join(dir, "inbox")), "intake.md"), text);
+}
+
+/**
+ * Whether a project's first (setup) run has happened: the runner's state.json `setup`
+ * (contract jorah-project-v1, "Setup runs"), which a runner with setup runs always writes. Without
+ * it (a project from before setup runs): done once the charter exists, running while a run holds
+ * the lock, else pending.
+ */
+export function setupState(state, lock, charter) {
+  if (state.ok && state.setup) return state.setup;
+  if (charter === true) return "done";
+  if (lock.held === true) return "running";
+  if (charter === null) return "unknown";
+  return "pending";
 }

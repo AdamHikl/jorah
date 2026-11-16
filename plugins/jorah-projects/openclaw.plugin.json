@@ -1,7 +1,7 @@
 {
   "id": "jorah-projects",
   "name": "Jorah projects",
-  "description": "See and steer the projects Jorah's project runner works on (docs/plan/11-project-mode.md section 5): list, status, the founder digest, Adam's answers and task results (with photos he sent), run now, pause, resume and limits. Reads the registry, the runner's state and the project folder; writes only the runner's inbox and requests, and one project's limits. Starts no work itself.",
+  "description": "Start, see and steer the projects Jorah's project runner works on (docs/plan/11-project-mode.md sections 5 and 5.1): start a project from Adam's words (an existing repo or local-only), connect it to GitHub, list, status, the founder digest, Adam's answers and task results (with photos he sent), run now, pause, resume, limits and level. Reads the registry, the runner's state and the project folder; writes only the runner's inbox and requests, a new project's registry entry, and one project's limits, repo or level. Starts no work itself.",
   "categories": [
     "other"
   ],
@@ -15,7 +15,10 @@
       "project_run_now",
       "project_pause",
       "project_resume",
-      "project_set_limits"
+      "project_set_limits",
+      "project_start",
+      "project_connect",
+      "project_set_level"
     ]
   },
   "activation": {
@@ -35,7 +38,7 @@
       },
       "workRoot": {
         "type": "string",
-        "description": "Where project repos live when an entry has no workDir, /home/jorah/work"
+        "description": "Where project repos live (/home/jorah/work): a new project's folder is <workRoot>/<repo name, or project name when local-only>"
       },
       "guardStateDir": {
         "type": "string",
@@ -59,6 +62,21 @@
       "gitBin": {
         "type": "string",
         "description": "git, for counting commits not yet on GitHub"
+      },
+      "procRoot": {
+        "type": "string",
+        "description": "/proc, to tell whether the runner's lock is held by a live runner process"
+      },
+      "githubOwners": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "GitHub owners whose repos a project may use (default AdamHikl)"
+      },
+      "newRepoScript": {
+        "type": "string",
+        "description": "The Mac command Jorah names for putting a local-only project on GitHub"
       }
     }
   }

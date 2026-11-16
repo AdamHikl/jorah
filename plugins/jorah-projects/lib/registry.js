@@ -1,6 +1,8 @@
 // The project registry (docs/plan/11-project-mode.md section 3.4):
 // /home/jorah/.config/jorah-projects/projects.json, mode 600, one entry per project. The plugin
-// reads it whole and writes only one project's `limits` (project_set_limits, always a card).
+// reads it whole. It writes a new level-0 entry (project_start), and in one existing entry only
+// `limits` (project_set_limits), `repo` of a local-only project (project_connect) and `level` with
+// `schedule` (project_set_level). Every write re-reads the file and keeps everything else as it was.
 
 import { chmodSync, closeSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -11,6 +13,9 @@ export const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export const DEFAULT_LIMITS = Object.freeze({ runsPerDay: 3, minutesPerRun: 45, maxTurns: 200 });
 // What project_set_limits accepts. Wider needs a commit here and Adam's yes.
 export const LIMIT_RANGES = Object.freeze({ runsPerDay: [1, 6], minutesPerRun: [10, 120], maxTurns: [20, 400] });
+// owner/name on GitHub, as project-config.schema.json has it; a name of only dots is refused here.
+export const REPO = /^[A-Za-z0-9-]{1,39}\/(?!\.)[A-Za-z0-9._-]{1,100}$/;
+export const SCHEDULE_MAX = 8;
 const BRANCH = /^jorah\/(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._/-]{1,95}$/;
 const SLOT = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -36,6 +41,7 @@ export function normaliseEntry(name, raw, workRoot = "/home/jorah/work") {
   return {
     name,
     repo: typeof raw.repo === "string" ? raw.repo : null,
+    local_only: raw.repo === null,
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title.trim().slice(0, 60) : null,
     workDir,
     branch,
@@ -121,22 +127,75 @@ export function checkLimits(params = {}) {
   return changes;
 }
 
-/**
- * Change one project's limits in the registry, keeping every other field and project as it was.
- * Re-reads the file first, so a change the runner or the installer made meanwhile isn't lost.
- */
-export function setLimits(file, name, changes) {
+// The registry as raw JSON, for a write. Throws when it can't be read: nothing is written then.
+function readRaw(file) {
   let raw;
   try {
     raw = JSON.parse(readFileSync(file, "utf8"));
   } catch {
     throw new RegistryError("the project registry can't be read, so nothing was changed");
   }
-  if (!raw || typeof raw !== "object" || !raw[name] || typeof raw[name] !== "object") throw new RegistryError(`${name} isn't in the registry`);
-  const before = { ...DEFAULT_LIMITS, ...Object.fromEntries(Object.entries(raw[name].limits ?? {}).filter(([, v]) => Number.isInteger(v))) };
-  raw[name].limits = { ...(raw[name].limits ?? {}), ...changes };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RegistryError("the project registry isn't an object, so nothing was changed");
+  return raw;
+}
+
+/**
+ * Change one existing entry: `change(entry)` edits the raw entry in place (and may throw to refuse).
+ * Re-reads the file first, so a change the runner or the installer made meanwhile isn't lost.
+ */
+export function updateEntry(file, name, change) {
+  const raw = readRaw(file);
+  if (!raw[name] || typeof raw[name] !== "object") throw new RegistryError(`${name} isn't in the registry`);
+  const result = change(raw[name]);
   writeAtomic(file, `${JSON.stringify(raw, null, 2)}\n`);
-  return { before: pick(before), after: pick({ ...before, ...changes }) };
+  return result;
+}
+
+/** Change one project's limits. Returns { before, after }. */
+export function setLimits(file, name, changes) {
+  return updateEntry(file, name, (e) => {
+    const before = { ...DEFAULT_LIMITS, ...Object.fromEntries(Object.entries(e.limits ?? {}).filter(([, v]) => Number.isInteger(v))) };
+    e.limits = { ...(e.limits ?? {}), ...changes };
+    return { before: pick(before), after: pick({ ...before, ...changes }) };
+  });
 }
 
 const pick = (l) => ({ runsPerDay: l.runsPerDay, minutesPerRun: l.minutesPerRun, maxTurns: l.maxTurns });
+
+/**
+ * "owner/name" or a bare "name" (the first of Adam's GitHub owners) -> "owner/name", only for one of
+ * the owners Jorah may work for. Throws with what is wrong.
+ */
+export function repoOf(value, owners) {
+  const v = String(value ?? "").trim().replace(/^https:\/\/github\.com\//i, "").replace(/\.git$/, "").replace(/\/$/, "");
+  const full = v.includes("/") ? v : `${owners[0] ?? ""}/${v}`;
+  if (!REPO.test(full)) throw new RegistryError("repo must be owner/name on GitHub, e.g. AdamHikl/tree-watering-robot");
+  const [owner, name] = full.split("/");
+  const own = owners.find((o) => o.toLowerCase() === owner.toLowerCase());
+  if (!own) throw new RegistryError(`${owner} isn't one of Adam's GitHub owners (${owners.join(", ") || "none set"})`);
+  return `${own}/${name}`;
+}
+
+/** A level-0 entry with the contract's defaults: no schedule, runs only on request, no web, no bench. */
+export function newEntry({ repo, workDir }) {
+  return {
+    repo, workDir, branch: "jorah/line", stateDir: "project", level: 0, schedule: [],
+    limits: { ...DEFAULT_LIMITS }, web: false, bench: null, paused: false,
+  };
+}
+
+/**
+ * Add a project. Refuses a name, repo or work folder another entry already has (re-read just
+ * before the write). The registry must exist: the runner's installer creates it.
+ */
+export function addProject(file, name, entry) {
+  if (!NAME.test(name)) throw new RegistryError("the name must be lower-case letters, digits and dashes");
+  const raw = readRaw(file);
+  if (Object.prototype.hasOwnProperty.call(raw, name)) throw new RegistryError(`there's already a project called ${name}`);
+  for (const [other, e] of Object.entries(raw)) {
+    if (entry.repo && typeof e?.repo === "string" && e.repo.toLowerCase() === entry.repo.toLowerCase()) throw new RegistryError(`${entry.repo} is already the project ${other}`);
+    if (e?.workDir === entry.workDir) throw new RegistryError(`${entry.workDir} is already the project ${other}'s folder`);
+  }
+  raw[name] = entry;
+  writeAtomic(file, `${JSON.stringify(raw, null, 2)}\n`);
+}

@@ -1,7 +1,7 @@
 // Project mode, the founder loop (docs/plan/11-project-mode.md section 5): plugins/jorah-projects.
 // DRAFT: not applied. The install session (plan section 12, step 4) applies it on Adam's yes, after
 // the runner is installed (the registry and /home/jorah/.jorah-projects exist) and after jorah-guard
-// runs with a permission-matrix.json that has the project rules (grep '"project_set_limits"').
+// runs with a permission-matrix.json that has the project rules (grep '"project_set_level"').
 //
 // Also needed, not in this file:
 //   - plugins.allow: the LIVE list plus "jorah-projects" (read it with
@@ -37,6 +37,11 @@
           workspace: "/home/jorah/workspace",
           mediaRoots: ["/home/jorah/.openclaw-jorah/media/inbound", "/home/jorah/workspace/media/inbound"],
           gitBin: "/usr/bin/git",
+          procRoot: "/proc",
+          // Whose repos project_start and project_connect take (Adam's; the GitHub App's rulesets
+          // cover them). The Mac command Jorah names for putting a local-only project on GitHub.
+          githubOwners: ["AdamHikl"],
+          newRepoScript: "scripts/github/new-project-repo.sh",
         },
       },
     },

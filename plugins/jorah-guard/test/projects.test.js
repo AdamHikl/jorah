@@ -42,13 +42,13 @@ function fresh() {
 
 test("matrix: every jorah-projects tool has the class section 5 gives it", () => {
   const tools = JSON.parse(readFileSync(PROJECTS_MANIFEST, "utf8")).contracts.tools;
-  assert.equal(tools.length, 9);
+  assert.equal(tools.length, 12);
   for (const t of tools) assert.notEqual(classify(matrix, t), null, t);
   for (const t of ["project_list", "project_status", "project_pause"]) assert.equal(classify(matrix, t), "read", t);
   assert.equal(classify(matrix, "project_digest"), "taintRead");
-  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume"]) assert.equal(classify(matrix, t), "localWrite", t);
-  assert.equal(classify(matrix, "project_set_limits"), "confirmAlways");
-  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_set_limits"]) assert.ok(matrix.cardTitles[t], t);
+  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_start"]) assert.equal(classify(matrix, t), "localWrite", t);
+  for (const t of ["project_set_limits", "project_connect", "project_set_level"]) assert.equal(classify(matrix, t), "confirmAlways", t);
+  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_set_limits", "project_start", "project_connect", "project_set_level"]) assert.ok(matrix.cardTitles[t], t);
 });
 
 test("reads: list and status are free and leave the chat clean", () => {
@@ -150,4 +150,52 @@ test("PM-T7: after a project's digest, code can't be pushed to another repo from
   // Its own repo stays possible; jorah-github's card then asks Adam.
   assert.equal(run("github_push_branch", { project: P, branch: "jorah/line" }).verdict, "allow");
   assert.equal(run("github_push_branch", { project: "jorah", branch: "jorah/x" }).verdict, "block");
+});
+
+// Starting a project (section 5.1): Jorah sets projects up himself, from Adam's words.
+const START = { name: "street-trees", words: "A robot that waters young street trees.", answers: [{ question: "Money?", answer: "You decide" }] };
+
+test("project_start: free in Adam's clean typed chat", () => {
+  const { run } = fresh();
+  assert.equal(run("project_start", START).verdict, "allow");
+  assert.equal(run("project_start", { ...START, repo: "AdamHikl/street-trees" }).verdict, "allow");
+});
+
+test("PM-T4: after outside text, a start is a card with Adam's exact words; by voice too", () => {
+  const { run } = fresh();
+  run("web_fetch", { url: "https://forum.example/ideas" });
+  const d = run("project_start", START);
+  assert.equal(d.verdict, "confirm");
+  assert.equal(d.title, "Jorah wants to start a project from your words");
+  assert.ok(d.description.includes("words: A robot that waters young street trees."));
+  assert.ok(d.description.includes("name: street-trees"));
+  assert.ok(d.description.includes("You decide"));
+  assert.match(d.description, /outside text/);
+  const v = fresh().run("project_start", START, VOICE);
+  assert.equal(v.verdict, "confirm");
+  assert.match(v.description, /Asked by voice/);
+  assert.equal(run("project_start", START, DIGEST_JOB, "cron").verdict, "confirm");
+});
+
+test("connect and level are always a card, even in Adam's clean chat, with the exact repo and level", () => {
+  const { run } = fresh();
+  const c = run("project_connect", { project: "street-trees", repo: "AdamHikl/street-trees" });
+  assert.equal(c.verdict, "confirm");
+  assert.equal(c.title, "Jorah wants to connect a project to a GitHub repo");
+  assert.ok(c.description.includes("repo: AdamHikl/street-trees"));
+  const l = run("project_set_level", { project: P, level: 1, schedule: ["10:30", "16:30"] });
+  assert.equal(l.verdict, "confirm");
+  assert.equal(l.title, "Jorah wants to change a project's trust level");
+  assert.ok(l.description.includes("level: 1"));
+  assert.ok(l.description.includes('schedule: ["10:30","16:30"]'));
+});
+
+test("frozen: start, connect and level are blocked", () => {
+  const { run, state } = fresh();
+  state.freeze("test");
+  for (const [tool, params] of [["project_start", START], ["project_connect", { project: "street-trees", repo: "AdamHikl/street-trees" }], ["project_set_level", { project: P, level: 0 }]]) {
+    const d = run(tool, params);
+    assert.equal(d.verdict, "block", tool);
+    assert.match(d.reason, /frozen/);
+  }
 });

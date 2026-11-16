@@ -183,3 +183,29 @@ export function readProject(entry) {
   const dir = join(entry.workDir, entry.stateDir);
   return { dir, backlog: readBacklog(dir), questions: readQuestions(dir), tasks: readAdamTasks(dir) };
 }
+
+/** Whether the project folder has its charter: true, false, or null when that can't be told. */
+export function charterExists(dir) {
+  try {
+    return statSync(join(dir, "CHARTER.md")).isFile();
+  } catch (e) {
+    return e?.code === "ENOENT" || e?.code === "ENOTDIR" ? false : null;
+  }
+}
+
+/**
+ * The charter's text for Adam to read (the setup run drafts it, then it is Adam's): Markdown kept
+ * line by line, control characters removed, cut at maxChars.
+ */
+export function readCharter(dir, maxChars = 6000) {
+  let text;
+  try {
+    if (statSync(join(dir, "CHARTER.md")).size > MAX_BYTES) return { status: "unreadable", reason: "file is too big" };
+    text = readFileSync(join(dir, "CHARTER.md"), "utf8");
+  } catch (e) {
+    return e?.code === "ENOENT" || e?.code === "ENOTDIR" ? { status: "missing", reason: "no charter yet" } : { status: "unreadable", reason: "file can't be read" };
+  }
+  const lines = text.split(/\r?\n/).map((l) => l.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/gu, " ").trimEnd());
+  const body = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return body.length > maxChars ? { status: "ok", text: `${body.slice(0, maxChars - 1)}…`, truncated: true } : { status: "ok", text: body };
+}

@@ -5,9 +5,9 @@
 #   ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-projects.sh --dry-run
 #
 #   (no option)  Checks the parts, makes the runner's folders, writes runner.json (the GitHub App's
-#                id, read from the jorah-github plugin's config, and the owner), writes the
-#                registry from services/jorah-projects/projects.example.json if there is none
-#                (tree-watering-robot at level 0: runs only on "run now"), installs the three
+#                id, read from the jorah-github plugin's config, and the owner), writes an empty
+#                registry if there is none (Jorah adds projects himself with project_start, plan
+#                section 5.1; projects.example.json is only an example), installs the three
 #                units, enables the path unit, and enables the timer. The timer is a schedule, so
 #                this needs Adam's yes. Nothing runs until Adam asks for a run.
 #   --dry-run    Checks everything and prints what it would do. Writes nothing.
@@ -54,7 +54,7 @@ done
 
 # 2. What a run needs.
 need test -x "$CLAUDE"
-need test -x /usr/bin/node
+need test -x /usr/local/bin/node
 need test -x /usr/bin/git
 need test -x /usr/local/bin/gitleaks
 need runuser -u jorah -- /usr/bin/python3 -I -c 'import yaml, zoneinfo; zoneinfo.ZoneInfo("Europe/Bratislava")'
@@ -68,7 +68,7 @@ if [ "$fail" = 1 ]; then
   echo "Stopped: fix the lines above first. (PyYAML: apt install python3-yaml. Settings: setup-project-permissions.sh as jorah.)"
   exit 1
 fi
-say "Parts present: Claude Code $("$CLAUDE" --version 2>/dev/null | head -1), node $(/usr/bin/node --version), $(/usr/local/bin/gitleaks version 2>/dev/null | head -1 | sed 's/^/gitleaks /')."
+say "Parts present: Claude Code $("$CLAUDE" --version 2>/dev/null | head -1), node $(/usr/local/bin/node --version), $(/usr/local/bin/gitleaks version 2>/dev/null | head -1 | sed 's/^/gitleaks /')."
 
 # 3. The App id from the plugin's config (not a secret), and the owner.
 APP_ID="$("${OC[@]}" config get plugins.entries.jorah-github.config.appId 2>/dev/null | tr -d '"[:space:]' || true)"
@@ -91,13 +91,11 @@ fi
 if [ -f "$REGISTRY" ]; then
   say "Registry kept as it is: $REGISTRY"
 elif [ "$DRY" = 1 ]; then
-  say "would write $REGISTRY (mode 600) from projects.example.json:"; cat "$SRC/services/jorah-projects/projects.example.json"
+  say "would write an empty registry $REGISTRY (mode 600): Jorah adds projects with project_start"
 else
-  install -o jorah -g jorah -m 600 "$SRC/services/jorah-projects/projects.example.json" "$REGISTRY"
-  say "Registry written: tree-watering-robot at level 0 (runs only on run-now)."
-fi
-if [ ! -d "$JH/work/tree-watering-robot/.git" ]; then
-  say "Note: $JH/work/tree-watering-robot isn't cloned yet. Ask Jorah to clone tree-watering-robot (github_clone) before the first run."
+  # shellcheck disable=SC2016 # $1 expands in the inner shell, on purpose
+  runuser -u jorah -- /bin/sh -c 'umask 077; printf "{}\n" > "$1"' sh "$REGISTRY"
+  say "Registry written, empty: Jorah adds projects with project_start (plan 11, section 5.1)."
 fi
 
 # 5. The runner's own check of the registry and schemas, read only.
@@ -126,5 +124,5 @@ systemctl daemon-reload
 systemd-analyze verify /etc/systemd/system/jorah-projects.service /etc/systemd/system/jorah-projects.timer /etc/systemd/system/jorah-projects.path
 systemctl enable --now jorah-projects.path jorah-projects.timer
 systemctl --no-pager list-timers jorah-projects.timer | head -3
-say "Installed. Nothing runs until Adam asks: level 0 runs only on a run-now request."
+say "Installed. No project yet: Adam starts one in chat, and level 0 runs only on a run-now request."
 say "Undo: bash $SRC/scripts/pc/install-projects.sh --undo"

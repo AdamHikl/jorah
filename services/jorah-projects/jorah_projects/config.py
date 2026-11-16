@@ -55,7 +55,7 @@ class Settings:
     templates: Path = REPO_ROOT / "templates/project"  # copied into a new project's folder by its setup run
     gitleaks_bin: str = "/usr/local/bin/gitleaks"
     gitleaks_config: Path = Path(__file__).resolve().parents[1] / "gitleaks.toml"
-    sync_cmd: list = field(default_factory=lambda: ["/usr/bin/node", str(REPO_ROOT / "plugins/jorah-github/bin/jorah-github-sync.mjs")])
+    sync_cmd: list = field(default_factory=lambda: ["/usr/local/bin/node", str(REPO_ROOT / "plugins/jorah-github/bin/jorah-github-sync.mjs")])
     git_bin: str = "/usr/bin/git"
     timezone: str = "Europe/Bratislava"
     github_app_id: str = ""

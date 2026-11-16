@@ -1,0 +1,57 @@
+# Jorah's project runner (docs/plan/11-project-mode.md, section 4): one tick runs whatever is due,
+# a scheduled slot or a run-now request, for each project in the registry, one at a time. Started
+# by jorah-projects.timer every 15 minutes and by jorah-projects.path when the plugin asks for a
+# run. Installed by scripts/pc/install-projects.sh on Adam's yes.
+#
+# Claude Code runs inside its own bubblewrap sandbox (project-settings.json, failing closed). This
+# unit is the outer wall: the code is read-only, the home folder is an empty tmpfs except the
+# folders a run needs, and Windows (/run/WSL) is out of reach.
+[Unit]
+Description=Jorah: project runner (one tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jorah
+Group=jorah
+UMask=0077
+WorkingDirectory=/home/jorah
+Environment=HOME=/home/jorah
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-projects/bin/jorah-projects tick
+# A tick runs projects one after another; each run stops itself at its minutesPerRun.
+TimeoutStartSec=5h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryHigh=6G
+MemoryMax=8G
+TasksMax=4096
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+# Read and write: the work folders, the runner's state, Claude Code's login and scratch, the
+# jorah-github mirrors (the sync CLI writes them).
+BindPaths=/home/jorah/work /home/jorah/.jorah-projects /home/jorah/.claude-jorah /home/jorah/sandbox /home/jorah/.jorah-github
+# Read only: the registry and runner.json, the guard's freeze flag, the App's key for the
+# read-only sync token.
+BindReadOnlyPaths=/home/jorah/.config/jorah-projects /home/jorah/.jorah-guard /home/jorah/.config/jorah-github
+InaccessiblePaths=/run/WSL
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# bubblewrap needs user and mount namespaces and netlink (no RestrictNamespaces, no
+# PrivateDevices: S1 and S3 in the plan are measured at install).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=

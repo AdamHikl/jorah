@@ -1,0 +1,12 @@
+# "Run the robot project now": the plugin jorah-projects writes a request into the project's
+# requests/ folder and touches this one file, which starts a tick within seconds. (A path unit
+# can't watch every project's folder, so the plugin signals here.)
+[Unit]
+Description=Jorah: start the project runner when a request arrives
+
+[Path]
+PathChanged=/home/jorah/.jorah-projects/requests.signal
+Unit=jorah-projects.service
+
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,14 @@
+# The runner's own gitleaks config. Passed with --config, so a project's .gitleaks.toml (which a
+# run could write) is never used. Same rules as this repo's .gitleaks.toml.
+title = "jorah-projects runner"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "elevenlabs-api-key"
+regex = '''\bsk_[a-f0-9]{48}\b'''
+
+[[rules]]
+id = "tailscale-key"
+regex = '''\btskey-[a-z]+-[A-Za-z0-9-]{10,}\b'''

@@ -1,0 +1,14 @@
+# Every 15 minutes the runner looks for a due slot (schedule in the registry, level 1 and up) or a
+# waiting run-now request. Most ticks find nothing and exit in well under a second. A schedule:
+# enabled only on Adam's yes (scripts/pc/install-projects.sh).
+[Unit]
+Description=Jorah: project runner, every 15 minutes
+
+[Timer]
+OnCalendar=*:00/15
+RandomizedDelaySec=30s
+Persistent=false
+Unit=jorah-projects.service
+
+[Install]
+WantedBy=timers.target

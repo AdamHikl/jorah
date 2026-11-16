@@ -1,0 +1,14 @@
+{
+  "tree-watering-robot": {
+    "repo": "AdamHikl/tree-watering-robot",
+    "workDir": "/home/jorah/work/tree-watering-robot",
+    "branch": "jorah/line",
+    "stateDir": "project",
+    "level": 0,
+    "schedule": ["02:30", "10:30", "16:30"],
+    "limits": { "runsPerDay": 3, "minutesPerRun": 45, "maxTurns": 200 },
+    "web": true,
+    "bench": "robotics",
+    "paused": false
+  }
+}

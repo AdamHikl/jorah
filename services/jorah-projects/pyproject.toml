@@ -1,0 +1,18 @@
+[project]
+name = "jorah-projects"
+version = "0.1.0"
+description = "Jorah's project runner: Claude Code headless on a project's backlog, on a schedule"
+requires-python = ">=3.12"
+# The PC runs it with the system python3 -I and Ubuntu's python3-yaml (6.0.1, noble), checked by
+# scripts/pc/install-projects.sh. This pin is for a uv environment (released 2024-08-06).
+dependencies = ["pyyaml==6.0.2"]
+
+[project.scripts]
+jorah-projects = "jorah_projects.cli:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["jorah_projects"]

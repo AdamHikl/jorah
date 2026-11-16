@@ -27,6 +27,7 @@ supply-chain:
 unit:
     python3 -m unittest discover -s services/jorah-voice/tests
     python3 -m unittest discover -s services/jorah-phone/tests
+    python3 -m unittest discover -s services/jorah-projects/tests
     python3 -m unittest discover -s services/ios-runner/tests
     python3 -m unittest discover -s scripts/mac/tests
     python3 -m unittest discover -s packages/contracts/project/tests

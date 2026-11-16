@@ -317,6 +317,9 @@ export function writeIntake(dir, text) {
  * the lock, else pending.
  */
 export function setupState(state, lock, charter) {
+  // A crashed setup run can leave "running" behind; the runner treats that as pending, so it shows
+  // as running only while a live runner holds the lock (unknown when that can't be told).
+  if (state.ok && state.setup === "running") return lock.held === true ? "running" : lock.held === false ? "pending" : "unknown";
   if (state.ok && state.setup) return state.setup;
   if (charter === true) return "done";
   if (lock.held === true) return "running";

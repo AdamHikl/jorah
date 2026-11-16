@@ -685,3 +685,21 @@ test("project_digest charter: the charter's text after setup, none before, and s
   writeFileSync(join(fx.root, "work", "street-trees", "project", "CHARTER.md"), "# Draft\n");
   assert.equal((await call("project_status", { project: "street-trees" })).setup, "done");
 });
+
+test("setup from the runner's state.json: running only while a live runner holds the lock", async () => {
+  const fx = startFixture();
+  const { call } = load(fx);
+  await call("project_start", { name: "street-trees", words: WORDS });
+  const sdir = join(fx.state, "street-trees");
+  const setup = async () => (await call("project_status", { project: "street-trees" })).setup;
+  writeFileSync(join(sdir, "state.json"), JSON.stringify({ v: 1, setup: "running" }));
+  assert.equal(await setup(), "pending"); // left behind by a crash: no lock
+  mkdirSync(join(fx.root, "proc", "4244"), { recursive: true });
+  writeFileSync(join(fx.root, "proc", "4244", "cmdline"), "python3\0-m\0jorah_projects\0tick\0");
+  writeFileSync(join(sdir, "lock"), "4244\n");
+  assert.equal(await setup(), "running");
+  writeFileSync(join(sdir, "state.json"), JSON.stringify({ v: 1, setup: "done" }));
+  assert.equal(await setup(), "done");
+  writeFileSync(join(sdir, "state.json"), JSON.stringify({ v: 1, setup: "pending" }));
+  assert.equal(await setup(), "pending");
+});

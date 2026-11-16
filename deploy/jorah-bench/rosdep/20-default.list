@@ -1,0 +1,6 @@
+# rosdep sources for Jorah's robotics bench, pinned to the ros/rosdistro tag that matches the ROS
+# snapshot in ../versions.env (jazzy/2026-10-05). Same entries as `rosdep init` writes, except the
+# fixed tag instead of master. Used through ROSDEP_SOURCE_PATH=/opt/jorah-bench/rosdep.
+yaml https://raw.githubusercontent.com/ros/rosdistro/jazzy/2026-10-05/rosdep/base.yaml
+yaml https://raw.githubusercontent.com/ros/rosdistro/jazzy/2026-10-05/rosdep/python.yaml
+yaml https://raw.githubusercontent.com/ros/rosdistro/jazzy/2026-10-05/rosdep/ruby.yaml

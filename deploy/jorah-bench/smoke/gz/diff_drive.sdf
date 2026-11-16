@@ -1,0 +1,119 @@
+<?xml version="1.0"?>
+<!--
+  Jorah's robotics bench smoke test: a differential-drive robot on a plane, for Gazebo Harmonic
+  (gz-sim 8) server-only. No sensors, no rendering, so it needs no GPU or display.
+
+  It drives without any message from outside: both wheel joints start at 2 rad/s through
+  JointController's <initial_velocity>, so the run doesn't depend on gz-transport discovery
+  (spike S3 measures that separately). Wheel radius 0.1 m, so about 0.2 m/s straight along +x,
+  roughly 12 m in 60 simulated seconds.
+
+  OdometryPublisher publishes the model's true pose on /model/bench_bot/odometry twice per
+  simulated second; bench-smoke.sh reads it when gz-transport works and says "unknown" when not.
+-->
+<sdf version="1.9">
+  <world name="bench">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <!-- 0: run as fast as the CPU allows -->
+      <real_time_factor>0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+
+    <model name="ground">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="bench_bot">
+      <pose>0 0 0 0 0 0</pose>
+
+      <link name="chassis">
+        <pose>0 0 0.15 0 0 0</pose>
+        <inertial>
+          <mass>2.0</mass>
+          <inertia>
+            <ixx>0.0167</ixx><iyy>0.0283</iyy><izz>0.0417</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="body">
+          <geometry><box><size>0.4 0.3 0.1</size></box></geometry>
+        </collision>
+        <!-- Front caster: a frictionless sphere touching the ground. -->
+        <collision name="caster">
+          <pose>0.15 0 -0.10 0 0 0</pose>
+          <geometry><sphere><radius>0.05</radius></sphere></geometry>
+          <surface>
+            <friction><ode><mu>0</mu><mu2>0</mu2></ode></friction>
+          </surface>
+        </collision>
+      </link>
+
+      <link name="left_wheel">
+        <pose>-0.05 0.18 0.1 0 0 0</pose>
+        <inertial>
+          <mass>0.5</mass>
+          <inertia>
+            <ixx>0.00132</ixx><iyy>0.0025</iyy><izz>0.00132</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="tyre">
+          <pose>0 0 0 1.5707963 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.04</length></cylinder></geometry>
+        </collision>
+      </link>
+
+      <link name="right_wheel">
+        <pose>-0.05 -0.18 0.1 0 0 0</pose>
+        <inertial>
+          <mass>0.5</mass>
+          <inertia>
+            <ixx>0.00132</ixx><iyy>0.0025</iyy><izz>0.00132</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="tyre">
+          <pose>0 0 0 1.5707963 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.04</length></cylinder></geometry>
+        </collision>
+      </link>
+
+      <!-- Axes along +y in the wheel's own frame: a positive speed rolls the robot along +x. -->
+      <joint name="left_wheel_joint" type="continuous">
+        <parent>chassis</parent>
+        <child>left_wheel</child>
+        <axis><xyz>0 1 0</xyz></axis>
+      </joint>
+      <joint name="right_wheel_joint" type="continuous">
+        <parent>chassis</parent>
+        <child>right_wheel</child>
+        <axis><xyz>0 1 0</xyz></axis>
+      </joint>
+
+      <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+        <joint_name>left_wheel_joint</joint_name>
+        <joint_name>right_wheel_joint</joint_name>
+        <initial_velocity>2.0</initial_velocity>
+      </plugin>
+
+      <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>odom</odom_frame>
+        <robot_base_frame>bench_bot</robot_base_frame>
+        <odom_publish_frequency>2</odom_publish_frequency>
+        <dimensions>2</dimensions>
+      </plugin>
+    </model>
+  </world>
+</sdf>

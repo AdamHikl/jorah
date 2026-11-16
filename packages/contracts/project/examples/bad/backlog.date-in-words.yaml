@@ -1,0 +1,10 @@
+version: 1
+items:
+  - id: T-0001
+    title: A task
+    track: eng
+    status: ready
+    priority: 2
+    acceptance: Something checkable
+    created: yesterday
+    updated: 2026-11-16

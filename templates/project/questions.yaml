@@ -1,0 +1,21 @@
+# Founder questions, contract jorah-project-v1 (packages/contracts/project/questions.schema.json).
+# Jorah asks; only Adam answers. A run never writes answer: the runner writes it from Adam's words
+# in its inbox, or from default_if_silent at decide_by, and reverts any other change to it.
+# Every question:
+#   id: Q-0001                Q- and 4 digits, never reused
+#   asked: 2026-11-16
+#   question: ...
+#   why_it_matters: ...
+#   options:                  2 to 6, keys A to F
+#     - key: A
+#       text: ...
+#       consequence: ...
+#   recommendation: A         Jorah's pick, or null when it's purely Adam's call
+#   default_if_silent: null   a key applied at decide_by, or null to wait. Always null for money,
+#                             direction, safety, the law or anything public
+#   decide_by: 2026-11-20     or null; required when there is a default
+#   status: open              open | answered | defaulted | withdrawn
+#   answer: null              { key, note, by: adam|default, via, at }, runner only
+# Text with ", " or ": " inside [ ] or { } must be quoted. Block style avoids that.
+version: 1
+questions: []

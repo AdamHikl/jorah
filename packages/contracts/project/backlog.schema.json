@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-project/backlog/v1",
+  "title": "project/backlog.yaml: every task of a project, written by Jorah's runs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "items"],
+  "properties": {
+    "version": { "const": 1 },
+    "items": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "track", "status", "priority", "acceptance", "created", "updated"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^T-[0-9]{4}$", "description": "T- and 4 digits, never reused" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "track": { "enum": ["eng", "biz", "research", "ops", "adam"] },
+          "status": { "enum": ["ready", "doing", "blocked", "done", "dropped"] },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 5, "description": "1 is the highest" },
+          "depends_on": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^T-[0-9]{4}$" },
+            "description": "Other backlog items that must be done first. Empty when left out"
+          },
+          "blocked_on": {
+            "type": ["string", "null"],
+            "pattern": "^(Q|A)-[0-9]{4}$",
+            "description": "A founder question or an Adam task this item waits for, or null. Null when left out"
+          },
+          "adam_task": {
+            "type": "string",
+            "pattern": "^A-[0-9]{4}$",
+            "description": "Only on track adam: the adam-tasks.yaml entry this item mirrors"
+          },
+          "acceptance": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "What done means, checkably" },
+          "evidence": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "description": "Repo paths, commit SHAs or URLs, filled when done. Empty when left out"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Free text; required (non-empty) when status is dropped, as the reason"
+          },
+          "created": { "type": "string", "format": "date" },
+          "updated": { "type": "string", "format": "date" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+# Example for jorah-project-v1. Matches docs/plan/11-project-mode.md section 3.2.
+version: 1
+questions:
+  - id: Q-0001
+    asked: 2026-11-16
+    question: Who is the first customer?
+    why_it_matters: Sets the robot's size, price target and who we interview first
+    options:
+      - { key: A, text: Private garden owners, consequence: "Small robot, low price, many sales" }
+      - { key: B, text: Landscaping firms, consequence: "Fewer buyers, pay for saved labour" }
+      - { key: C, text: City tree departments, consequence: "Slow tenders, large fleets" }
+    recommendation: B
+    default_if_silent: null   # a key, or null to wait
+    decide_by: 2026-11-20
+    status: open              # open | answered | defaulted | withdrawn
+    answer: null              # { key, note, by: adam, via: telegram, at } written only by the runner
+  - id: Q-0003
+    asked: 2026-11-16
+    question: How many hours a week for hands-on tasks, and which days?
+    why_it_matters: Sets how many Adam tasks a week the backlog plans for
+    options:
+      - { key: A, text: "Weekends, 2 hours", consequence: About two measurement or build tasks a week }
+      - { key: B, text: "Weekends, 5 hours", consequence: The drive base can be built this winter }
+    recommendation: A
+    default_if_silent: A
+    decide_by: 2026-11-23
+    status: answered
+    answer: { key: B, note: Saturdays only, by: adam, via: telegram, at: "2026-11-17T19:02:00+01:00" }
+  - id: Q-0004
+    asked: 2026-11-16
+    question: Open source or closed?
+    why_it_matters: Decides whether the repo can go public and what outreach can show
+    options:
+      - { key: A, text: "Closed, repo private", consequence: Nothing public until decided again }
+      - { key: B, text: Open source, consequence: "Repo can go public; outreach can link it" }
+    recommendation: A
+    default_if_silent: A
+    decide_by: 2026-11-19
+    status: defaulted
+    answer: { key: A, note: null, by: default, via: default, at: "2026-11-19T18:00:00+01:00" }

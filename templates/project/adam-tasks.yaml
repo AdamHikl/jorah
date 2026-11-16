@@ -1,0 +1,18 @@
+# Tasks for Adam's hands, contract jorah-project-v1 (packages/contracts/project/adam-tasks.schema.json).
+# Physical, money and account tasks. Jorah writes them; Adam reports back through Jorah; only the
+# runner writes result, and it reverts any other change to it. Mirror each task in backlog.yaml as
+# an item with track: adam and adam_task: A-xxxx.
+# Every task:
+#   id: A-0001          A- and 4 digits, never reused
+#   title: ...
+#   why: ...            what it decides or unblocks
+#   when: ...           when and how long, in words: "Any day, 10 minutes"
+#   steps:              exact steps, safety first where it matters
+#     - ...
+#   materials: []       optional
+#   send_back: ...      what Adam sends: numbers, a photo, a yes
+#   status: open        open | done | skipped
+#   result: null        { text, files: [field-data/A-0001-1.jpg], at }, runner only
+# Text with ", " or ": " inside [ ] or { } must be quoted. Block style avoids that.
+version: 1
+tasks: []

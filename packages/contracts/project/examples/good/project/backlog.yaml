@@ -1,0 +1,53 @@
+# Example for jorah-project-v1. Matches docs/plan/11-project-mode.md section 3.1.
+version: 1
+items:
+  - id: T-0001                # T- and 4 digits, never reused
+    title: Size the drive motors for 250 kg on a 10% slope
+    track: eng                # eng | biz | research | ops | adam
+    status: ready             # ready | doing | blocked | done | dropped
+    priority: 2               # 1 (highest) to 5
+    depends_on: [T-0003]
+    blocked_on: null          # Q-xxxx, A-xxxx, or null
+    acceptance: Torque and power per wheel with the inputs listed, two motor candidates with prices
+    evidence: []              # paths, commit SHAs or URLs, filled when done
+    created: 2026-11-16
+    updated: 2026-11-16
+  - id: T-0002
+    title: Interview guide in Slovak
+    track: biz
+    status: blocked
+    priority: 2
+    blocked_on: Q-0001
+    acceptance: The guide from docs/concept.md in Slovak, with the segment-specific questions for the first customer
+    created: 2026-11-16
+    updated: 2026-11-17
+  - id: T-0003
+    title: Rolling resistance and slope loads for the loaded robot
+    track: research
+    status: done
+    priority: 1
+    acceptance: Rolling resistance on grass with sources, and the force per wheel on 10% and 15% slopes
+    evidence:
+      - project/research/2026-11-16-rolling-resistance.md
+      - 3f2a9c1
+    created: 2026-11-16
+    updated: 2026-11-16
+  - id: T-0004
+    title: Tap flow at the dock
+    track: adam
+    status: done
+    priority: 1
+    adam_task: A-0001
+    acceptance: Three timed 10 L fills and a photo, in field-data
+    evidence: [project/field-data/A-0001-1.jpg]
+    created: 2026-11-16
+    updated: 2026-11-18
+  - id: T-0005
+    title: Hose-reel concept study
+    track: research
+    status: dropped
+    priority: 5
+    acceptance: Pros and cons of a hose-dragging robot
+    note: Rejected in the concept document (option B); not worth a run
+    created: 2026-11-16
+    updated: 2026-11-16

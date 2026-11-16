@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-project/questions/v1",
+  "title": "project/questions.yaml: founder questions. Jorah asks; only Adam answers, and only the runner writes answer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "questions"],
+  "properties": {
+    "version": { "const": 1 },
+    "questions": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "asked", "question", "why_it_matters", "options", "recommendation", "default_if_silent", "decide_by", "status", "answer"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^Q-[0-9]{4}$", "description": "Q- and 4 digits, never reused" },
+          "asked": { "type": "string", "format": "date" },
+          "question": { "type": "string", "minLength": 1, "maxLength": 400 },
+          "why_it_matters": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "text", "consequence"],
+              "properties": {
+                "key": { "type": "string", "pattern": "^[A-F]$" },
+                "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "consequence": { "type": "string", "minLength": 1, "maxLength": 300 }
+              }
+            }
+          },
+          "recommendation": {
+            "type": ["string", "null"],
+            "pattern": "^[A-F]$",
+            "description": "Jorah's pick, one of the option keys, or null when it is purely Adam's call"
+          },
+          "default_if_silent": {
+            "type": ["string", "null"],
+            "pattern": "^[A-F]$",
+            "description": "An option key applied at decide_by if Adam hasn't answered, or null to wait. Null for anything about money, direction, safety, the law or anything public"
+          },
+          "decide_by": { "type": ["string", "null"], "format": "date", "description": "Required (not null) when there is a default" },
+          "status": { "enum": ["open", "answered", "defaulted", "withdrawn"] },
+          "answer": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["key", "note", "by", "via", "at"],
+            "description": "Written only by the runner, from Adam's words in the inbox or from the default at decide_by",
+            "properties": {
+              "key": { "type": ["string", "null"], "pattern": "^[A-F]$" },
+              "note": { "type": ["string", "null"], "maxLength": 2000 },
+              "by": { "enum": ["adam", "default"] },
+              "via": { "enum": ["telegram", "voice", "phone", "chat", "default"] },
+              "at": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

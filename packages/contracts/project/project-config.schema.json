@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jorah-project/project-config/v1",
+  "title": "One project's entry in the runner's registry, /home/jorah/.config/jorah-projects/projects.json, keyed by the project's name",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "repo",
+    "workDir",
+    "branch",
+    "level",
+    "schedule",
+    "limits",
+    "paused"
+  ],
+  "properties": {
+    "repo": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$",
+      "description": "owner/name on GitHub"
+    },
+    "workDir": {
+      "type": "string",
+      "maxLength": 300,
+      "pattern": "^(?!.*//)(?!.*(^|/)\\.\\.?(/|$))/[A-Za-z0-9._/-]+$",
+      "description": "Absolute path of the working clone, with no . or .. parts. The runner also checks it is under its work root"
+    },
+    "branch": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^jorah/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "description": "The work line; always under jorah/, the only branches the GitHub App may write"
+    },
+    "stateDir": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^(?!\\.git(/|$))(?!.*(^|/)\\.\\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "description": "The project folder, relative to the repo root, never inside .git. project when left out"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2,
+      "description": "Trust level: 0 supervised, 1 scheduled, 2 standing grant (plan section 6)"
+    },
+    "schedule": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+      },
+      "description": "Times of day, in the PC's local time zone, when a run is due. Empty means run-now requests only"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runsPerDay",
+        "minutesPerRun",
+        "maxTurns"
+      ],
+      "properties": {
+        "runsPerDay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "minutesPerRun": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120
+        },
+        "maxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "web": {
+      "type": "boolean",
+      "description": "WebSearch and WebFetch in runs. false when left out"
+    },
+    "bench": {
+      "enum": [
+        "robotics",
+        null
+      ],
+      "description": "The bench environment for runs, or null. null when left out"
+    },
+    "paused": {
+      "type": "boolean"
+    }
+  }
+}

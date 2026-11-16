@@ -1,0 +1,11 @@
+version: 1
+items:
+  - id: T-0001
+    title: A task
+    track: eng
+    status: blocked
+    priority: 2
+    acceptance: Something checkable
+    created: 2026-11-16
+    updated: 2026-11-16
+    blocked_on: T-0002

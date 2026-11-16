@@ -85,15 +85,17 @@ items:
     track: eng                # eng | biz | research | ops | adam
     status: ready             # ready | doing | blocked | done | dropped
     priority: 2               # 1 (highest) to 5
-    depends_on: [T-0003]
-    blocked_on: null          # Q-xxxx, A-xxxx, or null
+    depends_on: [T-0003]      # optional, [] when left out
+    blocked_on: null          # optional: Q-xxxx, A-xxxx, or null
     acceptance: Torque and power per wheel with the inputs listed, two motor candidates with prices
-    evidence: []              # paths, commit SHAs or URLs, filled when done
+    evidence: []              # optional: paths, commit SHAs or URLs; required when done
+    # note: ...               # optional text; required when dropped (the reason)
+    # adam_task: A-0001       # only on track adam, which requires it: the task it mirrors
     created: 2026-11-16
     updated: 2026-11-16
 ```
 
-`track: adam` items are mirrors of `adam-tasks.yaml` entries, so the backlog shows everything in one list.
+`track: adam` items are mirrors of `adam-tasks.yaml` entries, linked by `adam_task`, so the backlog shows everything in one list.
 
 ### 3.2 `questions.yaml`
 
@@ -105,15 +107,17 @@ questions:
     question: Who is the first customer?
     why_it_matters: Sets the robot's size, price target and who we interview first
     options:
-      - { key: A, text: Private garden owners, consequence: Small robot, low price, many sales }
-      - { key: B, text: Landscaping firms, consequence: Fewer buyers, pay for saved labour }
-      - { key: C, text: City tree departments, consequence: Slow tenders, large fleets }
+      - { key: A, text: Private garden owners, consequence: "Small robot, low price, many sales" }
+      - { key: B, text: Landscaping firms, consequence: "Fewer buyers, pay for saved labour" }
+      - { key: C, text: City tree departments, consequence: "Slow tenders, large fleets" }
     recommendation: B
     default_if_silent: null   # a key, or null to wait
     decide_by: 2026-11-20
     status: open              # open | answered | defaulted | withdrawn
-    answer: null              # { key, note, by: adam, via: telegram, at } written only by the runner
+    answer: null              # { key, note, by: adam|default, via: telegram|voice|phone|chat|default, at } written only by the runner
 ```
+
+In flow style (`{ }`, `[ ]`), text with a comma must be quoted, or the comma ends the value; the first draft of this example had that bug, which the contract's checker catches.
 
 **Defaults** apply only to cheap, reversible choices. Anything about money, direction, safety, the law or anything public has `default_if_silent: null` and waits.
 
@@ -136,6 +140,7 @@ tasks:
 ### 3.4 Schemas and the registry
 
 - **Schemas:** `packages/contracts/project/{backlog,questions,adam-tasks,project-config}.schema.json`, described in `docs/contracts/jorah-project-v1.md`. The runner refuses a run's state changes that don't validate.
+- **Checker:** `packages/contracts/project/projectcheck.py` (Python 3 and PyYAML) checks a whole project folder: the schemas, plus the rules a schema can't say (ids unique, links between files exist, no dependency cycles, done needs evidence, dropped needs a reason, answer and result consistent with status, field-data files exist). `check_project(dir)` returns the problems, `founder_fields()` gives the runner the fields only it may write. Dates stay text, and duplicate keys and YAML anchors are refused.
 - **Registry on the PC:** `/home/jorah/.config/jorah-projects/projects.json` (mode 600), one entry per project:
 
 ```json

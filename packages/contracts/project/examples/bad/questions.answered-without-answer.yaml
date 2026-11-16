@@ -1,0 +1,14 @@
+version: 1
+questions:
+  - id: Q-0001
+    asked: 2026-11-16
+    question: Who is the first customer?
+    why_it_matters: Sets the robot's size
+    options:
+      - { key: A, text: Garden owners, consequence: Small robot }
+      - { key: B, text: Landscaping firms, consequence: Pay for saved labour }
+    recommendation: B
+    default_if_silent: null
+    decide_by: 2026-11-20
+    status: answered
+    answer: null

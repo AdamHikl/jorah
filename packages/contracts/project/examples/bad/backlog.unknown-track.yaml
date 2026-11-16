@@ -1,0 +1,10 @@
+version: 1
+items:
+  - id: T-0001
+    title: A task
+    track: hardware
+    status: ready
+    priority: 2
+    acceptance: Something checkable
+    created: 2026-11-16
+    updated: 2026-11-16

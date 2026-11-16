@@ -1,0 +1,9 @@
+version: 1
+tasks:
+  - id: A-0001
+    title: Time the tap's flow
+    why: Sets the dock's fill time
+    when: Any day, 10 minutes
+    steps: [Fill a 10 L bucket, Time it, Repeat twice]
+    status: open
+    result: null

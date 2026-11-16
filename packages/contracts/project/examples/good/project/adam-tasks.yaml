@@ -1,0 +1,23 @@
+# Example for jorah-project-v1. Matches docs/plan/11-project-mode.md section 3.3.
+version: 1
+tasks:
+  - id: A-0001
+    title: Time the tap's flow
+    why: Sets the dock's fill time and whether a buffer tank is needed
+    when: Any day, 10 minutes
+    steps: [Fill a 10 L bucket from the tap the dock will use, Time it with a phone stopwatch, Repeat twice]
+    materials: [10 L bucket, phone]
+    send_back: The three times in seconds, and a photo of the tap
+    status: done              # open | done | skipped
+    result:                   # { text, files: [field-data/A-0001-1.jpg], at } written only by the runner
+      text: 41 s, 39 s, 40 s
+      files: [field-data/A-0001-1.jpg]
+      at: "2026-11-18T10:15:00+01:00"
+  - id: A-0002
+    title: Measure the narrowest gate
+    why: Sets the robot's maximum width (requirement M2)
+    when: Any day, 5 minutes
+    steps: [Measure the clear width of every gate and gap the robot must pass, Note the narrowest]
+    send_back: The narrowest width in cm, and where it is
+    status: open
+    result: null

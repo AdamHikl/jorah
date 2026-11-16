@@ -1,0 +1,12 @@
+version: 1
+items:
+  - &one
+    id: T-0001
+    title: A task
+    track: eng
+    status: ready
+    priority: 2
+    acceptance: X
+    created: 2026-11-16
+    updated: 2026-11-16
+  - *one

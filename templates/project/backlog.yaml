@@ -1,0 +1,18 @@
+# Backlog, contract jorah-project-v1 (packages/contracts/project/backlog.schema.json).
+# Jorah's runs write this file. Every item:
+#   id: T-0001          T- and 4 digits, never reused
+#   title: ...          up to 200 characters
+#   track: eng          eng | biz | research | ops | adam
+#   status: ready       ready | doing | blocked | done | dropped
+#   priority: 2         1 (highest) to 5
+#   depends_on: []      other T- ids done first (optional)
+#   blocked_on: null    a Q- or A- id this waits for, or null (optional)
+#   adam_task: A-0001   only on track adam: the adam-tasks.yaml entry it mirrors
+#   acceptance: ...     what done means, checkably
+#   evidence: []        paths, commit SHAs or URLs; required when done
+#   note: ...           free text; the reason, required when dropped (optional)
+#   created: 2026-11-16
+#   updated: 2026-11-16
+# Text with ", " or ": " inside [ ] or { } must be quoted. Block style avoids that.
+version: 1
+items: []

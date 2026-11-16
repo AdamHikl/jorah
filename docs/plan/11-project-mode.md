@@ -66,7 +66,8 @@ Everything a project knows lives in its own repo, so it survives session resets,
 
 | File | Owner | What it holds |
 |---|---|---|
-| `project/CHARTER.md` | **Adam.** Jorah proposes changes only as founder questions | Mission, founder's intent, non-goals, constraints (money, time, safety, legal), success by date, **decision rights** (what Jorah may decide alone), budget |
+| `project/intake.md` | **Runner only**, from the founder's chat message at project start | Adam's own words, `Given:` time and `Via:` channel, then any answers; the setup run drafts the rest from it |
+| `project/CHARTER.md` | **Adam.** The setup run drafts it; after that Jorah proposes changes only as founder questions | Mission, founder's intent, non-goals, constraints (money, time, safety, legal), success by date, **decision rights** (what Jorah may decide alone), budget |
 | `project/backlog.yaml` | Jorah | Every task, its track, status, priority, dependencies, acceptance and evidence |
 | `project/questions.yaml` | Jorah asks, **only Adam answers** | Founder questions with options, a recommendation and a safe default |
 | `project/adam-tasks.yaml` | Jorah writes, Adam reports | Physical and money tasks for Adam, with steps and what to send back |
@@ -140,8 +141,9 @@ tasks:
 ### 3.4 Schemas and the registry
 
 - **Schemas:** `packages/contracts/project/{backlog,questions,adam-tasks,project-config}.schema.json`, described in `docs/contracts/jorah-project-v1.md`. The runner refuses a run's state changes that don't validate.
-- **Checker:** `packages/contracts/project/projectcheck.py` (Python 3 and PyYAML) checks a whole project folder: the schemas, plus the rules a schema can't say (ids unique, links between files exist, no dependency cycles, done needs evidence, dropped needs a reason, answer and result consistent with status, field-data files exist). `check_project(dir)` returns the problems, `founder_fields()` gives the runner the fields only it may write. Dates stay text, and duplicate keys and YAML anchors are refused.
-- **Registry on the PC:** `/home/jorah/.config/jorah-projects/projects.json` (mode 600), one entry per project:
+- **Checker:** `packages/contracts/project/projectcheck.py` (Python 3 and PyYAML) checks a whole project folder: the schemas, plus the rules a schema can't say (ids unique, links between files exist, no dependency cycles, done needs evidence, dropped needs a reason, answer and result consistent with status, field-data files exist, `intake.md`'s header lines, every charter `Open: Q-xxxx` names an existing question). `check_project(dir)` returns the problems, `founder_fields()` gives the runner the fields only it may write. Dates stay text, and duplicate keys and YAML anchors are refused.
+- **Setup runs:** a project whose line has no `CHARTER.md` gets the templates (`templates/project/`, valid as they are) and the runner's `intake.md`, then a setup run fills them; only that run may write `CHARTER.md`. Details in the contract doc, "Setup runs".
+- **Registry on the PC:** `/home/jorah/.config/jorah-projects/projects.json` (mode 600), one entry per project; `repo: null` is a local-only project whose `workDir` the runner creates as a local git repo:
 
 ```json
 {
@@ -156,11 +158,20 @@ tasks:
     "web": true,
     "bench": "robotics",
     "paused": false
+  },
+  "new-idea": {
+    "repo": null,
+    "workDir": "/home/jorah/work/new-idea",
+    "branch": "jorah/line",
+    "level": 0,
+    "schedule": [],
+    "limits": { "runsPerDay": 1, "minutesPerRun": 30, "maxTurns": 100 },
+    "paused": false
   }
 }
 ```
 
-- **Runner state:** `/home/jorah/.jorah-projects/<project>/`: `runs/<run-id>.json`, `inbox/answers.jsonl`, `inbox/results/`, `requests/` (run now, pause), `outbox/` (digest items), `lock`. Folder 700, files 600.
+- **Runner state:** `/home/jorah/.jorah-projects/<project>/`: `state.json` (`setup: pending|running|done`), `runs/<run-id>.json`, `inbox/intake.md`, `inbox/answers.jsonl`, `inbox/results/`, `requests/` (run now, pause), `outbox/` (digest items), `lock`. Folder 700, files 600.
 
 ## 4. The project runner (`services/jorah-projects`)
 

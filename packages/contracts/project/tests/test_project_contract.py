@@ -55,6 +55,12 @@ EXPECTED = {
     "backlog.unknown-track.yaml": "track: isn't one of the allowed values",
     "backlog.updated-before-created.yaml": "updated is before created",
     "backlog.version-2.yaml": "version: has the wrong value",
+    "intake.given-no-offset.md": "line 3 must be 'Given: '",
+    "intake.no-blank-line.md": "lines 2 and 5 must be blank",
+    "intake.no-given.md": "line 3 must be 'Given: '",
+    "intake.no-title.md": "line 1 must be '# Founder input'",
+    "intake.no-words.md": "has no founder words after the header",
+    "intake.via-email.md": "line 4 must be 'Via: '",
     "project-config.bench-unknown.json": "bench: isn't one of the allowed values",
     "project-config.branch-main.json": "branch: has the wrong form",
     "project-config.branch-outside-jorah.json": "branch: has the wrong form",
@@ -62,6 +68,9 @@ EXPECTED = {
     "project-config.level-true.json": "level: must be integer",
     "project-config.minutes-missing.json": "is missing 'minutesPerRun'",
     "project-config.no-paused.json": "is missing 'paused'",
+    "project-config.repo-empty.json": "repo: has the wrong form",
+    "project-config.repo-missing.json": "is missing 'repo'",
+    "project-config.repo-number.json": "repo: must be string or null",
     "project-config.repo-url.json": "repo: has the wrong form",
     "project-config.runs-too-many.json": "runsPerDay: is above 8",
     "project-config.schedule-bad-time.json": "schedule[0]: has the wrong form",
@@ -96,6 +105,8 @@ SINGLE = {"backlog": pc.check_backlog, "questions": pc.check_questions, "adam-ta
 
 def problems_of_bad_file(path):
     kind = path.name.split(".")[0]
+    if kind == "intake":
+        return pc.check_intake_text(path.read_text())
     if kind == "project-config":
         return pc.validate(pc.load_schema(kind), json.loads(path.read_text()))
     try:
@@ -138,6 +149,8 @@ class GoodExamplesTest(unittest.TestCase):
         self.assertEqual(pc.check_project(TEMPLATES), [])
 
     def test_every_file_in_the_plans_table_has_a_template(self):
+        # intake.md has none on purpose: only the runner writes it, from the founder's chat message.
+        self.assertFalse((TEMPLATES / "intake.md").exists())
         for name in ("CHARTER.md", "backlog.yaml", "questions.yaml", "adam-tasks.yaml", "DECISIONS.md",
                      "log/README.md", "research/README.md", "field-data/README.md"):
             with self.subTest(name=name):
@@ -153,6 +166,48 @@ class GoodExamplesTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as empty:
                 self.assertEqual(pc.main([empty]), 1)
         self.assertIn("CHARTER.md: is missing", out.getvalue())
+
+
+class SetupSkeletonTest(unittest.TestCase):
+    """A setup run starts from a copy of templates/project plus the runner's intake.md."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.project = self.tmp / "project"
+        shutil.copytree(TEMPLATES, self.project)
+        shutil.copy(GOOD / "project" / "intake.md", self.project / "intake.md")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_the_copied_skeleton_passes_as_it_is(self):
+        self.assertEqual(pc.check_project(self.project), [])
+
+    def test_an_open_marker_must_name_a_question_the_setup_run_added(self):
+        charter = self.project / "CHARTER.md"
+        charter.write_text(charter.read_text().replace(
+            "<One or two sentences: what this project makes, for whom, and why it matters.>", "Open: Q-0001"))
+        self.assertEqual(pc.check_project(self.project), ["CHARTER.md: an Open: marker names Q-0001, which doesn't exist"])
+        (self.project / "questions.yaml").write_text('''version: 1
+questions:
+  - id: Q-0001
+    asked: 2026-11-16
+    question: What is the mission?
+    why_it_matters: Everything else follows from it
+    options:
+      - key: A
+        text: Water trees
+        consequence: A robot
+      - key: B
+        text: Teach watering
+        consequence: A guide
+    recommendation: null
+    default_if_silent: null
+    decide_by: null
+    status: open
+    answer: null
+''')
+        self.assertEqual(pc.check_project(self.project), [])
 
 
 class PlanExamplesTest(unittest.TestCase):
@@ -247,7 +302,28 @@ class ProjectFolderTest(unittest.TestCase):
 
     def test_messages_never_carry_values(self):
         self.edit("backlog.yaml", lambda s: s.replace("track: biz", "track: secret-token-123"))
-        self.assertFalse(any("secret-token-123" in p for p in pc.check_project(self.project)))
+        self.edit("intake.md", lambda s: s.replace("Via: telegram", "Via: secret-token-456"))
+        problems = pc.check_project(self.project)
+        self.assertIn("intake.md: line 4 must be 'Via: ' and one of telegram, voice, app", problems)
+        self.assertFalse(any("secret-token-" in p for p in problems), problems)
+
+    def test_intake_is_optional_and_checked_when_present(self):
+        (self.project / "intake.md").unlink()
+        self.assertEqual(pc.check_project(self.project), [])
+        (self.project / "intake.md").write_bytes(b"# Founder input\n\n\xff\n")
+        self.assertEqual(pc.check_project(self.project), ["intake.md: isn't UTF-8 text"])
+
+    def test_charter_open_markers_name_existing_questions(self):
+        self.edit("CHARTER.md", lambda s: s + "\n## Budget\n\nOpen: Q-0001, Q-0099 and Q-0098\n")
+        problems = pc.check_project(self.project)
+        self.assertIn("CHARTER.md: an Open: marker names Q-0099, which doesn't exist", problems)
+        self.assertIn("CHARTER.md: an Open: marker names Q-0098, which doesn't exist", problems)
+        self.assertFalse(any("Q-0001" in p for p in problems), problems)
+
+    def test_charter_markers_and_placeholders(self):
+        text = "Open: Q-0002, Q-0003\nMoney: Open: Q-0002\nSee Q-0007 later\nOpen: Q-xxxx\n"
+        self.assertEqual(pc.charter_open_questions(text), ["Q-0002", "Q-0003"])
+        self.assertEqual(pc.check_charter_text(text, None), [])
 
 
 class LoaderTest(unittest.TestCase):
@@ -281,6 +357,7 @@ class RegistryTest(unittest.TestCase):
         problems = pc.check_registry(bad)
         self.assertIn("registry: project name 'Tree Robot' has the wrong form", problems)
         self.assertIn("registry.tree-watering-robot.branch: has the wrong form", problems)
+        self.assertIsNone(good["new-idea"]["repo"])  # a local-only project, accepted above
         self.assertEqual(pc.check_registry([]), ["registry: must be an object of projects"])
 
 

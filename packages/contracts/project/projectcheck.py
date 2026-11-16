@@ -9,6 +9,10 @@ YAML is read with PyYAML's safe loader, narrowed further: dates stay strings (so
 as text, the same in YAML and JSON), duplicate keys and anchors/aliases are refused, and a state
 file over 2 MB is refused.
 
+The Markdown files aren't schema-checked, with two exceptions: `intake.md` (the founder's words
+from chat at project start, written only by the runner) must have its header lines, and every
+`Open: Q-xxxx` marker in `CHARTER.md` must name a question that exists.
+
 Messages name the file, the place and the rule, never the value, so they can go into run records.
 
     python3 packages/contracts/project/projectcheck.py <project dir> [...]
@@ -40,6 +44,11 @@ DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATE_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$")
 PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 LOG_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
+OPEN_MARKER = re.compile(r"Open:([^\n]*)")
+QUESTION_ID = re.compile(r"\bQ-\d{4}\b")
+
+INTAKE_TITLE = "# Founder input"
+INTAKE_VIA = ("telegram", "voice", "app")
 
 STATE_FILES = {"backlog.yaml": "backlog", "questions.yaml": "questions", "adam-tasks.yaml": "adam-tasks"}
 REQUIRED_FILES = ("CHARTER.md", "DECISIONS.md", "backlog.yaml", "questions.yaml", "adam-tasks.yaml")
@@ -368,6 +377,57 @@ def check_adam_tasks(data, field_data_dir=None):
     return problems
 
 
+# ---------------------------------------------------------------- Markdown: intake and charter
+
+def check_intake_text(text):
+    """Problems in intake.md's text. The runner writes it from the founder's chat message:
+
+        # Founder input
+        <blank>
+        Given: 2026-11-16T19:02:00+01:00
+        Via: telegram | voice | app
+        <blank>
+        The founder's words, verbatim, then any answers.
+    """
+    lines = text.splitlines() + [""] * 5
+    problems = []
+    if lines[0] != INTAKE_TITLE:
+        problems.append(f"line 1 must be '{INTAKE_TITLE}'")
+    if lines[1].strip() or lines[4].strip():
+        problems.append("lines 2 and 5 must be blank")
+    if not lines[2].startswith("Given: ") or parse_date_time(lines[2][7:]) is None:
+        problems.append("line 3 must be 'Given: ' and an ISO 8601 date and time with an offset")
+    if not lines[3].startswith("Via: ") or lines[3][5:] not in INTAKE_VIA:
+        problems.append(f"line 4 must be 'Via: ' and one of {', '.join(INTAKE_VIA)}")
+    if not any(line.strip() for line in lines[5:]):
+        problems.append("has no founder words after the header")
+    return problems
+
+
+def charter_open_questions(text):
+    """Question ids named by `Open:` markers in a charter, in order, each once."""
+    found = []
+    for match in OPEN_MARKER.finditer(text):
+        found += [q for q in QUESTION_ID.findall(match.group(1)) if q not in found]
+    return found
+
+
+def check_charter_text(text, question_ids=None):
+    """Every `Open: Q-xxxx` marker names an existing question. question_ids None: not known, not checked."""
+    if question_ids is None:
+        return []
+    return [f"an Open: marker names {q}, which doesn't exist" for q in charter_open_questions(text) if q not in question_ids]
+
+
+def _read_text(path):
+    if path.stat().st_size > MAX_BYTES:
+        raise LoadError("file is over 2 MB")
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise LoadError("isn't UTF-8 text") from None
+
+
 # ---------------------------------------------------------------- whole folder, registry
 
 def check_file(kind, data):
@@ -391,7 +451,10 @@ def check_project(project_dir):
             continue
         try:
             data = load_yaml(path)
-        except (LoadError, UnicodeDecodeError) as error:
+        except UnicodeDecodeError:
+            problems.append(f"{name}: isn't UTF-8 text")
+            continue
+        except LoadError as error:
             problems.append(f"{name}: {error}")
             continue
         schema_problems = check_file(kind, data)
@@ -406,6 +469,15 @@ def check_project(project_dir):
         problems += [f"questions.yaml: {p}" for p in check_questions(parsed["questions"])]
     if "adam-tasks" in parsed:
         problems += [f"adam-tasks.yaml: {p}" for p in check_adam_tasks(parsed["adam-tasks"], project_dir / "field-data")]
+    for name, check in (("CHARTER.md", lambda text: check_charter_text(text, question_ids)),
+                        ("intake.md", check_intake_text)):
+        path = project_dir / name
+        if not path.is_file():
+            continue
+        try:
+            problems += [f"{name}: {p}" for p in check(_read_text(path))]
+        except LoadError as error:
+            problems.append(f"{name}: {error}")
     log_dir = project_dir / "log"
     if log_dir.is_dir():
         for entry in sorted(log_dir.iterdir()):

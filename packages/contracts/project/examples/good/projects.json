@@ -19,5 +19,14 @@
     "schedule": [],
     "limits": { "runsPerDay": 1, "minutesPerRun": 30, "maxTurns": 100 },
     "paused": true
+  },
+  "new-idea": {
+    "repo": null,
+    "workDir": "/home/jorah/work/new-idea",
+    "branch": "jorah/line",
+    "level": 0,
+    "schedule": [],
+    "limits": { "runsPerDay": 1, "minutesPerRun": 30, "maxTurns": 100 },
+    "paused": false
   }
 }

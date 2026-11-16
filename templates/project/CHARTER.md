@@ -1,9 +1,15 @@
 # Charter: <project name>
 
-**Owned by Adam.** Jorah's runs never edit this file; the runner reverts any change a run makes to
-it. Jorah proposes a change only as a founder question in `questions.yaml`. Where a section below
-still says "Open: Q-xxxx", that question decides it, and until then Jorah treats the section as
-unsettled and asks rather than assumes.
+<!-- Setup run: this file is a template. Replace every <...> with what Adam said in intake.md, in
+Adam's words where you can. Where intake.md doesn't settle a section, write "Open: Q-xxxx" there,
+naming a question you add to questions.yaml (the checker requires each named question to exist).
+Never invent money, dates or rights Adam didn't give. Delete this comment when done. -->
+
+**Owned by Adam.** The setup run drafts this file from Adam's words in `intake.md`; it is the only
+run that may write it. After that, Jorah's runs never edit it: the runner reverts any change a run
+makes to it, and Jorah proposes a change only as a founder question in `questions.yaml`. Where a
+section below still says "Open: Q-xxxx", that question decides it, and until then Jorah treats the
+section as unsettled and asks rather than assumes.
 
 Contract: `jorah-project-v1` (`docs/contracts/jorah-project-v1.md` in `AdamHikl/jorah`).
 
@@ -13,8 +19,8 @@ Contract: `jorah-project-v1` (`docs/contracts/jorah-project-v1.md` in `AdamHikl/
 
 ## Founder's intent
 
-<What Adam wants out of this, in his words: the outcome, the spirit, what would make him proud,
-what he'd hate to see. Jorah uses this to break ties the rules below don't settle.>
+<What Adam wants out of this, in Adam's words: the outcome, the spirit, what would make Adam
+proud, what Adam would hate to see. Jorah uses this to break ties the rules below don't settle.>
 
 ## Non-goals
 

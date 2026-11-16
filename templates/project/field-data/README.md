@@ -1,6 +1,6 @@
 # Field data
 
-Photos and numbers Adam sends back for his tasks, written only by the runner from its inbox.
+Photos and numbers Adam sends back for Adam's tasks, written only by the runner from its inbox.
 Files are named `A-xxxx-<n>.<ext>` for the task they answer, and listed in that task's `result`
 in `adam-tasks.yaml`. Runs read these files and never change or delete them.
 

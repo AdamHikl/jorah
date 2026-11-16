@@ -18,7 +18,8 @@ Nothing here has run on the PC yet. Source and unit tests only.
 ```
 <repo>/
   project/                  stateDir in the registry; project when left out
-    CHARTER.md              Adam's. Runs never edit it
+    CHARTER.md              Adam's. Drafted by the setup run; no other run edits it
+    intake.md               Runner only. The founder's words from chat at project start (optional)
     backlog.yaml            Jorah's. Schema: backlog.schema.json
     questions.yaml          Jorah asks, Adam answers. Schema: questions.schema.json
     adam-tasks.yaml         Jorah writes, Adam reports. Schema: adam-tasks.schema.json
@@ -34,7 +35,8 @@ Nothing here has run on the PC yet. Source and unit tests only.
 
 | Field or file | Written by | Enforced by |
 |---|---|---|
-| `CHARTER.md` | Adam (by hand, or the runner from an answered charter question) | Runner reverts a run's change and marks the run `state-rejected` |
+| `CHARTER.md` | The setup run drafts it (see "Setup runs"); after that Adam (by hand, or the runner from an answered charter question) | Outside a setup run, the runner reverts a run's change and marks the run `state-rejected` |
+| `intake.md` | **Runner only**, copied from `~/.jorah-projects/<name>/inbox/intake.md` | Runner compares it before and after every run, the setup run included; any change by a run is reverted |
 | `questions[].answer` | **Runner only**, from `inbox/answers.jsonl` or the default at `decide_by` | Runner compares `founder_fields()` before and after a run; any change by the run is reverted |
 | `tasks[].result`, `field-data/` | **Runner only**, from `inbox/results/` | The same |
 | Everything else in the YAML files | Jorah's runs | Schemas and the checker |
@@ -184,11 +186,69 @@ Every Adam task is mirrored in the backlog by an item with `track: adam` and `ad
 the backlog shows everything in one list. The checker checks the mirror's target exists; it doesn't
 require a mirror for every task.
 
+## `intake.md`
+
+The founder's own words from chat when a project starts: what Adam said in Telegram, by voice or in
+the app, before any charter exists. The setup run drafts everything else from it. Only the runner
+writes it, copying `~/.jorah-projects/<name>/inbox/intake.md` into the project folder; a run may
+not change it. It is optional: a project imported from an existing repo may have none. It has no
+template, since it is never written from one.
+
+```markdown
+# Founder input
+
+Given: 2026-11-16T19:02:00+01:00
+Via: telegram
+
+I want a robot that waters the trees on our plot so nobody has to carry buckets in summer.
+
+## Answers
+
+Q: How many trees?
+A: About forty, young ones, on a slope.
+```
+
+| Line | Rule | Message |
+|---|---|---|
+| 1 | Exactly `# Founder input` | `line 1 must be '# Founder input'` |
+| 2, 5 | Blank | `lines 2 and 5 must be blank` |
+| 3 | `Given: ` and an ISO 8601 date and time with an offset (when Adam said it) | `line 3 must be 'Given: ' and an ISO 8601 date and time with an offset` |
+| 4 | `Via: ` and `telegram`, `voice` or `app` | `line 4 must be 'Via: ' and one of telegram, voice, app` |
+| 6 on | Adam's words verbatim, then any answers to the setup questions asked in chat (free form; `## Answers` by convention). Not empty | `has no founder words after the header` |
+
+UTF-8, at most 2 MB, like the state files.
+
+## Setup runs
+
+A project starts with Adam's words, not a filled-in folder: Jorah sets the project up itself, for an
+existing repo or a brand-new idea.
+
+1. **Registry.** The project gets an entry. `repo` is `owner/name`, or `null` for a local-only
+   project with no GitHub repo yet; then `workDir` is a local git repo the runner creates.
+2. **Skeleton.** When the project's line has no `<stateDir>/CHARTER.md`, the runner copies
+   `templates/project/` into `<stateDir>/` (never over existing files) and copies the inbox's
+   `intake.md` beside it. The copy passes the checker as it is.
+3. **The setup run.** The next run is a setup run. It fills the templates from `intake.md` (and the
+   repo's own README and docs, if any): a charter draft, the first founder questions, the backlog
+   and any Adam tasks. A charter section `intake.md` doesn't settle says `Open: Q-xxxx`, naming a
+   question the run adds; open placeholders are fine, invented money, dates or rights are not.
+   `CHARTER.md` is writable **only** during this run; `intake.md`, `answer` and `result` stay
+   runner-only as always.
+4. **After it.** The run's changes must pass `check_project`, or the runner reverts them and the
+   setup stays pending. From then on `CHARTER.md` is Adam's and ordinary runs follow.
+
+The runner's own record of this is outside the project folder and outside this contract's schemas:
+`state.json` in `~/.jorah-projects/<name>/` carries `setup: pending | running | done`
+(`pending` from the skeleton until a setup run starts, `running` during it, `done` once its changes
+pass). Only the runner writes it.
+
 ## `CHARTER.md`, `DECISIONS.md`, `log/`
 
-Markdown, so not schema-checked beyond existing (`CHARTER.md` and `DECISIONS.md` must exist) and
-the log's file names (`log/YYYY-MM-DD.md`, real dates, plus an optional `README.md`). Their formats
-are in the templates:
+Markdown, so not schema-checked beyond existing (`CHARTER.md` and `DECISIONS.md` must exist), the
+log's file names (`log/YYYY-MM-DD.md`, real dates, plus an optional `README.md`), and one charter
+rule: every `Open:` marker's question ids (`Open: Q-0002`, or several on one line) must exist in
+`questions.yaml` (`an Open: marker names Q-0099, which doesn't exist`). A template's `Open: Q-xxxx`
+names no id and passes. Their formats are in the templates:
 
 - **Charter:** mission, founder's intent, non-goals, constraints (money, time, safety, legal,
   openness), success by date, decision rights, budget. A section not yet settled says
@@ -205,7 +265,7 @@ name matching `^[a-z0-9][a-z0-9-]{0,62}$`:
 
 | Field | Required | Values |
 |---|---|---|
-| `repo` | yes | `owner/name` |
+| `repo` | yes | `owner/name`, or `null` for a local-only project with no GitHub repo yet (its `workDir` is a local git repo the runner creates) |
 | `workDir` | yes | Absolute path, no `.`, `..` or `//` parts. The runner also keeps it under its work root |
 | `branch` | yes | Under `jorah/`, the only branches the GitHub App may write |
 | `stateDir` | no (`project`) | Relative path, no `.` or `..` parts, not under `.git` |
@@ -233,6 +293,9 @@ the Mac, on GitHub's Ubuntu runners, and `python3-yaml` on Ubuntu 24.04). From P
 | `load_yaml(path)`, `load_yaml_text(text)` | Parsed YAML, narrowed as above; raises `LoadError` |
 | `check_file(kind, data)` | Schema problems of one parsed file (`backlog`, `questions`, `adam-tasks`) |
 | `check_backlog`, `check_questions`, `check_adam_tasks` | The rules beyond the schema, for one parsed file |
+| `check_intake_text(text)` | Problems in `intake.md`'s header and body |
+| `check_charter_text(text, question_ids)` | `Open:` markers naming questions that don't exist (none checked when `question_ids` is `None`) |
+| `charter_open_questions(text)` | The question ids a charter's `Open:` markers name |
 | `founder_fields(questions, tasks)` | `{id: answer or result}`, for the runner's before-and-after comparison (PM-T2) |
 
 ## Changes
@@ -241,4 +304,9 @@ the Mac, on GitHub's Ubuntu runners, and `python3-yaml` on Ubuntu 24.04). From P
   gained `adam_task` (the mirror link) and `note` (the drop reason); `depends_on`, `blocked_on` and
   `evidence` became optional with empty defaults; `answer.by` may be `default`; `via` is an enum;
   the plan's flow-style example had unquoted commas, now quoted. Plan section 3 was updated in the
+  same commit.
+- **v1 amended, 2026-11-16, before any live use.** Jorah sets projects up itself: registry `repo`
+  may be `null` (local-only); `intake.md` added (runner only, header checked); setup runs described,
+  the only runs that may write `CHARTER.md`; the charter's `Open: Q-xxxx` markers must name existing
+  questions; the charter template tells the setup run how to fill it. Plan section 3 updated in the
   same commit.

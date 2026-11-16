@@ -1,7 +1,20 @@
-// Back to the Max plan: undoes api-lane.patch.json5. Apply only when Adam says to switch back.
-// Preview with --dry-run, apply on Adam's yes. No secret involved; the key stays stored but unused
-// by main, because auth.order.anthropic goes back to []. `background` keeps its own embedded runtime
-// (background.patch.json5) and so needs its own profile and order again (runbook, Persona and shell).
+// Back to the Max plan: undoes api-lane.patch.json5, on Adam's word of 2026-11-16 ("switch it to the
+// max plan now"). Preview with --dry-run first. No secret involved: the key stays stored, unused by
+// main and deep.
+//
+// What moves to Max (the claude-cli runtime, Jorah's Claude login in ~/.claude-jorah):
+//   - main: chat, voice, the iPhone app, heartbeat, Dreaming and the utility model (agents.defaults);
+//   - deep: its own model entry from front.patch.json5 pinned it to the embedded runtime, so it is
+//     repinned here. deep needs no shell, and claude-cli turns get only OpenClaw's tools through the
+//     MCP bridge, which still pass before_tool_call (jorah-guard, jorah-github).
+// What stays on the API key, and why:
+//   - background: its whole job is shell in OpenClaw's Podman sandbox, which only the embedded
+//     runtime gives; on claude-cli its exec fails closed (measured 2026-11-06). background.patch.json5
+//     pins it to "openclaw", and its per-agent auth order keeps anthropic:jorah-store.
+// Claude Code coding jobs (ACP) were already on Max.
+// Usage on claude-cli draws from the signed-in subscription's limits (OpenClaw docs,
+// providers/anthropic.md), the same weekly limits as Adam's own Claude Code if it is the same account.
+// Undo: api-lane.patch.json5, plus deep's entry back to { agentRuntime: { id: "openclaw" } }.
 {
   auth: { order: { anthropic: [] } },
   agents: {
@@ -18,6 +31,11 @@
         "anthropic/claude-sonnet-4-6": { agentRuntime: { id: "claude-cli" } },
         "anthropic/claude-opus-4-6": { agentRuntime: { id: "claude-cli" } },
         "anthropic/*": { agentRuntime: { id: "claude-cli" } },
+      },
+    },
+    entries: {
+      deep: {
+        models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "claude-cli" } } },
       },
     },
   },

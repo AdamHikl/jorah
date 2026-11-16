@@ -133,6 +133,7 @@ git -C ~/Documents/jorah log --oneline | head -5
 | **P4** | Pi as room ear, trained wake word | M10, on the Pi | **"Hey Jorah" in the room** |
 | **P5** | Bridge and guard, then M3's hard gate on the PC | M2b-C, M2b-D, M3 | Voice-started jobs, web answers, ready for private data |
 | **P5a** | Typed Haiku pilot on Telegram, two weeks, then Adam decides | New, on P5's bridge | A measured answer on whether everyday typed chat can run on Haiku |
+| **PM** | Project mode: Jorah runs a project such as `tree-watering-robot` on a schedule, asking Adam only founder questions. Plan: `11-project-mode.md` | New, Adam 2026-11-16 | A project that moves while Adam sleeps |
 | **Then** | M4 onward, in the existing order | Table below | Mail, calendar and the rest |
 
 **The honest catch:** voice reaches the same agent with the same tools as Telegram, so anything said in the room, or misheard, reaches Jorah. Stage 0's limits have to be on before sound connects, and nothing private connects before M3's gate.
@@ -255,6 +256,10 @@ As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to
 - [ ] **P5b.5 Adam decides:** keep `memory-core`, add agentmemory through MCP, or give it the memory slot with a migration of `MEMORY.md` and Dreaming's output. `[S]`
 
 **Gate:** everything at P5, plus a memory-poisoning test: a web page that plants an instruction must not come back as an instruction in a later turn. Its store is in backups and covered by deletion. The workers' source and checksum are recorded, or the trial stops.
+
+### PM. Project mode (added on Adam's request, 2026-11-16)
+
+Adam: Jorah should work on a project "as a business and engineer duo", do 99% of it, and ask only for founder and idea guidance. **`11-project-mode.md` is the plan and wins over this paragraph.** Phase 0 moves `main` and `deep` to the Max plan ("switch it to the max plan now"); `background` stays on the API key for its sandboxed shell. Then four build sessions in parallel (project folder contract, runner, plugin, robotics bench), one install session, and a trust ladder from one push card a day to a standing grant after the P5 review. Nothing private connects through it before M3's gate.
 
 ### Decisions recorded for this path
 

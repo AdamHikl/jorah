@@ -205,5 +205,33 @@ class Repo:
         return self.head()
 
 
+# Hidden from `git status` in a work repo's own .git/info/exclude: the placeholder files Claude Code's
+# sandbox mounts into the repo while a run goes. The same list as scripts/pc/prepare-work-repo.sh
+# and jorah-github's cloneFromMirror.
+EXCLUDE_MARKER = "# Claude Code sandbox placeholders (jorah prepare-work-repo.sh)"
+PLACEHOLDERS = ["/.bash_profile", "/.bashrc", "/.profile", "/.zprofile", "/.zshrc", "/.gitconfig", "/.ripgreprc", "/.mcp.json",
+                "/.idea", "/.vscode", "/.claude/agents", "/.claude/commands", "/.claude/hooks", "/.claude/launch.json",
+                "/.claude/loop.md", "/.claude/output-styles"]
+
+
+def init_local(path, *, home, git="git", branch="main", message):
+    """A new local repo for a project with no GitHub repo yet: `git init` with no template (no
+    sample hooks), the sandbox placeholders excluded, one empty first commit. Refuses an existing
+    path. Returns a Repo."""
+    path = Path(path)
+    if os.path.lexists(path):
+        raise UnsafeRepo(f"{path} already exists")
+    env = base_env(home)
+    done = subprocess.run([git, "init", "-q", "--template=", "-b", branch, str(path)], capture_output=True, env=env, timeout=60, check=False)
+    if done.returncode != 0:
+        raise GitError("git init failed")
+    info = path / ".git" / "info"
+    info.mkdir(exist_ok=True)
+    (info / "exclude").write_text(EXCLUDE_MARKER + "\n" + "\n".join(PLACEHOLDERS) + "\n", encoding="utf-8")
+    repo = Repo(path, home=home, git=git)
+    repo.run("commit", "--allow-empty", "--no-verify", "--no-gpg-sign", "-q", "-m", message)
+    return repo
+
+
 def mirror_path(mirror_dir, work_dir):
     return os.path.join(str(mirror_dir), f"{Path(work_dir).name}.git")

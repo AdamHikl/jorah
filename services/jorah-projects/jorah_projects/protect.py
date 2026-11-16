@@ -1,7 +1,10 @@
 """The project folder's state files, their schemas, and the fields only the runner may write.
 
 PM-T2 (forged answers) and PM-T3 (charter drift), plan 11 section 9:
-- `CHARTER.md` is Adam's. A run's change to it is reverted.
+- `CHARTER.md` is Adam's. A run's change to it is reverted, except in a setup run, which drafts
+  it from the template (plan 11 section 5.1).
+- `intake.md` is Adam's own words, copied by the runner from the inbox. A run's change to it is
+  reverted, setup runs included.
 - `answer` in questions.yaml and `result` in adam-tasks.yaml are written only by the runner, from
   the inbox (Adam's words through the plugin). So are the statuses that mean "has an answer"
   (`answered`, `defaulted`) and "has a result" (`done`).
@@ -19,6 +22,7 @@ from . import contract, fsio
 FILES = {"backlog": "backlog.yaml", "questions": "questions.yaml", "adam-tasks": "adam-tasks.yaml"}
 LISTS = {"backlog": "items", "questions": "questions", "adam-tasks": "tasks"}
 CHARTER = "CHARTER.md"
+INTAKE = "intake.md"
 
 ANSWER_STATUSES = {"answered", "defaulted"}
 RESULT_STATUSES = {"done"}
@@ -31,16 +35,18 @@ def rel(project, name):
 class Snapshot:
     """Bytes of the charter and the three state files, from a commit or from the work tree."""
 
-    def __init__(self, pc, charter, files):
+    def __init__(self, pc, charter, files, intake=None):
         self.pc = pc  # the contract's checker (contract.load)
         self.charter = charter
         self.files = files  # kind -> bytes or None
+        self.intake = intake
 
     @classmethod
     def from_commit(cls, pc, repo, project, rev):
         files = {kind: repo.show(rev, rel(project, name)) for kind, name in FILES.items()} if rev else dict.fromkeys(FILES)
         charter = repo.show(rev, rel(project, CHARTER)) if rev else None
-        return cls(pc, charter, files)
+        intake = repo.show(rev, rel(project, INTAKE)) if rev else None
+        return cls(pc, charter, files, intake)
 
     @classmethod
     def from_tree(cls, pc, project):
@@ -51,11 +57,13 @@ class Snapshot:
                 files[kind] = fsio.read_bytes(root, rel(project, name))
             except fsio.Unsafe:
                 files[kind] = b"\0unsafe"
-        try:
-            charter = fsio.read_bytes(root, rel(project, CHARTER))
-        except fsio.Unsafe:
-            charter = b"\0unsafe"
-        return cls(pc, charter, files)
+        def whole(name):
+            try:
+                return fsio.read_bytes(root, rel(project, name))
+            except fsio.Unsafe:
+                return b"\0unsafe"
+
+        return cls(pc, whole(CHARTER), files, whole(INTAKE))
 
     def parsed(self, kind):
         """Parsed document or None. Raises ValueError if present but unreadable."""
@@ -109,25 +117,36 @@ def _expected_item(kind, item_id, trusted, theirs, base):
     return trusted.get(item_id)
 
 
-def enforce(project, current, trusted, *, theirs=None, base=None):
+def _whole_file(project, name, current, trusted, theirs, base, why):
+    """Put one whole file back to `trusted`, or to Adam's branch where he changed it. [] or [{...}]."""
+    want = getattr(trusted, name)
+    if theirs is not None and base is not None and getattr(theirs, name) != getattr(base, name):
+        want = getattr(theirs, name)
+    if getattr(current, name) == want:
+        return []
+    path = rel(project, CHARTER if name == "charter" else INTAKE)
+    if want is None:
+        fsio.remove(project.work_dir, path)
+    else:
+        fsio.write_bytes(project.work_dir, path, want)
+    return [{"what": path.rsplit("/", 1)[-1], "id": path, "why": why}]
+
+
+def enforce(project, current, trusted, *, theirs=None, base=None, setup=False):
     """Put protected content back to `trusted` (or Adam's branch where he changed it).
 
     Writes the work tree. Returns a list of {what, id, why}. `theirs` and `base` are Snapshots of
     the default branch and the merge base, used only when a merge brought Adam's changes in.
+    `setup`: a setup run, which may write the charter (the founder's input stays protected).
     """
     reverted = []
     root = project.work_dir
 
-    # The charter, whole file.
-    want = trusted.charter
-    if theirs is not None and base is not None and theirs.charter != base.charter:
-        want = theirs.charter
-    if current.charter != want:
-        if want is None:
-            fsio.remove(root, rel(project, CHARTER))
-        else:
-            fsio.write_bytes(root, rel(project, CHARTER), want)
-        reverted.append({"what": "CHARTER.md", "id": rel(project, CHARTER), "why": "the charter is Adam's; changes come only as founder questions"})
+    if not setup:
+        reverted += _whole_file(project, "charter", current, trusted, theirs, base,
+                                "the charter is Adam's; changes come only as founder questions")
+    reverted += _whole_file(project, "intake", current, trusted, theirs, base,
+                            "intake.md is Adam's own words; only the runner copies it from the inbox")
 
     for kind in ("questions", "adam-tasks"):
         field, statuses = _protected(kind)

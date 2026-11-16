@@ -51,6 +51,8 @@ class Settings:
     bench_env: dict = field(default_factory=lambda: {"robotics": Path("/opt/jorah-bench/env.sh")})
     contracts: Path = REPO_ROOT / "packages/contracts/project"
     brief_template: Path = Path(__file__).resolve().parents[1] / "brief.md"
+    setup_brief_template: Path = Path(__file__).resolve().parents[1] / "brief-setup.md"
+    templates: Path = REPO_ROOT / "templates/project"  # copied into a new project's folder by its setup run
     gitleaks_bin: str = "/usr/local/bin/gitleaks"
     gitleaks_config: Path = Path(__file__).resolve().parents[1] / "gitleaks.toml"
     sync_cmd: list = field(default_factory=lambda: ["/usr/bin/node", str(REPO_ROOT / "plugins/jorah-github/bin/jorah-github-sync.mjs")])
@@ -80,7 +82,8 @@ class Settings:
 
 
 RUNNER_KEYS = {"githubAppId": "github_app_id", "githubOwner": "github_owner", "timezone": "timezone",
-               "claude": "claude_bin", "gitleaks": "gitleaks_bin"}
+               "claude": "claude_bin", "gitleaks": "gitleaks_bin", "templates": "templates"}
+PATH_KEYS = {"claude_bin", "templates"}
 
 
 def load_runner_file(settings):
@@ -95,7 +98,7 @@ def load_runner_file(settings):
         if key not in RUNNER_KEYS or not isinstance(value, str):
             raise ConfigError(f"runner.json: unknown or non-text key {key[:40]}")
         attr = RUNNER_KEYS[key]
-        setattr(settings, attr, Path(value) if attr == "claude_bin" else value)
+        setattr(settings, attr, Path(value) if attr in PATH_KEYS else value)
     if settings.github_app_id and not settings.github_app_id.isdigit():
         raise ConfigError("runner.json: githubAppId must be a number")
     if settings.github_owner and not re.match(r"^[A-Za-z0-9-]+$", settings.github_owner):
@@ -106,7 +109,7 @@ def load_runner_file(settings):
 @dataclass
 class Project:
     name: str
-    repo: str
+    repo: str | None  # None: local only, no GitHub repo yet
     work_dir: Path
     branch: str
     state_dir: str
@@ -134,14 +137,19 @@ def parse_entry(settings, name, entry, pc=None):
         raise ConfigError(f"project name {name[:40]!r} isn't allowed")
     if not isinstance(entry, dict):
         raise ConfigError(f"{name}: entry must be an object")
+    repo = entry.get("repo")
+    local_only = "repo" in entry and repo is None
     if pc is not None:
         problems = contract.entry_problems(pc, name, entry)
+        if local_only:
+            # `repo: null` is a local-only project (no GitHub repo yet). Kept here as well as in the
+            # contract, so the runner doesn't depend on which schema version is installed.
+            problems = [p for p in problems if not p.startswith("$.repo")]
         if problems:
             raise ConfigError(f"{name}: doesn't match the contract ({problems[0]})")
-    repo = entry.get("repo")
-    if not isinstance(repo, str) or not REPO.match(repo):
-        raise ConfigError(f"{name}: repo must be owner/name")
-    if settings.github_owner and repo.split("/")[0].lower() != settings.github_owner.lower():
+    if not local_only and (not isinstance(repo, str) or not REPO.match(repo)):
+        raise ConfigError(f"{name}: repo must be owner/name, or null for a local-only project")
+    if not local_only and settings.github_owner and repo.split("/")[0].lower() != settings.github_owner.lower():
         raise ConfigError(f"{name}: {repo} isn't {settings.github_owner}'s")
     work_root = Path(os.path.realpath(settings.work_root))
     work_dir = Path(entry.get("workDir") or (Path(settings.work_root) / name))

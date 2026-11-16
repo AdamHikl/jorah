@@ -1,7 +1,8 @@
 # jorah-projects: the project runner
 
 Runs Claude Code headless on a project's backlog, on a schedule or on "run now", outside OpenClaw
-(which refuses ACP from sandboxed sessions). Plan: `docs/plan/11-project-mode.md`, section 4.
+(which refuses ACP from sandboxed sessions). Plan: `docs/plan/11-project-mode.md`, sections 4
+and 5.1.
 Status: **source and unit tests only.** Nothing is installed; the install is plan section 12.
 
 ## One tick
@@ -16,26 +17,65 @@ Status: **source and unit tests only.** Nothing is installed; the install is pla
    guard's `~/.jorah-guard/FROZEN`, read only; a guard folder it can't see counts as frozen), runs
    a day, usage-limit backoff, the weekly limit at 85% or more, 5 GB free, the contract
    (`packages/contracts/project/projectcheck.py` and its schemas), the Claude Code binary, the
-   settings file, the work clone.
+   settings file. A work folder that exists but isn't a git repo is left alone (skipped).
 4. **Lock** `~/.jorah-projects/<project>/lock` (flock). Busy: the trigger waits.
-5. **Sync** with `plugins/jorah-github/bin/jorah-github-sync.mjs` (read-only token, into the
+5. **Work folder**: a missing one is made, see "Starting a project".
+   **Sync** with `plugins/jorah-github/bin/jorah-github-sync.mjs` (read-only token, into the
    plugin's mirror), fetch the mirror into the work repo, create `jorah/line` from the default
    branch the first time, then **merge** the default branch in (never rebase). A conflict is left
-   for the run as its first task; if the run doesn't finish it, the merge is undone.
-6. **Intake**: `inbox/answers.jsonl` and `inbox/results/` into `questions.yaml`, `adam-tasks.yaml`
+   for the run as its first task; if the run doesn't finish it, the merge is undone. A
+   local-only project skips all of this: its line starts from local `main`.
+6. **Setup** if the line has no charter, or the last setup didn't finish: see below.
+   **Intake**: `inbox/intake.md` copied verbatim to `<stateDir>/intake.md` when it changed;
+   `inbox/answers.jsonl` and `inbox/results/` into `questions.yaml`, `adam-tasks.yaml`
    and `field-data/`, committed as "Founder input from Telegram". Due defaults, after a 48-hour
    hold. The only writer of `answer` and `result`.
-7. **Brief** from `brief.md`, then **Claude Code**: the pinned binary, `CLAUDE_CONFIG_DIR` the Max
+7. **Brief** from `brief.md` (`brief-setup.md` in a setup run), then **Claude Code**: the pinned binary, `CLAUDE_CONFIG_DIR` the Max
    login, `-p` stream-json, `claude-opus-5-5`, effort high, `--max-turns`, `--setting-sources ""`
    with the project-run settings file, no MCP servers, the bench's `env.sh` if `bench` is set, and
    a wall-clock kill at `minutesPerRun`.
 8. **Checks**: uncommitted work committed; state files that fail the contract (schemas and
-   cross-file rules) put back; the charter,
+   cross-file rules) put back; the charter (except in a setup run), `intake.md`,
    `answer`, `result` and the statuses that go with them put back (Adam's own changes on GitHub's
    default branch are accepted through the merge); gitleaks with `--redact` and the runner's own
    config on everything since the last clean scan. A finding, or a scan that can't run, pauses the
    project and sets `pushBlocked`.
 9. **Record** `runs/<id>.json` and **report** `outbox/<id>.json`, then unlock.
+
+## Starting a project (plan 11 section 5.1)
+
+Jorah sets a project up itself; no build session does it. The plugin's `project_start` writes the
+registry entry and Adam's own words to `~/.jorah-projects/<name>/inbox/intake.md`, then asks for a
+run.
+
+- **Clone.** A missing work folder with `repo` set is cloned with `jorah-github-sync.mjs clone`
+  (`github_clone`'s mirror-first flow: remote `github` reads the plugin's mirror, sandbox
+  placeholders excluded). A failed clone is an error record and leaves no folder.
+- **Local only.** `repo: null` means no GitHub repo yet. A missing work folder is made locally:
+  `git init -b main` with no template (no sample hooks), the sandbox placeholders in
+  `.git/info/exclude`, one empty commit "Start <name>". No sync, no merge, no network, nothing to
+  push; `jorah/line` starts from local `main`; the digest says "local only".
+- **Connecting later.** When `repo` is set on a project that ran local-only (`state.json`
+  `localOnly`), the first sync merges `github/<default>` into the line once with
+  `--allow-unrelated-histories` ("Connect jorah/line to github/main …"); a conflict is the run's
+  first task, as for any merge. When the default branch is in the line, `state.json` gets
+  `connected: {at, repo, defaultBranch, head}` and `localOnly: false`. Unrelated histories on any
+  other project stop the run. Never a rebase or a force.
+- **Setup run.** After sync and merge, a line with no `<stateDir>/CHARTER.md` (or `state.json`
+  `setup: running|pending`) gets a setup run. The runner copies `templates/project/`
+  (`/opt/jorah/templates/project`, or runner.json `templates`) into `<stateDir>/`, file by file and
+  never over a file that's there, plus the intake, commits "Project folder from templates and
+  founder input" as trusted, and sets `setup: running`. The brief is `brief-setup.md`: read the
+  repo and the intake, draft the charter with "Open: Q-xxxx" where Adam must decide, seed
+  questions, backlog and Adam tasks, no project work, check with `projectcheck.py`. Only a setup
+  run may change `CHARTER.md`; `intake.md` stays protected. The run is judged after the usual
+  checks: `setup: done` only if it ended `ok`, the five required files are there, the charter is
+  no longer the template and every state file passes the contract. Otherwise `setup: pending`,
+  the record's reason says why, and the next run is a setup run again.
+- The run record has `workDir` (`cloned`, `created` or null), `setup` (`{status, copied, intake,
+  why}` or null) and `founderInput` (`{sha256, copied}` or null). The outbox item has `setup`,
+  `localOnly` and `notes`, e.g. "set up: charter draft and 4 questions ready" or "local only: no
+  GitHub repo yet, so nothing is synced or pushed".
 
 ## Safety, briefly
 
@@ -53,7 +93,7 @@ Status: **source and unit tests only.** Nothing is installed; the install is pla
 
 `~/.jorah-projects/` (700, files 600): `usage.json` (global backoff and last usage seen),
 `requests.signal` (the plugin touches it after writing a request; the path unit watches it), and
-per project `state.json`, `runs/`, `outbox/`, `inbox/answers.jsonl`, `inbox/applied.json`,
+per project `state.json`, `runs/`, `outbox/`, `inbox/intake.md`, `inbox/answers.jsonl`, `inbox/applied.json`,
 `inbox/results/`, `requests/`, `lock`. Formats: the WS2 hand-over note in the session notes, and
 the code (`runner.py`, `intake.py`).
 
@@ -65,6 +105,7 @@ the code (`runner.py`, `intake.py`).
 
 `python3 -m unittest discover -s services/jorah-projects/tests` (in `just unit`): a stand-in
 `claude` that edits and commits, a local bare repo as GitHub, a stand-in sync command, and the
-real sync CLI against a stand-in GitHub API. Needs git, PyYAML, node and gitleaks; no network or
+real sync and clone CLI against a stand-in GitHub API. `test_starting.py` covers setup runs, the
+intake, clone, local-only init and connecting. Needs git, PyYAML, node and gitleaks; no network or
 model. State is checked with WS1's contract checker, `packages/contracts/project/projectcheck.py`,
 the same one the runner imports at run time.

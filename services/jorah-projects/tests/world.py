@@ -106,20 +106,41 @@ FAKE_CLAUDE = textwrap.dedent('''\
 
 FAKE_SYNC = textwrap.dedent('''\
     #!{python}
-    """Stand-in for jorah-github-sync.mjs: fetch the bare "GitHub" into the mirror, print one JSON line."""
+    """Stand-in for jorah-github-sync.mjs [sync|clone]: fetch the bare "GitHub" into the mirror (and for
+    clone make the work folder from it, as cloneFromMirror does), print one JSON line."""
     import json, os, subprocess, sys
-    args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
+    argv = sys.argv[1:]
+    action = argv.pop(0) if argv and not argv[0].startswith("--") else "sync"
+    args = dict(zip(argv[0::2], argv[1::2]))
     here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "sync-calls.jsonl"), "a") as log:
+        log.write(json.dumps([action, *argv]) + "\\n")
     if os.path.exists(os.path.join(here, "sync-fails")):
         print(json.dumps({{"ok": False, "error": "GitHub said 502"}})); sys.exit(1)
     gh = os.path.join(here, "github", args["--repo"] + ".git")
+    if not os.path.exists(gh):
+        print(json.dumps({{"ok": False, "error": "there's no repo named " + args["--repo"]}})); sys.exit(1)
     mirror = os.path.join(args["--mirror-dir"], args["--project"] + ".git")
-    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1")
+    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1",
+               GIT_AUTHOR_NAME="x", GIT_AUTHOR_EMAIL="x@x", GIT_COMMITTER_NAME="x", GIT_COMMITTER_EMAIL="x@x")
+    def git(*a):
+        subprocess.run(["git", *a], check=True, env=env, capture_output=True)
     if not os.path.exists(mirror):
-        subprocess.run(["git", "init", "--bare", "-q", mirror], check=True, env=env)
-    subprocess.run(["git", "--git-dir", mirror, "fetch", "-q", "--prune", gh, "+refs/heads/*:refs/remotes/github/*"], check=True, env=env)
-    subprocess.run(["git", "--git-dir", mirror, "config", "jorah.defaultBranch", "main"], check=True, env=env)
-    print(json.dumps({{"ok": True, "project": args["--project"], "repo": args["--repo"], "mirror": mirror, "defaultBranch": "main", "branches": 1}}))
+        git("init", "--bare", "-q", mirror)
+    git("--git-dir", mirror, "fetch", "-q", "--prune", gh, "+refs/heads/*:refs/remotes/github/*")
+    git("--git-dir", mirror, "config", "jorah.defaultBranch", "main")
+    out = {{"ok": True, "project": args["--project"], "repo": args["--repo"], "mirror": mirror, "defaultBranch": "main", "branches": 1}}
+    if action == "clone":
+        dest = os.path.join(args["--work-dir"], args["--project"])
+        if os.path.lexists(dest):
+            print(json.dumps({{"ok": False, "error": "already exists"}})); sys.exit(1)
+        git("init", "-q", "-b", "main", dest)
+        git("-C", dest, "remote", "add", "github", mirror)
+        git("-C", dest, "config", "remote.github.fetch", "+refs/remotes/github/*:refs/remotes/github/*")
+        git("-C", dest, "fetch", "-q", "github")
+        git("-C", dest, "checkout", "-q", "--no-track", "-B", "main", "refs/remotes/github/main")
+        out.update(path=dest, branch="main")
+    print(json.dumps(out))
 ''')
 
 
@@ -139,7 +160,7 @@ class Clock:
 
 
 class World:
-    def __init__(self, name="robot", *, entry=None, files=None):
+    def __init__(self, name="robot", *, entry=None, files=None, clone=True, github=True):
         self.tmp = Path(tempfile.mkdtemp(prefix="jorah-projects-test-"))
         self.name = name
         self.repo = f"AdamHikl/{name}"
@@ -155,20 +176,10 @@ class World:
         self.work = home / "work" / name
         self.home = home
 
-        # GitHub: main with the project folder.
-        seed = self.tmp / "seed"
-        seed.mkdir()
-        git(seed, "init", "-q", "-b", "main")
-        for rel, text in (files or self.default_files()).items():
-            p = seed / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(text)
-        git(seed, "add", "-A")
-        git(seed, "commit", "-q", "-m", "Bootstrap project mode")
-        self.github.parent.mkdir(parents=True)
-        git(self.tmp, "clone", "-q", "--bare", str(seed), str(self.github))
-        self.seed = seed
-        git(seed, "remote", "add", "gh", str(self.github))
+        # GitHub: main with the project folder (github=False: no repo yet, `make_github` later).
+        self.seed = None
+        if github:
+            self.make_github(files if files is not None else self.default_files())
 
         # Tools.
         self.claude_bin = self.tools / "claude"
@@ -180,13 +191,11 @@ class World:
         sync.chmod(0o755)
 
         # The work clone from the mirror, as github_clone makes it.
-        subprocess.run([str(sync), "--project", name, "--repo", self.repo, "--mirror-dir", str(self.mirror_dir)], check=True, capture_output=True)
         self.mirror = self.mirror_dir / f"{name}.git"
-        git(home / "work", "init", "-q", "-b", "main", str(self.work))
-        git(self.work, "remote", "add", "github", str(self.mirror))
-        git(self.work, "config", "remote.github.fetch", "+refs/remotes/github/*:refs/remotes/github/*")
-        git(self.work, "fetch", "-q", "github")
-        git(self.work, "checkout", "-q", "--no-track", "-B", "main", "refs/remotes/github/main")
+        if clone:
+            subprocess.run([str(sync), "clone", "--project", name, "--repo", self.repo, "--mirror-dir", str(self.mirror_dir),
+                            "--work-dir", str(home / "work")], check=True, capture_output=True)
+            (self.tools / "sync-calls.jsonl").unlink()
 
         cfg = home / ".claude-jorah"
         cfg.mkdir()
@@ -202,6 +211,7 @@ class World:
             sandbox_dir=home / "sandbox", contracts=CONTRACT, gitleaks_bin=shutil.which("gitleaks") or "/nonexistent/gitleaks",
             sync_cmd=[str(sync)], git_bin=shutil.which("git"), github_app_id="5686503", github_owner="AdamHikl",
             kill_grace_seconds=1, bench_env={"robotics": self.tools / "bench-env.sh"}, require_root_owned_bench=False,
+            templates=REPO_ROOT / "templates/project",
         )
         self.entry = {"repo": self.repo, "workDir": str(self.work), "branch": "jorah/line", "stateDir": "project",
                       "level": 0, "schedule": ["02:30", "10:30", "16:30"],
@@ -212,6 +222,32 @@ class World:
         self.free = 100 * 1024**3
         self.minutes = None
         self.logs = []
+
+    def make_github(self, files):
+        """Adam's repo on GitHub, a bare repo with `files` on main."""
+        seed = self.tmp / "seed"
+        seed.mkdir()
+        git(seed, "init", "-q", "-b", "main")
+        for rel, text in files.items():
+            p = seed / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        git(seed, "add", "-A")
+        git(seed, "commit", "-q", "-m", "Bootstrap project mode")
+        self.github.parent.mkdir(parents=True, exist_ok=True)
+        git(self.tmp, "clone", "-q", "--bare", str(seed), str(self.github))
+        self.seed = seed
+        git(seed, "remote", "add", "gh", str(self.github))
+
+    def sync_calls(self):
+        path = self.tools / "sync-calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def intake(self, text):
+        """What the plugin's project_start writes."""
+        inbox = self.state_dir / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        (inbox / "intake.md").write_text(text)
 
     @staticmethod
     def default_files():
@@ -261,6 +297,9 @@ class World:
         records = self.tick()
         assert len(records) == 1, (records, self.logs)
         return records[0]
+
+    def outbox(self, record):
+        return json.loads((self.state_dir / "outbox" / f"{record['id']}.json").read_text())
 
     def state(self):
         return json.loads((self.state_dir / "state.json").read_text())

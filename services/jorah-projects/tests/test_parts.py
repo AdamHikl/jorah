@@ -204,6 +204,55 @@ class SyncCliTest(unittest.TestCase):
             self.assertIn("refs/remotes/github/main", refs)
             self.assertEqual(subprocess.run(["git", "--git-dir", str(mirrors / "robot.git"), "config", "jorah.defaultBranch"], capture_output=True, text=True).stdout.strip(), "main")
 
+    def test_clone_makes_the_work_folder_from_the_mirror_under_the_project_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            seed = tmp / "seed"
+            seed.mkdir()
+            git(seed, "init", "-q", "-b", "trunk")
+            (seed / "a.txt").write_text("a\n")
+            git(seed, "add", "-A")
+            git(seed, "commit", "-qm", "a")
+            git(tmp, "clone", "-q", "--bare", str(seed), str(tmp / "gh/AdamHikl/Robot.git"))
+            harness = tmp / "harness.mjs"
+            cli = (REPO_ROOT / "plugins/jorah-github/bin/jorah-github-sync.mjs").as_uri()
+            harness.write_text(textwrap.dedent(f"""\
+                import {{ generateKeyPairSync }} from "node:crypto";
+                import {{ writeFileSync }} from "node:fs";
+                import {{ main }} from "{cli}";
+                const key = generateKeyPairSync("rsa", {{ modulusLength: 2048 }}).privateKey.export({{ type: "pkcs8", format: "pem" }});
+                writeFileSync(process.argv[2], key, {{ mode: 0o600 }});
+                const fetchImpl = async (url) => {{
+                  const body = url.endsWith("/installation") ? {{ id: 7 }}
+                    : url.endsWith("/repos/AdamHikl/Robot") ? {{ name: "Robot", default_branch: "trunk" }}
+                    : {{ token: "ghs_standin", expires_at: new Date(Date.now() + 3600e3).toISOString() }};
+                  return {{ ok: true, status: 200, json: async () => body }};
+                }};
+                const lines = [];
+                const argv = process.argv.slice(3);
+                const first = await main(argv, {{ fetchImpl, remoteBase: "file://{tmp}/gh/", write: (l) => lines.push(l) }});
+                const again = await main(argv, {{ fetchImpl, remoteBase: "file://{tmp}/gh/", write: (l) => lines.push(l) }});
+                const unknown = await main(["fetch", "--project", "robot"], {{ fetchImpl, write: (l) => lines.push(l) }});
+                console.log(JSON.stringify({{ first, again, unknown, lines }}));
+            """))
+            work = tmp / "work"
+            mirrors = tmp / "mirrors"
+            out = subprocess.run(["node", str(harness), str(tmp / "app.pem"), "clone", "--project", "robot", "--repo", "AdamHikl/Robot",
+                                  "--app-id", "5686503", "--owner", "AdamHikl", "--key-file", str(tmp / "app.pem"),
+                                  "--mirror-dir", str(mirrors), "--work-dir", str(work)],
+                                 capture_output=True, text=True, timeout=60, check=False)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            got = json.loads(out.stdout.strip().splitlines()[-1])
+            self.assertEqual((got["first"], got["again"], got["unknown"]), (0, 1, 1))
+            done = json.loads(got["lines"][0])
+            self.assertEqual((done["path"], done["branch"], done["defaultBranch"]), (str(work / "robot"), "trunk", "trunk"))
+            self.assertIn("already exists", json.loads(got["lines"][1])["error"])
+            self.assertIn("unknown action", json.loads(got["lines"][2])["error"])
+            self.assertNotIn("ghs_standin", out.stdout)
+            self.assertEqual(git(work / "robot", "remote", "get-url", "github").stdout.strip(), str(mirrors / "robot.git"))
+            self.assertEqual(git(work / "robot", "symbolic-ref", "--short", "HEAD").stdout.strip(), "trunk")
+            self.assertIn("/.mcp.json", (work / "robot/.git/info/exclude").read_text())
+
     def test_a_repo_of_another_owner_is_refused(self):
         out = subprocess.run(["node", str(REPO_ROOT / "plugins/jorah-github/bin/jorah-github-sync.mjs"), "--project", "x", "--repo", "someone/x",
                               "--app-id", "1", "--owner", "AdamHikl"], capture_output=True, text=True, timeout=60, check=False)

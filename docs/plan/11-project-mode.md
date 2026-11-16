@@ -237,6 +237,41 @@ Adam answers in plain words ("Q2 B", "your pick", a photo with "A-0001"), and Jo
 
 **`workspace/AGENTS.md`** gets a "Projects" section: what the tools do, that answers are Adam's words only, how to present questions (options, recommendation, deadline), that Jorah never invents progress (a failed or missing run shows as unknown, never as done), and that project work happens in the runner, not in Adam's chat, unless Adam asks for a job there.
 
+### 5.1 Starting a project: Jorah sets himself up
+
+Adam, 2026-11-16: "I want the jorah to make the setup for himself, not make it for him." Starting a project is a sentence in Telegram or by voice, never a build session on the Mac.
+
+**The conversation.** Adam: "Jorah, let's make the tree-watering robot a project", or "new project: an app that matches students who want to live together". Jorah:
+
+1. Finds the repo with `github_list_repos` if Adam named or described one. A brand-new idea has none, and that's fine.
+2. Asks at most five founder questions in one message: what it is, who it's for, what Adam wants out of it, money, time. "You decide" is an answer.
+3. Calls `project_start` with Adam's exact words and answers. Jorah never invents founder intent.
+4. Says the setup run has started. When it's done, he sends the charter draft and the first questions.
+
+**What happens underneath:**
+
+| Step | Who | What |
+|---|---|---|
+| Registry | `project_start` (plugin) | A new entry at level 0: nothing runs on a schedule yet. Free in Adam's clean typed chat; a card with the exact words after outside text or by voice |
+| Founder input | Plugin, then runner | Adam's words go to the runner's inbox as `intake.md`; the runner alone copies them into `<stateDir>/intake.md`. A run can't change them |
+| Folder | Runner | An existing repo is cloned through `jorah-github`'s mirror. A new idea gets a local git repo in `~/work/<name>`, with no GitHub at all (`repo: null`, "local only") |
+| Setup run | Runner, then Claude Code | The line has no `CHARTER.md`, so the runner copies the templates and the intake in as a trusted commit, and the run's brief is setup only. It reads the repo and the intake, then drafts the charter (founder sections point to questions), questions, backlog and Adam tasks. Only in this run may `CHARTER.md` change. An invalid result means the next run is a setup run again |
+| Up the ladder | Adam | "Run it on a schedule" means `project_set_level` to level 1, always a card |
+
+**Where the project folder lives:** on `jorah/line`, not on `main`. Nothing needs pushing to `main` before Jorah can work. The folder reaches `main` whenever Adam merges the line.
+
+**A new idea on GitHub.** Jorah starts it locally right away. GitHub comes when Adam wants it, with one command on the Mac:
+
+```bash
+scripts/github/new-project-repo.sh <name> "one-line description"
+```
+
+It creates the private repo with a README, adds the two `jorah/**` rulesets, and checks `gh` is signed in as Adam. Then Adam tells Jorah "connect <name> to GitHub". `project_connect` (a card) sets the repo, and the next sync merges GitHub's README commit into the line once (unrelated histories, never a rebase or force).
+
+**Why Jorah can't create the repo himself:** creating a repo and its rulesets needs admin rights. On a personal account a GitHub App can't create repos with its installation token [inference from GitHub's API; not tested]. In an organisation it could, but only with Administration permission, and that permission could also delete the rulesets that stop it pushing to `main`. That would make the plugin's code the only guard. So the founder keeps this one step: about 30 seconds per new project, and only when it should leave the PC.
+
+**`tree-watering-robot` is the first test of this.** Its concept document lives on claude.ai, which Jorah can't open, so the install session gives him WS1's copy (`docs/concept.md`) as Adam's founder input. Jorah then sets up the project himself. WS1's local branch `bootstrap/project-mode` stays unpushed, as a reference only.
+
 ## 6. Pushes and the trust ladder
 
 `jorah/line` is a long-lived branch per project. A draft pull request "Jorah's work line" into the default branch stays open. **Adam merges when he likes; Jorah never merges.**
@@ -314,7 +349,7 @@ Each session works in its own worktree, writes source and unit tests only, never
 
 - **Owns:** `docs/contracts/jorah-project-v1.md`, `packages/contracts/project/**` (schemas, examples, schema tests), `templates/project/**`, one line in the `justfile`'s unit recipe; in `AdamHikl/tree-watering-robot`: `project/**` and `docs/concept.md`.
 - **Does:** the schemas exactly as section 3 describes them; templates for every project file; the bootstrap of `tree-watering-robot`: the concept document imported from the claude.ai artifact the README links (Claude Code on the Mac can read it; Jorah can't), the charter drafted with founder sections left as questions, the first questions from section 15, the backlog seeded from the README's next steps, the first Adam tasks for the site measurements.
-- **Done when:** schemas validate the examples and reject the bad ones in tests; the robot repo's `project/` validates; the robot repo's changes are committed on a branch `bootstrap/project-mode` and shown to Adam, who says whether to push (it's Adam's repo, outside this repo's push rule).
+- **Done when:** schemas validate the examples and reject the bad ones in tests; the robot repo's `project/` validates; the robot repo's changes are committed on a branch `bootstrap/project-mode` and shown to Adam, who says whether to push (it's Adam's repo, outside this repo's push rule). **Changed 2026-11-16:** Jorah sets projects up himself (section 5.1), so this branch stays unpushed. Only its `docs/concept.md` is used, as founder input.
 
 ### WS2 `project-runner`
 
@@ -350,7 +385,7 @@ Only one session touches the live Gateway. Order:
 2. **Bench:** `install-robotics-bench.sh --dry-run`, then the install as root (Adam's yes), then `bench-smoke.sh`. Expected: all four parts exit 0 offline.
 3. **Runner:** `setup-project-permissions.sh`, the registry entry for `tree-watering-robot` at level 0, then `install-projects.sh` (units enabled; the timer is a schedule, so Adam's yes).
 4. **Plugin:** `plugins enable jorah-projects`, `projects.patch.json5` and `projects-tools.patch.json5` (dry run, then Adam's yes), the new `AGENTS.md` copied to the live workspace.
-5. **First supervised run:** Adam says "run the robot project now". Expected within 45 minutes: commits on `jorah/line`, a run record, and a digest in Telegram. Adam reads it.
+5. **Jorah sets himself up (section 5.1):** Adam says in Telegram "Jorah, make the tree-watering robot a project", and answers Jorah's founder questions, or says "you decide". The concept document goes in as Adam's founder input. Expected within 45 minutes: `project/` on `jorah/line` with a draft charter, questions, backlog and Adam tasks, a run record, and a message with the charter draft and the questions. Then "run the robot project now" for the first work run.
 6. **Level 1:** on Adam's yes, the schedule and the 18:00 digest automation.
 
 **Tests at the end** (each with its expected result in the runbook the install session writes): a forged answer by a run is reverted; `project_answer` after a web search shows a card with the exact answer; `/jorah-freeze` stops the next run; a usage-limit stop backs off until the reset; a planted secret in a commit pauses the project and nothing is pushed; a push card lists the day's files; voice on `claude-cli` measured against the 3 to 3.5 s baseline; the reboot brings the timer back.

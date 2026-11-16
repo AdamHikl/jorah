@@ -291,7 +291,7 @@ Project mode adds one new kind of risk: a scheduled run that reads the web and w
 | PM-T2, forged founder answers | A run writes `answer: { key: A, by: adam }` itself | Only the runner writes `answer` and `result`, from the inbox; any other change to them is reverted and the run marked `state-rejected` |
 | PM-T3, charter drift | A run edits the decision rights in `CHARTER.md` | Charter changes by a run are reverted; changes come only as founder questions |
 | PM-T4, forged answers through Jorah | A tainted chat makes Jorah call `project_answer` | The guard's card with the exact answer after outside text or by voice |
-| PM-T5, secrets in commits | A run copies a token from a web page | `gitleaks` before every push; a finding pauses the project |
+| PM-T5, secrets in commits | A run copies a token from a web page | `gitleaks` on every run's commits; a finding pauses the project and sets `pushBlocked`, and `jorah-github` refuses pushes and pull requests from that folder until Adam resumes it |
 | PM-T6, runaway use | A loop of runs eats Adam's weekly limit | Runs a day, minutes and turns per run, usage-limit backoff, `/jorah-freeze` stops runs |
 | PM-T7, private data leaks | Interview notes reach a public repo | The project repo stays private; pseudonymous notes; the guard's cross-repo rule |
 | PM-T8, physical harm | Firmware drives a 250 kg robot without limits | No path from runs to hardware until the bench rig's gate; motor code carries limits and stop handling, reviewed by Adam before flashing |

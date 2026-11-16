@@ -42,8 +42,10 @@ Status: **source and unit tests only.** Nothing is installed; the install is pla
 - The work repo is untrusted. Its `.git/config` must hold only allow-listed keys (no hooks,
   fsmonitor, filters, includes, ssh command), and every git the runner or gitleaks starts runs
   with pinned config. Files are read and written with no symlink anywhere in the path.
-- The runner never pushes. A push goes through `jorah-github`'s card and must respect
-  `pushBlocked`.
+- The runner never pushes. A push goes through `jorah-github`'s card, and `jorah-github` refuses
+  any push or pull request from the project's folder while `pushBlocked` is set, or while the
+  registry or `state.json` can't be read (`projectPushBlock` in `plugins/jorah-github/github.js`).
+  Resuming the project clears it.
 - Records hold ids, statuses, SHAs, file names and commit subjects; never prompts, file contents
   or secrets.
 

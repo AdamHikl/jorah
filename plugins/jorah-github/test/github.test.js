@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, listRepos, changedFiles, check, checkCloneName, describeWithFiles, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
+import { EXCLUDE_MARKER, PROBE_BRANCH, READ, appJwt, listRepos, changedFiles, check, checkCloneName, describeWithFiles, checkProject, checkRules, cloneFlow, cloneFromMirror, describe, mirrorBranch, prFlow, projectPushBlock, pushBranch, pushFlow, readKey, repoToken, settings, syncMirror } from "../github.js";
 import { generateKeyPairSync, createVerify } from "node:crypto";
 
 const g = (cwd, ...args) => execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
@@ -497,4 +497,65 @@ test("tokens are reused per repo and permission until 10 minutes before they exp
   const late = await repoToken(config, "AdamHikl/proj", { fetchImpl, now: t0 + 51 * 60 * 1000 });
   assert.notEqual(late, a, "within 10 minutes of expiry: a fresh one");
   assert.equal(minted, 3);
+});
+
+// Project mode: the runner's pushBlocked stops pushes and pull requests before any network call.
+function projectWorld() {
+  const w = world();
+  const registry = join(w.root, "projects.json");
+  const stateDir = join(w.root, "jorah-projects");
+  const config = settings({ appId: "5686503", workDir: w.work, mirrorDir: join(w.root, "mirrors"), repos: { proj: "AdamHikl/proj" }, projectsRegistry: registry, projectsStateDir: stateDir });
+  const state = (name, body) => {
+    mkdirSync(join(stateDir, name), { recursive: true });
+    writeFileSync(join(stateDir, name, "state.json"), typeof body === "string" ? body : JSON.stringify(body));
+  };
+  return { ...w, config, registry, stateDir, state };
+}
+const noNetwork = async () => {
+  throw new Error("network used before the push block was checked");
+};
+
+test("no registry and no runner state: project mode isn't in use, nothing is blocked", () => {
+  const { config } = projectWorld();
+  assert.equal(projectPushBlock(config, check(config, { project: "proj", branch: "jorah/task" })), null);
+});
+
+test("pushBlocked false lets the push through to the normal checks", () => {
+  const { config, state } = projectWorld();
+  state("proj", { v: 1, paused: false, pushBlocked: false, pushBlockedReason: null });
+  assert.equal(projectPushBlock(config, check(config, { project: "proj", branch: "jorah/task" })), null);
+});
+
+test("pushBlocked refuses push and pull request before any network call, with the reason on one line", async () => {
+  const { config, state } = projectWorld();
+  state("proj", { v: 1, paused: true, pushBlocked: true, pushBlockedReason: "gitleaks found\n1 finding" });
+  await assert.rejects(pushFlow(config, { project: "proj", branch: "jorah/task" }, { fetchImpl: noNetwork }), /blocked pushes for proj: gitleaks found 1 finding\. Adam checks/);
+  await assert.rejects(prFlow(config, { project: "proj", branch: "jorah/task", title: "t", body: "b" }, { fetchImpl: noNetwork }), /blocked pushes for proj/);
+});
+
+test("a registry entry whose workDir is this folder is matched even under another name", async () => {
+  const { config, project, registry, state } = projectWorld();
+  writeFileSync(registry, JSON.stringify({ "tree-robot": { repo: "AdamHikl/proj", workDir: project, branch: "jorah/line" }, other: { workDir: "/nonexistent" } }));
+  state("tree-robot", { v: 1, pushBlocked: true });
+  await assert.rejects(pushFlow(config, { project: "proj", branch: "jorah/task" }, { fetchImpl: noNetwork }), /blocked pushes for tree-robot\. Adam checks/);
+});
+
+test("an unreadable registry or runner state fails closed", async () => {
+  const { config, registry, state } = projectWorld();
+  const target = check(config, { project: "proj", branch: "jorah/task" });
+  state("proj", "{not json");
+  assert.match(projectPushBlock(config, target), /state for proj can't be read/);
+  state("proj", { pushBlocked: "yes" });
+  assert.match(projectPushBlock(config, target), /state for proj can't be read/);
+  state("proj", { pushBlocked: false });
+  writeFileSync(registry, "[1, 2]");
+  assert.match(projectPushBlock(config, target), /registry can't be read/);
+  writeFileSync(registry, "{broken");
+  await assert.rejects(pushFlow(config, { project: "proj", branch: "jorah/task" }, { fetchImpl: noNetwork }), /registry can't be read/);
+});
+
+test("a registry name that isn't a plain name is refused, never used as a path", () => {
+  const { config, project, registry } = projectWorld();
+  writeFileSync(registry, JSON.stringify({ "../../etc": { workDir: project } }));
+  assert.match(projectPushBlock(config, check(config, { project: "proj", branch: "jorah/task" })), /isn't a plain name/);
 });

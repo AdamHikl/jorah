@@ -26,6 +26,10 @@ export const DEFAULTS = Object.freeze({
   keyFile: "/home/jorah/.config/jorah-github/app.pem",
   workDir: "/home/jorah/work",
   mirrorDir: "/home/jorah/.jorah-github/mirrors",
+  // Project mode (services/jorah-projects): the runner sets pushBlocked in its state.json after a
+  // gitleaks finding or a scan that couldn't run; pushes and pull requests refuse until it's cleared.
+  projectsRegistry: "/home/jorah/.config/jorah-projects/projects.json",
+  projectsStateDir: "/home/jorah/.jorah-projects",
 });
 
 const BRANCH = /^jorah\/[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
@@ -48,6 +52,8 @@ export function settings(pluginConfig = {}) {
     keyFile: pluginConfig.keyFile ?? DEFAULTS.keyFile,
     workDir: pluginConfig.workDir ?? DEFAULTS.workDir,
     mirrorDir: pluginConfig.mirrorDir ?? DEFAULTS.mirrorDir,
+    projectsRegistry: pluginConfig.projectsRegistry ?? DEFAULTS.projectsRegistry,
+    projectsStateDir: pluginConfig.projectsStateDir ?? DEFAULTS.projectsStateDir,
     owner,
     repos,
   };
@@ -383,12 +389,83 @@ export function describe(toolName, params, config) {
   return `Push branch ${params?.branch} from ~/work/${params?.project} to ${repo}`;
 }
 
+const unreadable = (what) => `${what} can't be read, so pushes stay refused until it can`;
+const oneLine = (t) => String(t).replace(/\s+/g, " ").trim().slice(0, 200);
+
+/**
+ * Project mode's push block. Returns null, or the reason a push or pull request from this work
+ * folder must refuse: the project runner set `pushBlocked` in a project's state.json (a gitleaks
+ * finding, or a scan that couldn't run), or its registry or state can't be read (fails closed).
+ * A project is matched by its runner name equal to the folder name, or by a registry entry whose
+ * workDir is this folder. No registry and no state file means project mode isn't in use here.
+ */
+export function projectPushBlock(config, { project, source }) {
+  const names = new Set([project]);
+  let raw = null;
+  try {
+    raw = readFileSync(config.projectsRegistry, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") return unreadable("the project registry");
+  }
+  if (raw !== null) {
+    let registry;
+    try {
+      registry = JSON.parse(raw);
+    } catch {
+      return unreadable("the project registry");
+    }
+    if (!registry || typeof registry !== "object" || Array.isArray(registry)) return unreadable("the project registry");
+    for (const [name, entry] of Object.entries(registry)) {
+      if (typeof entry?.workDir !== "string") continue;
+      let real;
+      try {
+        real = realpathSync(entry.workDir);
+      } catch {
+        continue;
+      }
+      if (real === source) names.add(name);
+    }
+  }
+  for (const name of names) {
+    if (!PROJECT.test(name)) return `the project registry names a project "${oneLine(name).slice(0, 40)}" that isn't a plain name`;
+    let text;
+    try {
+      text = readFileSync(join(config.projectsStateDir, name, "state.json"), "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      return unreadable(`the project runner's state for ${name}`);
+    }
+    let state;
+    try {
+      state = JSON.parse(text);
+    } catch {
+      return unreadable(`the project runner's state for ${name}`);
+    }
+    if (!state || typeof state !== "object" || ![true, false, undefined].includes(state.pushBlocked)) {
+      return unreadable(`the project runner's state for ${name}`);
+    }
+    if (state.pushBlocked === true) {
+      const why = typeof state.pushBlockedReason === "string" && state.pushBlockedReason ? `: ${oneLine(state.pushBlockedReason)}` : "";
+      return `the project runner blocked pushes for ${name}${why}. Adam checks the finding and resumes the project to clear it`;
+    }
+  }
+  return null;
+}
+
+/** check() plus project mode's push block, for the push and pull request flows. */
+export function checkPushable(config, p) {
+  const target = check(config, p);
+  const blocked = projectPushBlock(config, target);
+  if (blocked) throw new Error(blocked);
+  return target;
+}
+
 // The tools' whole flows, with GitHub and git swappable so tests can use a stand-in GitHub.
 // `remoteBase` is a test seam only; nothing in the plugin's config can change it.
 
-/** github_push_branch: name and folder checks, live rule check, mirror, push. */
+/** github_push_branch: name and folder checks, project mode's push block, live rule check, mirror, push. */
 export async function pushFlow(config, p, { fetchImpl = fetch, gitImpl, remoteBase, approvedHead } = {}) {
-  const target = check(config, p);
+  const target = checkPushable(config, p);
   const token = await repoToken(config, target.repo, { fetchImpl });
   await checkRules(target.repo, token, { fetchImpl });
   const mirrored = await mirrorBranch(config, target, remoteBase ? { remoteBase } : {});
@@ -400,9 +477,9 @@ export async function pushFlow(config, p, { fetchImpl = fetch, gitImpl, remoteBa
   return { target, mirrored, result };
 }
 
-/** github_open_pr: name and folder checks, live rule check, draft pull request. */
+/** github_open_pr: name and folder checks, project mode's push block, live rule check, draft pull request. */
 export async function prFlow(config, p, { fetchImpl = fetch } = {}) {
-  const target = check(config, p);
+  const target = checkPushable(config, p);
   const token = await repoToken(config, target.repo, { fetchImpl });
   await checkRules(target.repo, token, { fetchImpl });
   return { target, pr: await openPullRequest(config, target, p, token, fetchImpl) };

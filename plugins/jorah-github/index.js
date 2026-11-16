@@ -2,7 +2,7 @@
 // clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
 // build or install.
 
-import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, prFlow, pushFlow, settings, syncFlow } from "./github.js";
+import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, prFlow, projectPushBlock, pushFlow, settings, syncFlow } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -50,6 +50,15 @@ export default {
       // Never ask Adam to approve something the prompt can't describe.
       if (!complete(hit.params)) return { block: true, blockReason: "jorah-github: project and branch are required." };
       const cfg = config();
+      // Project mode: a push the runner has blocked is refused before Adam is asked. A name or
+      // folder that fails check() still gets a card here and is refused by the tool itself.
+      let blocked = null;
+      try {
+        blocked = projectPushBlock(cfg, check(cfg, hit.params));
+      } catch {
+        blocked = null;
+      }
+      if (blocked) return { block: true, blockReason: `jorah-github: ${blocked}` };
       const files = await listing(hit.name, hit.params, cfg);
       const key = `${hit.params.project}\0${hit.params.branch}`;
       if (hit.name === "github_push_branch") {

@@ -68,6 +68,16 @@
       "channel": "The digest only: listed in the next morning brief or evening wrap-up, never a message of its own.",
       "frequency": "Whenever; read in the next digest",
       "off": "Say \"stop telling me this\", or remove learned from enabledTypes."
+    },
+    "project_digest": {
+      "title": "Daily project digest",
+      "class": "digest",
+      "render": "text",
+      "maxPerDay": 1,
+      "trigger": "At 18:00 (docs/plan/11-project-mode.md section 5). Needs the Project digest automation, which calls project_digest for each project and sends one line for all of them: with one project, the tool's own line.",
+      "channel": "Telegram: one line written by code, counts and ids only, at most 300 characters and no links, for example \"tree-watering-robot: 3 runs, 2 done; for you: Q-0001, I suggest B, by 2026-11-20; your hands: A-0001. Ask me for the detail.\" The questions with their options are in the run's session in the Jorah app, or ask Jorah.",
+      "frequency": "Once a day",
+      "off": "Say \"stop the project digest\", or remove project_digest from enabledTypes; disable its automation with openclaw --profile jorah automations disable <id>."
     }
   }
 }

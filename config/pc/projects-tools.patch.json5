@@ -1,0 +1,42 @@
+// DRAFT. Not applied. Makes jorah-projects' nine tools (plugins/jorah-projects, docs/plan/
+// 11-project-mode.md section 5) reach main, the same way github-tools.patch.json5 did for the GitHub
+// tools: OpenClaw offers a plugin's tools only when the agent's tool allow list permits them, and
+// main has an explicit list. Only these nine names are added, not group:plugins. The guard decides
+// each call (config/permission-matrix.json): list, status and pause read; digest marks the chat;
+// answers, results, run now and resume are a card after outside text or by voice; limits always.
+//
+// THE INSTALL SESSION READS THE LIVE LIST FIRST. Merge patch: the array is the WHOLE list, so an
+// entry left out removes that tool from main. Below is the union of every list committed to main
+// on 2026-11-16 (github-tools and ios-tools patches, plus the tools install-site-readers.sh,
+// install-google.sh, install-phone.sh and install-proactive.sh add to the live list), which may not be what is live.
+// On the PC:
+//   openclaw --profile jorah config get agents.entries.main.tools.sandbox.tools.alsoAllow
+// then either apply this file if it equals the live list plus the nine project_* names, or (better)
+// build the patch from the live list plus the nine names, as install-proactive.sh does.
+//
+// Dry run: openclaw --profile jorah config patch --file /opt/jorah/config/pc/projects-tools.patch.json5 --dry-run
+// Expected: "Dry run successful" with one update, agents.entries.main.tools.sandbox.tools.alsoAllow.
+// Apply after projects.patch.json5 (the plugin must be enabled first).
+// Undo: the same list without the nine project_* names.
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
+          "ios_build", "ios_install", "ios_status",
+          "site_read", "sites_list",
+          "calendar_read", "mail_read", "mail_open", "contact_search",
+          "phone_today",
+          "today_picture", "loops_list", "loop_propose", "loop_done", "loop_drop", "proactive_notify", "proactive_feedback",
+          "proactive_resume", "proactive_why", "digest_list", "proactive_due", "proactive_tick",
+          "project_list", "project_status", "project_digest", "project_answer", "project_task_result",
+          "project_run_now", "project_pause", "project_resume", "project_set_limits",
+          "agentmemory__*",
+        ] } } },
+      },
+    },
+  },
+}

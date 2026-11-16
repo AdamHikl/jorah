@@ -1,0 +1,65 @@
+{
+  "id": "jorah-projects",
+  "name": "Jorah projects",
+  "description": "See and steer the projects Jorah's project runner works on (docs/plan/11-project-mode.md section 5): list, status, the founder digest, Adam's answers and task results (with photos he sent), run now, pause, resume and limits. Reads the registry, the runner's state and the project folder; writes only the runner's inbox and requests, and one project's limits. Starts no work itself.",
+  "categories": [
+    "other"
+  ],
+  "contracts": {
+    "tools": [
+      "project_list",
+      "project_status",
+      "project_digest",
+      "project_answer",
+      "project_task_result",
+      "project_run_now",
+      "project_pause",
+      "project_resume",
+      "project_set_limits"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "registryFile": {
+        "type": "string",
+        "description": "The project registry, /home/jorah/.config/jorah-projects/projects.json (mode 600)"
+      },
+      "stateRoot": {
+        "type": "string",
+        "description": "The runner's state, /home/jorah/.jorah-projects (one folder per project, mode 700)"
+      },
+      "workRoot": {
+        "type": "string",
+        "description": "Where project repos live when an entry has no workDir, /home/jorah/work"
+      },
+      "guardStateDir": {
+        "type": "string",
+        "description": "jorah-guard's state folder, read only for its FROZEN file"
+      },
+      "timeZone": {
+        "type": "string",
+        "description": "Adam's time zone, for 'today'"
+      },
+      "workspace": {
+        "type": "string",
+        "description": "main's workspace, for attachment paths given relative to it (media/inbound/...)"
+      },
+      "mediaRoots": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Folders where OpenClaw keeps received attachments; a file path outside them is refused unless the plugin saw it arrive in the same chat"
+      },
+      "gitBin": {
+        "type": "string",
+        "description": "git, for counting commits not yet on GitHub"
+      }
+    }
+  }
+}

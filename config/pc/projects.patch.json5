@@ -1,0 +1,44 @@
+// Project mode, the founder loop (docs/plan/11-project-mode.md section 5): plugins/jorah-projects.
+// DRAFT: not applied. The install session (plan section 12, step 4) applies it on Adam's yes, after
+// the runner is installed (the registry and /home/jorah/.jorah-projects exist) and after jorah-guard
+// runs with a permission-matrix.json that has the project rules (grep '"project_set_limits"').
+//
+// Also needed, not in this file:
+//   - plugins.allow: the LIVE list plus "jorah-projects" (read it with
+//     `openclaw --profile jorah config get plugins.allow`; never a fixed copy, as install-proactive.sh does).
+//   - main's tool list: projects-tools.patch.json5 (read its header first).
+//   - `openclaw --profile jorah plugins enable jorah-projects` from /opt/jorah/plugins/jorah-projects.
+// The plugin needs no hooks.allowConversationAccess: it uses before_tool_call and message_received
+// only (docs: plugins/hooks.md, "Permissions and scope").
+//
+// Paths: mediaRoots are where OpenClaw keeps attachments Adam sends. The docs give
+// ~/.openclaw/media/inbound (channels/line.md) and a sandbox's media/inbound (gateway/config-agents/
+// sandbox.md); Jorah's state dir is ~/.openclaw-jorah. CHECK ON THE PC before applying: send a photo
+// to Jorah, then `ls -la /home/jorah/.openclaw-jorah/media/inbound /home/jorah/workspace/media/inbound`
+// and fix this list to the folders that exist. Attachments seen arriving in the same chat are taken
+// even outside these folders; any other path is refused.
+//
+// Dry run on the PC:
+//   openclaw --profile jorah config patch --file /opt/jorah/config/pc/projects.patch.json5 --dry-run
+// Expected: "Dry run successful" with plugins.entries.jorah-projects.{enabled,config}.
+// Undo: `openclaw --profile jorah plugins disable jorah-projects`, then a patch with
+// plugins.entries."jorah-projects": null and the allow list without it.
+{
+  plugins: {
+    entries: {
+      "jorah-projects": {
+        enabled: true,
+        config: {
+          registryFile: "/home/jorah/.config/jorah-projects/projects.json",
+          stateRoot: "/home/jorah/.jorah-projects",
+          workRoot: "/home/jorah/work",
+          guardStateDir: "/home/jorah/.jorah-guard",
+          timeZone: "Europe/Bratislava",
+          workspace: "/home/jorah/workspace",
+          mediaRoots: ["/home/jorah/.openclaw-jorah/media/inbound", "/home/jorah/workspace/media/inbound"],
+          gitBin: "/usr/bin/git",
+        },
+      },
+    },
+  },
+}

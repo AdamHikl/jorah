@@ -6,10 +6,11 @@
     "agents_list", "tool_search", "tool_describe", "heartbeat_respond", "github_list_repos", "skills_read", "skills_search", "subagents",
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
     "agentmemory__memory_diagnose", "sites_list", "phone_today",
-    "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due"
+    "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due",
+    "project_list", "project_status", "project_pause"
   ],
   "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read",
-    "calendar_read", "mail_read", "mail_open", "contact_search"],
+    "calendar_read", "mail_read", "mail_open", "contact_search", "project_digest"],
   "search": ["web_search", "x_search"],
   "url": ["web_fetch", "browser"],
   "fileWrite": ["write", "edit", "apply_patch"],
@@ -25,20 +26,28 @@
   "sandboxShell": ["exec", "process"],
   "blocked": ["sessions_send", "gateway", "nodes", "computer"],
   "proactiveSend": ["proactive_notify", "proactive_feedback"],
-  "localWrite": ["loop_done", "loop_drop"],
-  "confirmAlways": ["loop_propose", "proactive_resume"],
+  "localWrite": ["loop_done", "loop_drop", "project_answer", "project_task_result", "project_run_now", "project_resume"],
+  "confirmAlways": ["loop_propose", "proactive_resume", "project_set_limits"],
   "cronOnly": ["proactive_tick"],
   "cardTitles": {
     "loop_propose": "Jorah wants to note an open loop",
     "proactive_resume": "Jorah wants to start telling you this again",
     "loop_done": "Jorah wants to close an open loop",
-    "loop_drop": "Jorah wants to drop an open loop"
+    "loop_drop": "Jorah wants to drop an open loop",
+    "project_answer": "Jorah wants to record your answer to a project question",
+    "project_task_result": "Jorah wants to record what you sent back for a project task",
+    "project_run_now": "Jorah wants to start a project run now",
+    "project_resume": "Jorah wants to resume a paused project",
+    "project_set_limits": "Jorah wants to change how much a project may run"
   },
   "proactive": {
     "about": "Runs Adam didn't start (docs/runbooks/proactive.md): message is blocked there; they speak only through sendTool.",
     "triggers": ["cron", "heartbeat"],
     "sessionKinds": ["cron", "hook", "proactive"],
     "sendTool": "proactive_notify"
+  },
+  "projects": {
+    "about": "jorah-projects (docs/plan/11-project-mode.md section 5). project_pause is in read on purpose: pausing is always free, even frozen. project_status returns only counts, ids and times, so it stays a read; project_digest carries run-written text, so it marks the chat."
   },
   "readActions": ["list", "view", "get", "status", "runs", "show", "describe", "search"],
   "memoryFiles": ["MEMORY.md", "USER.md", "DREAMS.md", "memory/"],

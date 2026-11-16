@@ -100,6 +100,9 @@ name); apt checks the signature and every package's hash, so that's the integrit
 - **Exception (written):** Ubuntu's own archive packages (compilers, Qt, Boost and the other
   dependencies apt pulls in) install as the Ubuntu 24.04 archive has them, including security
   updates, as for the rest of the distro. They aren't pinned by date.
+- **Licences:** every PyPI package is in `config/licenses.tsv`. Five licences outside the allowlist
+  (chardet's LGPL, OpenCascade's LGPL inside the OCP wheel, PSF-2.0, Unlicense, MIT-CMU) are accepted
+  for personal use in `docs/adr/0003-robotics-bench-licences.md`, for the bench's packages only.
 - **Note:** rosdep's `distribution_cache` for Jazzy comes from `repo.ros2.org` as it is on install
   day; the rule files are pinned to the tag. It only maps dependency names.
 

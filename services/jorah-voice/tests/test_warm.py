@@ -26,9 +26,10 @@ class Gateway:
     def __init__(self):
         self.now = 1000.0
         self.started = 900.0
+        self.rate = 1.0  # how fast the Gateway's uptime runs against the voice service's clock
 
     def uptime(self):
-        return None if self.started is None else self.now - self.started
+        return None if self.started is None else (self.now - self.started) * self.rate
 
 
 class Warming(unittest.TestCase):
@@ -52,6 +53,38 @@ class Warming(unittest.TestCase):
         self.gateway.started = self.gateway.now - 15
         self.assertTrue(self.warmer.check())
         self.assertEqual(len(self.brain.prompts), 2)
+
+    def test_clock_drift_is_not_a_restart(self):
+        # 2026-11-17 on the PC: the two clocks drifted apart by about 3 %, and the old check sent a
+        # warm-up every 2.5 minutes.
+        for rate in (0.97, 1.03):
+            self.setUp()
+            self.gateway.rate = rate
+            for _ in range(3 * 180):  # three hours of 20 s ticks
+                self.warmer.check()
+                self.gateway.now += 20
+            self.assertEqual(self.brain.prompts, [WARMUP_TEXT], f"rate {rate}")
+
+    def test_warms_after_a_restart_seen_only_once_it_is_back(self):
+        self.warmer.check()
+        self.gateway.now += 20
+        self.warmer.check()
+        self.gateway.started = None
+        for _ in range(6):
+            self.gateway.now += 20
+            self.assertFalse(self.warmer.check())
+        self.gateway.started = self.gateway.now - 8
+        self.assertTrue(self.warmer.check())
+        self.gateway.now += 20
+        self.assertFalse(self.warmer.check())
+        self.assertEqual(len(self.brain.prompts), 2)
+
+    def test_a_poke_between_ticks_is_not_a_restart(self):
+        self.warmer.check()
+        self.gateway.now += 0.5
+        self.warmer.poke()
+        self.assertFalse(self.warmer.check())
+        self.assertEqual(len(self.brain.prompts), 1)
 
     def test_does_nothing_while_the_gateway_is_down(self):
         self.gateway.started = None

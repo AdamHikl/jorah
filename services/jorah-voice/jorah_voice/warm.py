@@ -17,8 +17,13 @@ from urllib.parse import urlsplit
 
 WARMUP_SESSION = "agent:main:voice-warmup"
 WARMUP_TEXT = "Automatic warm-up after a Gateway restart, not a message from Adam. Reply with one word: ready."
-# Two readings of the same Gateway start differ only by clock drift; a restart moves it by far more.
-SAME_START_SECONDS = 5
+# A restart shows as the Gateway's uptime falling well short of the previous reading plus the time
+# since. Only consecutive readings are compared: on the PC the Gateway's uptime and this service's
+# clock drift apart by a few percent, which adds up over hours but not over one 20 s tick. Measured
+# 2026-11-17: comparing against the start worked out at the last warm-up, as before, drifted 5 s every
+# 2.5 minutes and sent a warm-up each time: 155 that day instead of one.
+RESTART_SLACK_SECONDS = 5
+RESTART_SLACK_SHARE = 0.1
 TRIES_PER_START = 2
 
 
@@ -52,13 +57,18 @@ class Warmer:
         self._every = every
         self._clock = clock
         self._log = log
-        self._warmed_start = None
-        self._tries = {}
+        self._seen = None  # (clock, uptime) at the last good reading
+        self._warmed = False
+        self._tries = 0
         self._lock = threading.Lock()
         self._wake = threading.Event()
 
-    def _same(self, a, b):
-        return a is not None and b is not None and abs(a - b) < SAME_START_SECONDS
+    def _restarted(self, now, uptime):
+        if self._seen is None:
+            return False
+        then, before = self._seen
+        elapsed = max(0.0, now - then)
+        return uptime < before + elapsed - (RESTART_SLACK_SECONDS + RESTART_SLACK_SHARE * elapsed)
 
     def check(self):
         """Warm the Gateway if it has started since the last warm-up. Returns True if this call warmed it."""
@@ -66,13 +76,13 @@ class Warmer:
             uptime = self._uptime()
             if uptime is None:
                 return False
-            started = self._clock() - uptime
-            if self._same(started, self._warmed_start):
+            now = self._clock()
+            if self._restarted(now, uptime):
+                self._warmed, self._tries = False, 0
+            self._seen = (now, uptime)
+            if self._warmed or self._tries >= TRIES_PER_START:
                 return False
-            key = next((k for k in self._tries if self._same(k, started)), started)
-            if self._tries.get(key, 0) >= TRIES_PER_START:
-                return False
-            self._tries = {key: self._tries.get(key, 0) + 1}
+            self._tries += 1
             begun = self._clock()
             try:
                 for _ in self._make_brain().stream(WARMUP_TEXT):
@@ -80,7 +90,7 @@ class Warmer:
             except Exception as error:
                 self._log(f"warm-up failed: {type(error).__name__}: {error}")
                 return False
-            self._warmed_start = started
+            self._warmed = True
             self._log(f"warmed the Gateway in {self._clock() - begun:.1f}s, {uptime:.0f}s after it started")
             return True
 

@@ -605,10 +605,27 @@ Adam's yes ("Yes, install it") for `docs/plan/11-project-mode.md` section 12. On
 - Three heartbeats with `isolatedSession: false` reused one runtime. **But that isn't a fix:** system events (reminders, job-finished relays) queue on the main session and the next heartbeat injects them. A heartbeat in another standing session wouldn't see them, and one in the main session carries Adam's full history every hour.
 - Afterwards `jorah-dev` was stopped, its config restored from the backup, and its auth order set back to `anthropic:jorah-store`.
 
-**Open:** the leak continues at about 290 MB an hour, two pairs per hourly heartbeat (`main` and `deep`), until a Gateway restart or an OpenClaw fix. Adam's choice:
-- (a) a restart every 6 hours that skips while a turn or voice call is running (peak about 1.8 GB);
-- (b) heartbeats back on the embedded runtime with the API key (untested; a different model id and a little API cost);
-- (c) report it to OpenClaw and wait for a fixed release (subject to the 7-day rule).
+The leak goes on at about 290 MB an hour: two pairs per hourly heartbeat (`main` and `deep`). The options were:
+- (a) a restart every 6 hours that skips while a turn or voice call is running;
+- (b) heartbeats back on the embedded runtime with the API key;
+- (c) report it to OpenClaw and wait.
+
+**Adam chose (a).** `2187d55`: `scripts/pc/gateway-recycle.sh`, run by `jorah-gateway-recycle.timer` at 02:20, 08:20, 14:20 and 20:20, with no catch-up after the PC was off.
+- **What it skips:**
+  - It skips while the Gateway's `status --json` reports `shutdownBudget.activeWork` (turns, cron runs, session writes), or while a connection is open on the voice port 43210.
+  - Anything but a clear idle counts as busy.
+  - It checks every 10 minutes for up to an hour, then skips that window.
+- **The restart itself** is graceful: OpenClaw drains for up to 5 minutes (the unit's `TimeoutStopSec=60` caps that) and resumes turns it interrupted.
+
+**Installed 2026-11-17** [measured]:
+- Files copied with SHA-256 matching `main` and synced; `systemd-analyze verify` clean.
+- Dry run: "idle: would restart". With a test connection held open on 43210: "busy (a voice call is open)".
+- Installed and enabled; the next run is 02:20.
+- **One run by hand at 21:36:** idle, restarted, ready after 25 s, one MCP child group left (2 before), the voice warm-up once. `Result=success`.
+
+**Peak** about 1.8 GB of leaked servers just before a restart. **Undo:** `install-gateway-recycle.sh --undo`.
+
+**Still open:** an OpenClaw release that retires claude-cli heartbeat MCP runtimes; then the timer can go. Posting the bug upstream needs Adam's OK.
 
 ## Errands: shopping, things Adam buys again, exact reminders, 2026-11-17
 

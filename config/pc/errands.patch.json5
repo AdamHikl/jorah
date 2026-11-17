@@ -1,0 +1,25 @@
+// Errands (docs/runbooks/errands.md): plugins/jorah-errands. DRAFT: not applied.
+// scripts/pc/install-errands.sh applies it, after linking the plugin, adding its six tools to main's
+// live tool list and price_compare to deep's (never a fixed copy of either list here), and adding
+// the plugin to plugins.allow. The guard needs this commit's permission-matrix.json (it reads it at
+// start, so the script restarts the Gateway).
+//
+// stateDir holds the supplies record, which may hold a prescription: private, on the PC only,
+// mode 700, never in the repo or docs/evidence. Outside the workspace on purpose, so file tools can't
+// write it past the guard. Not in the daily backup yet (that takes OpenClaw's state and agentmemory).
+//
+// Dry run on the PC: install-errands.sh --dry-run. Undo: install-errands.sh --undo.
+{
+  plugins: {
+    entries: {
+      "jorah-errands": {
+        enabled: true,
+        config: {
+          stateDir: "/home/jorah/.jorah-errands",
+          timeZone: "Europe/Bratislava",
+          remindTime: "09:00",
+        },
+      },
+    },
+  },
+}

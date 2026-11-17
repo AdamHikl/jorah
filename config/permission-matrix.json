@@ -7,7 +7,8 @@
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
     "agentmemory__memory_diagnose", "sites_list", "phone_today",
     "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due",
-    "project_list", "project_status", "project_pause"
+    "project_list", "project_status", "project_pause",
+    "reminder_job", "price_compare", "supply_list", "supply_plan"
   ],
   "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read",
     "calendar_read", "mail_read", "mail_open", "contact_search", "project_digest"],
@@ -27,8 +28,9 @@
   "blocked": ["sessions_send", "gateway", "nodes", "computer"],
   "proactiveSend": ["proactive_notify", "proactive_feedback"],
   "localWrite": ["loop_done", "loop_drop", "project_answer", "project_task_result", "project_run_now", "project_resume",
-    "project_start"],
-  "confirmAlways": ["loop_propose", "proactive_resume", "project_set_limits", "project_connect", "project_set_level"],
+    "project_start", "supply_save"],
+  "confirmAlways": ["loop_propose", "proactive_resume", "project_set_limits", "project_connect", "project_set_level",
+    "supply_forget"],
   "cronOnly": ["proactive_tick"],
   "cardTitles": {
     "loop_propose": "Jorah wants to note an open loop",
@@ -42,7 +44,9 @@
     "project_set_limits": "Jorah wants to change how much a project may run",
     "project_start": "Jorah wants to start a project from your words",
     "project_connect": "Jorah wants to connect a project to a GitHub repo",
-    "project_set_level": "Jorah wants to change a project's trust level"
+    "project_set_level": "Jorah wants to change a project's trust level",
+    "supply_save": "Jorah wants to update your supplies record",
+    "supply_forget": "Jorah wants to delete a supplies record"
   },
   "proactive": {
     "about": "Runs Adam didn't start (docs/runbooks/proactive.md): message is blocked there; they speak only through sendTool.",
@@ -52,6 +56,9 @@
   },
   "projects": {
     "about": "jorah-projects (docs/plan/11-project-mode.md section 5). project_pause is in read on purpose: pausing is always free, even frozen. project_status returns only counts, ids and times, so it stays a read; project_digest carries run-written text, so it marks the chat. project_start (section 5.1) is free in Adam's clean typed chat and a card with his exact words after outside text or by voice; project_connect and project_set_level (level 1 is a schedule) are always a card."
+  },
+  "errands": {
+    "about": "jorah-errands (docs/runbooks/errands.md). reminder_job and price_compare only compute: they return an automations call or numbers and set nothing, so they are reads; the reminder itself still goes through automations and the schedule rule. supply_list and supply_plan read Adam's own record, which only supply_save writes, so they are reads too. supply_save is free in Adam's clean typed chat and a card with the exact fields after outside text or by voice; supply_forget deletes, so it is always a card."
   },
   "readActions": ["list", "view", "get", "status", "runs", "show", "describe", "search"],
   "memoryFiles": ["MEMORY.md", "USER.md", "DREAMS.md", "memory/"],

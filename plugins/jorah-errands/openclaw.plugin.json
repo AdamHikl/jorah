@@ -1,0 +1,39 @@
+{
+  "id": "jorah-errands",
+  "name": "Jorah errands",
+  "description": "Exact one-shot reminder jobs in Adam's time zone (reminder_job), price maths for any shopping comparison (price_compare), and a private record of things Adam buys again with run-out and reorder dates worked out in code (supply_list, supply_plan, supply_save, supply_forget). It sends nothing, schedules nothing itself and uses no network; its state stays on the PC, mode 700.",
+  "categories": [
+    "other"
+  ],
+  "contracts": {
+    "tools": [
+      "reminder_job",
+      "price_compare",
+      "supply_list",
+      "supply_plan",
+      "supply_save",
+      "supply_forget"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "stateDir": {
+        "type": "string",
+        "description": "The supplies record (private: it may hold a prescription); mode 700, files 600"
+      },
+      "timeZone": {
+        "type": "string",
+        "description": "Adam's time zone, for every date and reminder time"
+      },
+      "remindTime": {
+        "type": "string",
+        "description": "Default time of day for date reminders, HH:MM (09:00)"
+      }
+    }
+  }
+}

@@ -584,6 +584,10 @@ Adam's yes ("Yes, install it") for `docs/plan/11-project-mode.md` section 12. On
   - (b) a scheduled Gateway restart;
   - (c) wait for an OpenClaw fix.
 
+## Errands: shopping, things Adam buys again, exact reminders, 2026-11-17
+
+Built as source and tests on Adam's yes ("go with the plan, but make sure that it is not only for lens shopping"): `plugins/jorah-errands` (`reminder_job` for every one-shot reminder, `price_compare`, and a private supplies record with run-out and reorder dates worked out in code), new sections in main's and `deep`'s `AGENTS.md`, guard rules, `scripts/pc/install-errands.sh`. Not installed: the deploy waits for Adam's yes. Steps, privacy and the Telegram test: `docs/runbooks/errands.md`.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

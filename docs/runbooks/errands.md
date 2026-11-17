@@ -32,7 +32,7 @@ A supply has one or more **lines**, each with its own stock: one per eye when th
 
 The record can hold health data (a lens prescription). It lives only in `/home/jorah/.jorah-errands/supplies.json` on the PC: folder mode 700, file 600, outside the workspace so file tools can't write it past the guard. Never in the repo, `docs/evidence`, test fixtures or shared agent memory. Tests use placeholder powers. The plugin logs only the supply's id and the kind of change. Reminder texts carry the product, never a line's spec. Main's rules keep health details out of `MEMORY.md`, `USER.md`, daily notes, agentmemory, `deep`'s briefs and every search query.
 
-**Not in the daily backup yet:** `jorah-backup.service` takes OpenClaw's own state and agentmemory, not plugin folders (this one, `.jorah-guard`, `.jorah-projects`). A dead disk loses the record. Adding plugin state folders to the backup is a separate change, on Adam's yes.
+**Backup:** from 2026-11-17, `deploy/jorah-backup.service` also writes a daily `plugin-state-backup` tar (mode 600, kept 14 days, local only) that takes this folder along with the other plugin state. Until that unit is installed on the PC (`docs/runbooks/jorah-on-pc.md`, "Daily backup"), a dead disk loses the record.
 
 ## Deploy, on Adam's yes
 

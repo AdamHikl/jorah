@@ -19,7 +19,14 @@ ExecStartPre=/usr/bin/mkdir -p /home/jorah/backups
 ExecStart=/usr/local/bin/openclaw --profile jorah backup create --output /home/jorah/backups --verify
 # agentmemory's data (memories, indexes, its secret) since 2026-11-08: a dated tar next to the archive.
 ExecStartPost=/bin/sh -c 'tar -C /home/jorah/.local/share -czf "/home/jorah/backups/$(date +%%Y-%%m-%%dT%%H-%%M)-agentmemory-backup.tar.gz" agentmemory'
-ExecStartPost=/bin/sh -c 'find /home/jorah/backups -maxdepth 1 -type f \\( -name "*openclaw-backup*" -o -name "*agentmemory-backup*" \\) -mtime +14 -delete'
+# Plugin state since 2026-11-17, which OpenClaw's backup doesn't take: the supplies record (may hold a
+# prescription), the guard's taint state and decision log, project and proactive state, the project
+# registry, and Jorah's voice reference (Adam's pick, not a secret). Folders not there yet are skipped.
+# Left out on purpose: keys and tokens in ~/.config (re-issued, not restored), git mirrors in
+# ~/.jorah-github (cloned again), dev-profile scratch. tar exits 1 when a file changed while it was
+# read (the guard writes often), which is fine for this; 2 is a real failure.
+ExecStartPost=/bin/sh -c 'tar -C /home/jorah --ignore-failed-read --warning=no-file-changed -czf "/home/jorah/backups/$(date +%%Y-%%m-%%dT%%H-%%M)-plugin-state-backup.tar.gz" .jorah-errands .jorah-guard .jorah-projects .jorah-proactive .config/jorah-projects .config/jorah-voice/voice; test $$? -le 1'
+ExecStartPost=/bin/sh -c 'find /home/jorah/backups -maxdepth 1 -type f \\( -name "*openclaw-backup*" -o -name "*agentmemory-backup*" -o -name "*plugin-state-backup*" \\) -mtime +14 -delete'
 Nice=10
 IOSchedulingClass=idle
 InaccessiblePaths=/run/WSL

@@ -176,6 +176,18 @@ Installed by Claude on Adam's request ("you do it"): `deploy/jorah-backup.servic
 
 Restore check, not done yet: `openclaw --profile jorah backup verify <archive>`, then `backup restore <archive> --target <scratch folder>` on a scratch profile.
 
+**Plugin state, 2026-11-17 (source; the installed unit doesn't have it yet).** OpenClaw's backup takes its own state and the workspaces, not plugin folders. The unit now also writes `<date>-plugin-state-backup.tar.gz`: `.jorah-errands` (the supplies record, may hold a prescription), `.jorah-guard` (taint state, decision log), `.jorah-projects`, `.jorah-proactive`, `.config/jorah-projects` (the project registry, `runner.json`) and `.config/jorah-voice/voice` (Jorah's voice reference). Folders not there yet are skipped with a warning in the journal. Left out on purpose: keys and tokens in `~/.config` (re-issued, not restored), the git mirrors in `.jorah-github` (cloned again), `.jorah-guard-dev`. Kept 14 days like the rest. Tested on the PC against dummy folders [measured]: missing folders skipped (exit 0), no tokens or mirrors inside, a file written during the run exits 0, an unwritable output folder fails; `systemd-analyze verify` passes. Like the agentmemory tar, it runs only after OpenClaw's backup succeeds.
+
+**Missed backup, 2026-11-17** [measured]: the 06:47 catch-up run failed (`Backup discovery failed ... failed to parse plugin manifest`), because of the empty-files incident ("Project mode installed" below), fixed at 06:52. No archive for 2026-11-17; the 04:30 run on 2026-11-18 should be normal. Nothing tells Adam when a backup fails.
+
+**Installing the new unit, on Adam's yes** (shared infrastructure, no Gateway restart). From the Mac:
+
+```bash
+git archive main deploy/jorah-backup.service | ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "wsl -d jorah -u root -- tar -x --no-same-owner -C /opt/jorah"
+```
+
+Then as root on the PC: `cp -p /etc/systemd/system/jorah-backup.service /etc/systemd/system/jorah-backup.service.pre-plugin-state`, `install -o root -g root -m 644 /opt/jorah/deploy/jorah-backup.service /etc/systemd/system/`, `systemctl daemon-reload`, `sync`. Expected: `systemctl show jorah-backup.service -p ExecStartPost` lists three commands, the middle one ending `test $? -le 1`. Optional run now, which also makes up the missed day: `systemctl start jorah-backup.service` (about a minute). Expected: `Result=success`, a new OpenClaw archive with "Archive verification: passed", an agentmemory tar and a small plugin-state tar, all mode 600. Undo: copy the `.pre-plugin-state` file back and `systemctl daemon-reload`.
+
 ## Talk from the iPhone, and the build of 2026-11-08
 
 Built and pushed on Adam's yes ("build everything first and then test at once"), roadmap 2a items 3 to 6 of that day's list. **Source and unit tests only** (88 Python, 10 Node); nothing below has run against the real Gateway yet.

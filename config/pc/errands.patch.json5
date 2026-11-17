@@ -6,7 +6,8 @@
 //
 // stateDir holds the supplies record, which may hold a prescription: private, on the PC only,
 // mode 700, never in the repo or docs/evidence. Outside the workspace on purpose, so file tools can't
-// write it past the guard. Not in the daily backup yet (that takes OpenClaw's state and agentmemory).
+// write it past the guard. In the daily backup's plugin-state tar once the 2026-11-17
+// deploy/jorah-backup.service is installed (docs/runbooks/jorah-on-pc.md, "Daily backup").
 //
 // Dry run on the PC: install-errands.sh --dry-run. Undo: install-errands.sh --undo.
 {

@@ -90,16 +90,25 @@
         </collision>
       </link>
 
-      <!-- Axes along +y in the wheel's own frame: a positive speed rolls the robot along +x. -->
-      <joint name="left_wheel_joint" type="continuous">
+      <!-- Axes along +y in the wheel's own frame: a positive speed rolls the robot along +x.
+           Revolute with unbounded limits, not "continuous": gz-physics' DART plugin doesn't build
+           continuous joints and silently makes them FIXED [measured on the PC, 2026-11-17], as
+           the Gazebo examples' wheels do. -->
+      <joint name="left_wheel_joint" type="revolute">
         <parent>chassis</parent>
         <child>left_wheel</child>
-        <axis><xyz>0 1 0</xyz></axis>
+        <axis>
+          <xyz>0 1 0</xyz>
+          <limit><lower>-1.79769e+308</lower><upper>1.79769e+308</upper></limit>
+        </axis>
       </joint>
-      <joint name="right_wheel_joint" type="continuous">
+      <joint name="right_wheel_joint" type="revolute">
         <parent>chassis</parent>
         <child>right_wheel</child>
-        <axis><xyz>0 1 0</xyz></axis>
+        <axis>
+          <xyz>0 1 0</xyz>
+          <limit><lower>-1.79769e+308</lower><upper>1.79769e+308</upper></limit>
+        </axis>
       </joint>
 
       <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">

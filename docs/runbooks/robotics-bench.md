@@ -4,11 +4,14 @@ Section 7 of `docs/plan/11-project-mode.md`: the tools project runs need to buil
 simulate it, build firmware and make CAD, installed once on the `jorah` distro and used offline
 inside Claude Code's sandbox. First user: `tree-watering-robot`.
 
-**State, 2026-11-16: source only.** Written and checked on the Mac (`shellcheck`, `bash -n`, the
-PlatformIO read-only test below, and the scripts' logic in an Ubuntu 24.04 container with stand-in
-tools). Nothing is installed on the PC. Open tiers: dry run, install, smoke test direct, smoke test
-inside Claude Code's sandbox (S3), memory next to the voice services (S4), first project run with
-`bench: robotics`.
+**State, 2026-11-17: installed on the PC** by the install session [measured, reported by it]:
+`INSTALL EXIT 0`, every command found as jorah. First smoke test (direct, own network namespace,
+offline): `pio` and `cad` passed; `colcon` failed on the smoke package's maintainer e-mail
+(catkin_pkg wants a dotted domain), and `gz` exited 0 but the robot didn't move, because the wheel
+joints were `continuous`, which Gazebo's DART physics builds as fixed. Both fixed in the smoke assets
+(and the test now fails when the robot doesn't drive); **the rerun is open**. Also open: the smoke
+test inside Claude Code's sandbox (S3) and a first project run with `bench: robotics`. S4 answered
+(plan section 14).
 
 ## What gets installed
 
@@ -108,17 +111,17 @@ name); apt checks the signature and every package's hash, so that's the integrit
 
 ## Disk
 
-Estimates until the install measures it (it writes the figures to `/opt/jorah-bench/INSTALLED.txt`):
+Measured at the install of 2026-11-17 (`/opt/jorah-bench/INSTALLED.txt`):
 
 | Part | Size |
 |---|---|
-| ROS packages from the snapshot (306 packages) | 476 MB installed, 73 MB download [computed from the snapshot's index] |
-| Ubuntu dependencies | printed by the dry run |
-| PlatformIO and the ESP32 and RP2040 toolchains and frameworks | about 3 GB [inference] |
-| build123d venv | about 0.8 GB [inference] |
+| apt: ROS from the snapshot and Ubuntu dependencies, 1051 packages | 2524 MB |
+| `/opt/jorah-bench/pio`: PlatformIO and 14 platform packages (ESP32 and RP2040 toolchains, frameworks) | 5.2 GB |
+| `/opt/jorah-bench/py`: build123d venv | 998 MB |
 | Per-user caches (`~/sandbox/.cache/jorah-bench`, builds, logs) | grows with use |
 
-The dry run checks that `/` has room and prints the real apt numbers. The plan's guess was 6 to 10 GB.
+About 8.7 GB in all, inside the plan's guess of 6 to 10 GB. PlatformIO is larger than the 3 GB
+estimate because the ESP32 platform needs both Xtensa and RISC-V toolchains and their debuggers.
 
 ## Adam's steps
 
@@ -152,7 +155,9 @@ ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -
 
 Expected, in order: `== 1. Checks` as in the dry run; apt installs; "newly installed by this script
 (kept for --undo): N packages"; PlatformIO builds `esp32dev`, `xiao_esp32s3` and `pico` with
-`[SUCCESS]` for each; "Python packages added by PlatformIO outside the hashed lock: none" (if it names
+`[SUCCESS]` for each (a line "Tool Manager: Error: Please read
+https://bit.ly/package-manager-ioerror" appeared once at the install of 2026-11-17 and all three boards
+still built and passed the age check; harmless so far); "Python packages added by PlatformIO outside the hashed lock: none" (if it names
 any, say so: they were installed without hashes); one line per PlatformIO package with `ok` and its
 release date, ending "0 failing the 7-day rule or unknown"; `build123d 0.13.0`; rosdep "updated
 cache" (after a warning that it runs as root, which is intended: the database is root-owned); the `INSTALLED.txt` record with versions and disk use; and as jorah every command found:
@@ -165,8 +170,8 @@ If the age check stops it (exit 7), nothing after step 5 ran: tell the build ses
 ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash /opt/jorah/scripts/pc/bench-smoke.sh
 ```
 
-Expected: `network namespace: own`, `offline: yes`, then four lines `colcon PASS`, `gz PASS ... 60000
-steps of 1 ms = 60 simulated s, exit 0`, `pio PASS esp32dev firmware.bin ... bytes`, `cad PASS
+Expected: `network namespace: own`, `offline: yes`, then four lines `colcon PASS`, `gz PASS 60 simulated s
+(60000 steps of 1 ms) ... the robot is at x=11 to 12 m`, with `gz-transport ... yes`, `pio PASS esp32dev firmware.bin ... bytes`, `cad PASS
 box.step ... bytes, volume_mm3=...`, the info lines, and `RESULT: PASS`. Exit 0. The summary stays
 in `~/sandbox/bench-smoke/<time>-<pid>/summary.txt`. First run: the ESP32 build takes a minute or
 two; Gazebo's 60 simulated seconds should take well under a minute of wall time.
@@ -203,7 +208,10 @@ For runs and the brief (`services/jorah-projects/brief.md`); a project gets it w
   can't (no root): a missing system package is an Adam task.
 - Gazebo: always `gz sim -s` (server only), `-r --iterations N` for a fixed run, worlds without
   camera, depth or lidar sensors that need rendering (no GPU in the sandbox). A camera in simulation
-  is a later decision.
+  is a later decision. Wheel and other unlimited joints: `type="revolute"` with limits
+  ±1.79769e+308, never `continuous`, which this Gazebo's DART physics turns into a fixed joint with
+  only a log line [measured 2026-11-17]. Check a simulation by its result (the robot's odometry),
+  not by `gz sim` exiting 0.
 - PlatformIO: use exactly `platform = platformio/espressif32@8.0.0` (boards `esp32dev`,
   `seeed_xiao_esp32s3`) or `platformio/raspberrypi@1.20.0` (board `pico`), framework `arduino`, and
   copy the `platform_packages` lines from `/opt/jorah-bench/smoke/pio/platformio.ini`. Anything else

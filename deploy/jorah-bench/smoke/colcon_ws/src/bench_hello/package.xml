@@ -4,7 +4,7 @@
   <name>bench_hello</name>
   <version>0.1.0</version>
   <description>Smallest rclcpp package: proves colcon, ament and rclcpp build on Jorah's robotics bench.</description>
-  <maintainer email="jorah@localhost">Jorah</maintainer>
+  <maintainer email="jorah@example.invalid">Jorah</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>

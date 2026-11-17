@@ -3,7 +3,8 @@
 # scripts/pc/install-robotics-bench.sh. Offline. Four parts, each must exit 0:
 #   colcon  colcon build of a tiny rclcpp package (smoke/colcon_ws)
 #   gz      60 simulated seconds of a differential-drive robot in headless Gazebo Harmonic
-#           (gz sim -s, 60000 steps of 1 ms, smoke/gz/diff_drive.sdf)
+#           (gz sim -s, 60000 steps of 1 ms, smoke/gz/diff_drive.sdf); passes only if the robot is
+#           seen to drive more than 1 m (its odometry over gz-transport); stuck or unseen fails
 #   pio     PlatformIO build for an ESP32 board (smoke/pio, env esp32dev)
 #   cad     STEP export from build123d (smoke/cad_box.py)
 # Besides pass or fail it prints what spikes S3 and S4 need (docs/plan/11-project-mode.md section 14):
@@ -196,17 +197,13 @@ if [[ " ${PARTS[*]} " == *" gz "* ]]; then
   kill "$echo_pid" 2>/dev/null || true
   wait "$echo_pid" 2>/dev/null || true
   wall=$((SECONDS - start - 2))
-  if [ "$rc" = 0 ]; then
-    result gz PASS $((SECONDS - start)) "60000 steps of 1 ms = 60 simulated s, exit 0, ${wall}s wall"
-  else
-    result gz FAIL $((SECONDS - start)) "gz sim exit $rc (124 = timed out), see $log"; tail_log "$log"
-  fi
+  # The robot must be seen to drive: a run that exits 0 with the wheels stuck proves little.
   odom="$(python3 - "$WORK/odom.txt" <<'EOF'
 import re, sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 msgs = [m for m in re.split(r"\n(?=header \{)", text) if "pose" in m]
 if not msgs:
-    print("unknown (no odometry message received over gz-transport)")
+    print("UNKNOWN\tno odometry message received over gz-transport")
     sys.exit()
 last = msgs[-1]
 def num(pattern):
@@ -215,11 +212,24 @@ def num(pattern):
 sec = num(r"stamp \{\s*sec: (\d+)")
 x = num(r"position \{[^}]*?x: ([-0-9.e]+)")
 y = num(r"position \{[^}]*?y: ([-0-9.e]+)")
-print(f"{len(msgs)} messages; last at {sec:.0f} simulated s, robot at x={x:.2f} m y={y:.2f} m"
-      + ("" if abs(x) > 1.0 else " (did NOT drive: check the world file)"))
+moved = (x * x + y * y) ** 0.5
+status = "MOVED" if moved > 1.0 else "STILL"
+print(f"{status}\t{len(msgs)} odometry messages; at {sec:.0f} simulated s the robot is at x={x:.2f} m y={y:.2f} m, {moved:.2f} m from the start")
 EOF
 )"
-  note "  info: gz-transport between processes here: $odom"
+  odom_status="${odom%%$'\t'*}"
+  odom_text="${odom#*$'\t'}"
+  if [ "$rc" != 0 ]; then
+    result gz FAIL $((SECONDS - start)) "gz sim exit $rc (124 = timed out), see $log"; tail_log "$log"
+  elif [ "$odom_status" = MOVED ]; then
+    result gz PASS $((SECONDS - start)) "60 simulated s (60000 steps of 1 ms) in ${wall}s wall; $odom_text"
+  else
+    if [ "$odom_status" = STILL ]; then why="the robot did NOT drive: $odom_text"
+    else why="can't tell whether the robot drove: $odom_text"; fi
+    result gz FAIL $((SECONDS - start)) "$why"
+    grep -m 3 -iE 'not supported|error' "$log" | sed 's/^/    | /' || true
+  fi
+  note "  info: gz-transport between processes here: $([ "$odom_status" = UNKNOWN ] && echo "no ($odom_text)" || echo "yes")"
   note "  info: memory available before the sim ${avail_before} MB, lowest during it ${min_avail} MB; gz peak RSS $((peak_kb / 1024)) MB"
 fi
 

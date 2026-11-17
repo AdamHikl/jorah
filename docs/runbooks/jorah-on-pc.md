@@ -576,13 +576,27 @@ Adam's yes ("Yes, install it") for `docs/plan/11-project-mode.md` section 12. On
 - [inferred] Those registrations hold the leases, and each isolated heartbeat is a new session.
 - The timeout is kept as a guard for runtimes nothing holds.
 
-**Open:**
-- The 22 pairs (about 3.2 GB) stay until a Gateway restart.
-- The leak continues at about 290 MB an hour until heartbeats stop opening a fresh session every hour, or OpenClaw fixes it.
-- Adam's choice:
-  - (a) run heartbeats in one standing session per agent (`isolatedSession: false` plus `session`), tried on `jorah-dev` first;
-  - (b) a scheduled Gateway restart;
-  - (c) wait for an OpenClaw fix.
+**Gateway restarted on Adam's yes** at 20:11, with no turn or voice call in progress. Results:
+- Listening with 15 plugins.
+- 28 pairs went down to 1, and about 1.6 GB more memory became available.
+- The voice warm-up saw the restart and warmed once, 38 s after the start.
+
+**Reproduced on `jorah-dev`** [measured]:
+- Setup:
+  - backup `openclaw.json.pre-hb-test`;
+  - claude-cli for Haiku 5.5 and the same heartbeat as live;
+  - the auth-order override cleared;
+  - the Gateway started with `CLAUDE_CONFIG_DIR=/home/jorah/.claude-jorah`.
+- `jorah-dev`'s agentmemory fails to start ("failed to start server"), so it couldn't leak. A one-tool stand-in MCP server, `~/scratch-dev/leakprobe-mcp.mjs`, took its place.
+- Three heartbeats with `isolatedSession: true` (via `system event --mode now`) left 1, 2 and 3 stand-ins running.
+- Neither `mcp reload` nor the idle timeout retired them. Stopping `jorah-dev` did.
+- Three heartbeats with `isolatedSession: false` reused one runtime. **But that isn't a fix:** system events (reminders, job-finished relays) queue on the main session and the next heartbeat injects them. A heartbeat in another standing session wouldn't see them, and one in the main session carries Adam's full history every hour.
+- Afterwards `jorah-dev` was stopped, its config restored from the backup, and its auth order set back to `anthropic:jorah-store`.
+
+**Open:** the leak continues at about 290 MB an hour, two pairs per hourly heartbeat (`main` and `deep`), until a Gateway restart or an OpenClaw fix. Adam's choice:
+- (a) a restart every 6 hours that skips while a turn or voice call is running (peak about 1.8 GB);
+- (b) heartbeats back on the embedded runtime with the API key (untested; a different model id and a little API cost);
+- (c) report it to OpenClaw and wait for a fixed release (subject to the 7-day rule).
 
 ## Errands: shopping, things Adam buys again, exact reminders, 2026-11-17
 

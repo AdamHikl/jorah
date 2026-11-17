@@ -551,6 +551,39 @@ Adam's yes ("Yes, install it") for `docs/plan/11-project-mode.md` section 12. On
 
 **Undo:** `install-projects.sh --undo` (units), `plugins disable jorah-projects` and `openclaw.json.pre-projects`, `AGENTS.md.pre-projects`, `apt` and `/opt/jorah-bench` per `docs/runbooks/robotics-bench.md`.
 
+## Memory leak and voice warm-up, 2026-11-17
+
+**Found** [measured]:
+- **The memory leak.** Every hourly heartbeat of `main` and `deep`, both on claude-cli since the Max lane, leaves its agentmemory shim running, along with the shim's process-group anchor.
+  - That is two pairs an hour, about 146 MB a pair.
+  - 10 pairs (1.46 GB) at 11:45; 20 pairs (2.9 GB) at 16:46; 22 pairs at 17:39.
+  - The Claude Code processes behind them had exited; one `claude` process was running, the voice warm-up's.
+- **The voice warm-up** fired every 2.5 to 6 minutes instead of once per Gateway start: 33 times on 11-15, 50 on 11-16 and 155 by 11:45 on 11-17.
+  - Each one is a Haiku turn on `agent:main:voice-warmup` plus a session-activity-summary turn, now billed to Max.
+  - Cause: it compared each `/readyz` uptime with the Gateway start worked out at the last warm-up, and on the PC the two clocks drift about 3 % apart.
+
+**Warm-up fixed** in `68c2123`: it now compares consecutive readings only.
+- Tests cover 3 % drift both ways. The old code fails the new test, with 59 extra warm-ups in three hours.
+- Deployed (`warm.py` SHA-256 `f447a99b…`) and synced, then `jorah-voice` restarted at 16:45:39.
+- One warm-up after the restart, then none through 17:39 [measured].
+
+**Idle timeout tried; it didn't stop the leak.**
+- What was applied: `mcp-idle.patch.json5` (`mcp.sessionIdleTtlMs` 30 min), with a dry run first and the backup `openclaw.json.pre-mcp-idle`. It went in by hot reload at 16:45:31, with no restart.
+- Result [measured]: the 16:55 heartbeat's two new shims were still running at 17:39, after 42 idle minutes. None of the older 20 were retired.
+- Reading OpenClaw 2026.10.9's code:
+  - the idle sweep skips runtimes with active leases;
+  - claude-cli keeps up to 16 "live sessions" registered (`MAX_LIVE_SESSIONS`) and closes an idle one only when a 17th would start.
+- [inferred] Those registrations hold the leases, and each isolated heartbeat is a new session.
+- The timeout is kept as a guard for runtimes nothing holds.
+
+**Open:**
+- The 22 pairs (about 3.2 GB) stay until a Gateway restart.
+- The leak continues at about 290 MB an hour until heartbeats stop opening a fresh session every hour, or OpenClaw fixes it.
+- Adam's choice:
+  - (a) run heartbeats in one standing session per agent (`isolatedSession: false` plus `session`), tried on `jorah-dev` first;
+  - (b) a scheduled Gateway restart;
+  - (c) wait for an OpenClaw fix.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

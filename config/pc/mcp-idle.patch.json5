@@ -1,12 +1,14 @@
 // Retire MCP runtimes (the agentmemory shim) after 30 minutes without use.
-// Why: since the Max lane (2026-11-16) main runs on claude-cli, and each isolated heartbeat run opens
-// a session-scoped MCP runtime. Such runtimes live until session reset or deletion, a config change
-// or Gateway shutdown, and an isolated heartbeat session gets none of those. So every hourly heartbeat
-// left two agentmemory shims and their process-group anchors behind: 20 processes, 1.46 GB by 11:45 on
-// 2026-11-17, growing about 290 MB an hour. OpenClaw docs: gateway/config-extensions.md, "mcp".
-// Cost: the first turn in a session after 30 quiet minutes reconnects the shim. Data is unaffected:
+// Why it was tried: since the Max lane (2026-11-16) main and deep run on claude-cli, and every
+// isolated heartbeat run leaves its agentmemory shim and the shim's process-group anchor running,
+// about 146 MB a pair, two pairs an hour (1.46 GB by 11:45 on 2026-11-17).
+// Applied 2026-11-17 16:45 by hot reload. It did NOT stop that leak: the 16:55 heartbeat's shims
+// were still running 42 idle minutes later. The idle sweep skips runtimes that hold a lease, and
+// claude-cli keeps up to 16 "live sessions" registered (see docs/runbooks/jorah-on-pc.md,
+// "Memory leak and voice warm-up"). Kept as a guard for runtimes nothing holds.
+// Cost: a session idle for 30 minutes may reconnect the shim on its next turn. Data is unaffected:
 // the shim only proxies to the agentmemory service on 127.0.0.1:47300.
-// Undo: `config unset mcp.sessionIdleTtlMs` (back to no idle eviction).
+// Undo: `config unset mcp.sessionIdleTtlMs` (back to no idle eviction). Backup openclaw.json.pre-mcp-idle.
 {
   mcp: {
     sessionIdleTtlMs: 1800000,

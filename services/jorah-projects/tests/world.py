@@ -199,8 +199,8 @@ class World:
 
         cfg = home / ".claude-jorah"
         cfg.mkdir()
-        (cfg / "project-settings.json").write_text("{}")
-        (cfg / "project-settings-web.json").write_text("{}")
+        for name in ("project-settings.json", "project-settings-web.json", "project-settings-setup.json", "project-settings-setup-web.json"):
+            (cfg / name).write_text("{}")
         (home / "sandbox").mkdir()
 
         self.settings = config.Settings(
@@ -273,8 +273,8 @@ class World:
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
     def runner(self):
-        def claude_run(settings, project, brief, *, minutes):
-            return claude.run(settings, project, brief, minutes=self.minutes if self.minutes is not None else minutes)
+        def claude_run(settings, project, brief, *, minutes, setup=False):
+            return claude.run(settings, project, brief, minutes=self.minutes if self.minutes is not None else minutes, setup=setup)
         return runner.Runner(self.settings, now=self.clock, disk_free=lambda _p: self.free, claude_run=claude_run, log=self.logs.append)
 
     @property

@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -151,6 +152,35 @@ class PathTest(unittest.TestCase):
             fsio.parse_yaml(b"a: [unclosed\n")
         with self.assertRaises(ValueError):
             fsio.parse_yaml(b"!!python/object/apply:os.system ['true']\n")
+
+
+class ProjectPermissionsTest(unittest.TestCase):
+    """scripts/pc/setup-project-permissions.sh: the settings it writes, from its own Python part."""
+
+    def test_four_files_and_only_the_normal_runs_deny_the_charter(self):
+        script = (REPO_ROOT / "scripts/pc/setup-project-permissions.sh").read_text()
+        code = script.split("<<'PY'\n", 1)[1].rsplit("\nPY\n", 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = subprocess.run([sys.executable, "-I", "-", tmp], input=code, text=True, capture_output=True, check=False,
+                                 env={"HOME_DIR": "/home/jorah", "UID_NUM": "1001", "PACKAGES": "1", "PATH": os.environ["PATH"]})
+            self.assertEqual(out.returncode, 0, out.stderr)
+            files = {name: json.loads((Path(tmp) / name).read_text()) for name in (
+                "project-settings.json", "project-settings-web.json", "project-settings-setup.json", "project-settings-setup-web.json")}
+            self.assertEqual(len(out.stdout.splitlines()), 4)
+        charter = "Edit(//home/jorah/work/*/project/CHARTER.md)"
+        intake = "Edit(//home/jorah/work/*/project/intake.md)"
+        for name, data in files.items():
+            rules = data["permissions"]["deny"]
+            self.assertEqual(charter in rules, "setup" not in name, name)
+            self.assertIn(intake, rules, name)
+            self.assertFalse([r for r in rules if r.startswith("Write(")], name)  # only Edit rules match file permissions
+            self.assertEqual("WebFetch" in rules, not name.endswith("-web.json"), name)
+            self.assertTrue(data["sandbox"]["failIfUnavailable"])
+        for web in (False, True):
+            normal = files["project-settings-web.json" if web else "project-settings.json"]
+            setup = files["project-settings-setup-web.json" if web else "project-settings-setup.json"]
+            normal["permissions"]["deny"].remove(charter)
+            self.assertEqual(normal, setup)  # nothing else differs
 
 
 @unittest.skipUnless(shutil.which("node"), "node isn't installed")

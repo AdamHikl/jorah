@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Writes the Claude Code settings for project runs (docs/plan/11-project-mode.md, section 4.3), run
-# as jorah. Two files in ~/.claude-jorah, never settings.json (that one is the coding jobs'):
-#   project-settings.json      for projects with "web": false (WebFetch and WebSearch denied)
-#   project-settings-web.json  for projects with "web": true  (both allowed; they run outside the
-#                              sandbox, so web text reaches the run: plan section 9, PM-T1)
+# as jorah. Four files in ~/.claude-jorah, never settings.json (that one is the coding jobs'):
+#   project-settings.json            for projects with "web": false (WebFetch and WebSearch denied)
+#   project-settings-web.json        for projects with "web": true  (both allowed; they run outside
+#                                    the sandbox, so web text reaches the run: plan section 9, PM-T1)
+#   project-settings-setup.json      the same two for a setup run (plan 11 section 5.1), which
+#   project-settings-setup-web.json  drafts the charter: the same rules minus the CHARTER.md deny
 # The runner passes one with --settings and --setting-sources "" so nothing else loads: not the
 # coding jobs' settings.json, and not the work repo's own .claude/settings.json (hooks, rules).
 #
@@ -12,7 +14,10 @@
 # same secret denies and credential env denies, npm and PyPI only. Differences:
 #   - effort high (Adam, 2026-11-16), model claude-opus-5-5
 #   - /opt/jorah-bench readable (the robotics bench; root-owned, the sandbox never writes it)
-#   - hooks off, and a second-line deny on editing any project's CHARTER.md and on history rewrites
+#   - hooks off, and a second-line deny on editing any project's CHARTER.md (not in a setup run),
+#     its intake.md (never) and on history rewrites. Only Edit(path) rules: Claude Code matches
+#     file permissions on Edit rules alone (a Write(path) rule only draws a warning), and an
+#     Edit rule covers every editing tool. The runner's own checks stay the first line either way.
 # Safe to re-run. JORAH_PACKAGE_NETWORK=0 closes the registries, as for coding jobs.
 set -euo pipefail
 
@@ -55,17 +60,18 @@ deny = [f"Read(/{workspace}/**)", f"Edit(/{workspace}/**)"]
 # The mirrors stay readable to sandboxed git (allowRead below); the deny is for the file tools.
 deny += [f"Read(/{home}/{d}/**)" for d in secret_dirs if d != ".jorah-github"]
 deny += [f"Read(/{home}/{f})" for f in secret_files]
+charter_deny = f"Edit(/{work}/*/project/CHARTER.md)"
 deny += [
-    f"Edit(/{work}/*/project/CHARTER.md)", f"Write(/{work}/*/project/CHARTER.md)",
+    f"Edit(/{work}/*/project/intake.md)",
     "Bash(git push *)", "Bash(git rebase *)", "Bash(git commit --amend *)", "Bash(git reset --hard *)",
     "Bash(git clean *)", "Bash(git filter-branch *)", "Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(sudo *)",
     "Agent", "Workflow", "EnterWorktree", "ExitWorktree", "CronCreate", "CronDelete", "ScheduleWakeup", "RemoteTrigger",
     "PushNotification", "ListAgents", "SendMessage", "DesignSync",
 ]
 
-def settings(web):
+def settings(web, setup):
     allow = [f"Edit(/{sandbox}/**)", f"Edit(/{work}/**)", "Bash(rm *)", "Bash(rmdir *)"]
-    rules = list(deny)
+    rules = list(deny) if setup else [charter_deny, *deny]
     if web:
         allow += ["WebSearch", "WebFetch"]
     else:
@@ -103,13 +109,14 @@ def settings(web):
         },
     }
 
-for name, web in (("project-settings.json", False), ("project-settings-web.json", True)):
+for name, web, setup in (("project-settings.json", False, False), ("project-settings-web.json", True, False),
+                         ("project-settings-setup.json", False, True), ("project-settings-setup-web.json", True, True)):
     path = os.path.join(out_dir, name)
     tmp = path + ".tmp"
     with open(tmp, "w") as handle:
-        json.dump(settings(web), handle, indent=2)
+        json.dump(settings(web, setup), handle, indent=2)
         handle.write("\n")
     os.chmod(tmp, 0o600)
     os.replace(tmp, path)
-    print(f"wrote {path} (web {'allowed' if web else 'denied'}, effort high)")
+    print(f"wrote {path} (web {'allowed' if web else 'denied'}, {'setup run: charter editable' if setup else 'charter denied'}, effort high)")
 PY

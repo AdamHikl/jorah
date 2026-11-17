@@ -62,6 +62,8 @@ need command -v bwrap
 need command -v socat
 need test -f "$JH/.claude-jorah/project-settings.json"
 need test -f "$JH/.claude-jorah/project-settings-web.json"
+need test -f "$JH/.claude-jorah/project-settings-setup.json"
+need test -f "$JH/.claude-jorah/project-settings-setup-web.json"
 need test -f "$JH/.config/jorah-github/app.pem"
 need test -d "$JH/.jorah-guard"
 if [ "$fail" = 1 ]; then

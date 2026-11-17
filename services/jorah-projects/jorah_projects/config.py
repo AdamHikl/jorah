@@ -72,13 +72,13 @@ class Settings:
     def project_state(self, name):
         return Path(self.state_root) / name
 
-    @property
-    def project_settings_file(self):
-        return Path(self.claude_config_dir) / "project-settings.json"
+    def run_settings_file(self, web, setup=False):
+        """The Claude Code settings for a run (scripts/pc/setup-project-permissions.sh writes all
+        four): web allowed or denied; a setup run's pair lacks the CHARTER.md deny."""
+        return Path(self.claude_config_dir) / f"project-settings{'-setup' if setup else ''}{'-web' if web else ''}.json"
 
-    @property
-    def project_settings_web_file(self):
-        return Path(self.claude_config_dir) / "project-settings-web.json"
+    def run_settings_files(self, web):
+        return [self.run_settings_file(web), self.run_settings_file(web, setup=True)]
 
 
 RUNNER_KEYS = {"githubAppId": "github_app_id", "githubOwner": "github_owner", "timezone": "timezone",

@@ -32,7 +32,9 @@ Status: **source and unit tests only.** Nothing is installed; the install is pla
    hold. The only writer of `answer` and `result`.
 7. **Brief** from `brief.md` (`brief-setup.md` in a setup run), then **Claude Code**: the pinned binary, `CLAUDE_CONFIG_DIR` the Max
    login, `-p` stream-json, `claude-opus-5-5`, effort high, `--max-turns`, `--setting-sources ""`
-   with the project-run settings file, no MCP servers, the bench's `env.sh` if `bench` is set, and
+   with the project-run settings file (`~/.claude-jorah/project-settings[-setup][-web].json`, from
+   `scripts/pc/setup-project-permissions.sh`; the setup pair is used only in a setup run and is the
+   same minus the deny on editing `CHARTER.md`; all four must exist or the run is skipped), no MCP servers, the bench's `env.sh` if `bench` is set, and
    a wall-clock kill at `minutesPerRun`.
 8. **Checks**: uncommitted work committed; state files that fail the contract (schemas and
    cross-file rules) put back; the charter (except in a setup run), `intake.md`,
@@ -78,6 +80,13 @@ run.
   GitHub repo yet, so nothing is synced or pushed".
 
 ## Safety, briefly
+
+- Claude Code's own sandbox, measured on the PC with `project-settings-web.json` (2026-11-17):
+  `~/.ssh`, `~/.openclaw-jorah`, `~/workspace` and `~/.config/jorah-github` are hidden; a write to
+  `~` lands on a masked layer and never reaches the real home; `~/work` is writable; example.com is
+  refused and pypi.org is open. Its permission rules deny editing `intake.md` always and
+  `CHARTER.md` outside setup runs (Edit rules only: Claude Code ignores `Write(path)` rules for
+  files). These are the second line; the runner's checks after every run are the first.
 
 - The work repo is untrusted. Its `.git/config` must hold only allow-listed keys (no hooks,
   fsmonitor, filters, includes, ssh command), and every git the runner or gitleaks starts runs

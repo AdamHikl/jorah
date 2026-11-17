@@ -258,9 +258,10 @@ class Runner:
             raise Skip(f"contract unusable: {contract_error}")
         if not Path(self.s.claude_bin).is_file():
             raise Skip(f"Claude Code isn't at {self.s.claude_bin}")
-        settings_file = self.s.project_settings_web_file if project.web else self.s.project_settings_file
-        if not Path(settings_file).is_file():
-            raise Skip(f"{settings_file.name} is missing (scripts/pc/setup-project-permissions.sh)")
+        # Both the normal and the setup run's file: whether this run sets up is known only after sync.
+        for settings_file in self.s.run_settings_files(project.web):
+            if not Path(settings_file).is_file():
+                raise Skip(f"{settings_file.name} is missing (scripts/pc/setup-project-permissions.sh)")
         if os.path.lexists(project.work_dir):
             if not (project.work_dir / ".git").is_dir():
                 raise Skip(f"{project.work_dir} exists but isn't a git repo; not touching it")
@@ -417,7 +418,7 @@ class Runner:
 
         # Steps 5 and 6: the brief, then Claude Code.
         brief = self.brief(pc, project, repo, record, conflict, setup=setup)
-        result = self._claude_run(self.s, project, brief, minutes=project.limits["minutesPerRun"])
+        result = self._claude_run(self.s, project, brief, minutes=project.limits["minutesPerRun"], setup=setup)
         record["sessionId"] = result.get("sessionId")
         record["exit"] = {"code": result.get("code"), "signal": result.get("signal"), "timedOut": result.get("timedOut"),
                           "seconds": result.get("seconds"), **(result.get("result") or {})}

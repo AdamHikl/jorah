@@ -80,6 +80,8 @@ class SetupRunTest(unittest.TestCase):
         self.assertEqual((w.work / "project/CHARTER.md").read_text(), DRAFT)
 
         brief = w.calls()[0]["brief"]
+        argv = w.calls()[0]["argv"]
+        self.assertTrue(argv[argv.index("--settings") + 1].endswith("/project-settings-setup-web.json"))  # charter editable
         self.assertIn("This run sets the project up", brief)
         self.assertIn("intake.md` is the founder input", brief)
         self.assertIn("projectcheck.py project", brief)
@@ -97,6 +99,16 @@ class SetupRunTest(unittest.TestCase):
         self.assertIsNone(record["setup"])
         self.assertEqual((w.work / "project/CHARTER.md").read_text(), DRAFT)
         self.assertIn("Read `project/CHARTER.md` first", w.calls()[1]["brief"])
+        argv = w.calls()[1]["argv"]
+        self.assertTrue(argv[argv.index("--settings") + 1].endswith("/project-settings-web.json"))  # charter denied again
+
+    def test_a_missing_setup_settings_file_skips_the_run(self):
+        w = self.w
+        (w.settings.claude_config_dir / "project-settings-setup-web.json").unlink()
+        record = w.run_now()
+        self.assertEqual(record["outcome"], "skipped")
+        self.assertIn("project-settings-setup-web.json is missing", record["reason"])
+        self.assertEqual(w.calls(), [])
 
     def test_the_intake_is_the_runners_alone_in_setup_and_normal_runs(self):
         w = self.w

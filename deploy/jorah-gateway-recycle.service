@@ -1,0 +1,13 @@
+# Restarts the live Gateway when Jorah is idle, to free MCP servers that claude-cli heartbeats leak.
+# scripts/pc/gateway-recycle.sh says why and when it skips. Root, because it restarts a system unit.
+[Unit]
+Description=Jorah: restart the Gateway when idle, freeing leaked MCP servers
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/jorah/scripts/pc/gateway-recycle.sh
+# Up to seven checks 10 minutes apart, then the restart and up to 5 minutes for readiness.
+TimeoutStartSec=80min
+InaccessiblePaths=/run/WSL
+Nice=5

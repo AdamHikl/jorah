@@ -1,0 +1,11 @@
+# Every 6 hours at :20, clear of the hourly heartbeats at :55, Dreaming at 03:00 and the backup at 04:30.
+# No catch-up after the PC was off: a fresh boot starts with nothing leaked.
+[Unit]
+Description=Jorah: restart the Gateway every 6 hours when idle
+
+[Timer]
+OnCalendar=*-*-* 02,08,14,20:20:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

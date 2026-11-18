@@ -1,0 +1,25 @@
+# Tells Adam on Telegram when the Gateway or the project runner is down, with its own bot and without
+# the Gateway (services/jorah-watchdog/watchdog.py). No dependency on the Gateway or nftables, so it
+# keeps running when they don't.
+[Unit]
+Description=Jorah: watchdog, tells Adam when the Gateway or the project runner is down
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jorah-watchdog
+Group=jorah-watchdog
+StateDirectory=jorah-watchdog
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-watchdog/watchdog.py check
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service

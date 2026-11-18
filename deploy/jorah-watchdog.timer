@@ -1,0 +1,11 @@
+# Every 5 minutes, and 3 minutes after boot (which is when it notices the PC was off).
+[Unit]
+Description=Jorah: watchdog every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -652,6 +652,36 @@ Adam's steps, the design and the full record are in `docs/runbooks/toolbox.md`.
   - 11:52:24, planned, with 16 plugins back.
 - **Open:** the end-to-end check, then Adam's slicer test.
 
+## Watchdog: alerts when Jorah or the runner is down, 2026-11-18
+
+**Why:** Jorah's messages go through the Gateway, so a Gateway that stays down can't report itself, and nothing else told Adam. Adam said "Yes, add an alert".
+
+**What:** `services/jorah-watchdog` (`cd40830`; it is the "rescue bot" of `02-architecture.md`, on the PC for now). It runs every 5 minutes as the system user `jorah-watchdog` and sends with its own Telegram bot, straight to the Bot API.
+- **Alerts:**
+  - the Gateway not active or not ready for 10 minutes;
+  - the runner's timer inactive, or its ticks failing, for 20 minutes;
+  - a reminder every 6 hours while it lasts, then "Back".
+- **Gaps:** a gap of 30 minutes without checks is reported afterwards, once the PC is back.
+- **Unreadable checks** count as down.
+- **No dependency** on the Gateway or nftables.
+- **The token** stays in `/etc/jorah-watchdog/telegram.token` (root:jorah-watchdog 640) and never appears in a log or the state.
+
+**Installed** [measured 12:04]:
+- Files copied with SHA-256 matching `main`; `systemd-analyze verify` clean; dry run, then the install.
+- The user `jorah-watchdog`, and `/etc/jorah-watchdog/watchdog.conf` with the chat id from `allowFrom` and port 43181.
+- The timer is enabled. The first check in the hardened unit printed "checks: gateway ok, runner ok".
+- **No token yet**, so nothing can be sent.
+
+**Adam's steps:**
+1. In Telegram, open @BotFather, send `/newbot`, and name it, for example "Jorah watchdog". BotFather replies with a token.
+2. **In a Terminal attached to no agent:** `ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/store-watchdog-token.sh"`, then paste the token. Expected: "saved", then "Telegram says this is @<the bot>".
+3. Open that bot in Telegram and send `/start`.
+4. `… "wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-watchdog.sh --test"`. Expected: "test message sent", and the test message arrives from the new bot.
+
+**Not covered:** while the PC is off or asleep nothing can be sent. That needs a watcher off the PC, such as the Pi or an outside heartbeat service, which is Adam's decision.
+
+**Not tested live:** a real outage alert. Unit tests cover the timing, the reminders, a failed send and the gaps. **Undo:** `install-watchdog.sh --undo`.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

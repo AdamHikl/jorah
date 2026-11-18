@@ -306,13 +306,14 @@ Installed on the `jorah` distro by `scripts/pc/install-robotics-bench.sh` as roo
 | Gazebo Harmonic, server only, headless | OSRF apt repository | System |
 | PlatformIO Core and platforms (Espressif 32 and Raspberry Pi RP2040 at first; STM32 if v0 picks it) | PyPI, then PlatformIO's registry during install only | `/opt/jorah-bench/pio` |
 | build123d (code CAD, STEP and STL export) | PyPI | `/opt/jorah-bench/py` |
-| KiCad CLI (schematics, ERC, BOM) | KiCad PPA | System; optional, decided by the install session |
+| KiCad 10 (`kicad-cli`: ERC, DRC, Gerbers, drill, BOM, board STEP; symbol and footprint libraries) | KiCad's PPA, pinned (`scripts/pc/install-kicad.sh`, 2026-11-17) | System |
 | `env.sh` | This repo | `/opt/jorah-bench/env.sh`: PATH, ROS setup, `PLATFORMIO_CORE_DIR`, caches in `~/sandbox/.cache` |
 
-- **Rules:** versions pinned and at least 7 days old, or a written exception (apt security updates). Installed root-owned; the sandbox reads it, never writes it. Runs stay offline; a new package is an Adam task ("install X: why, size, source"), done by a build session.
+- **Rules:** versions pinned and at least 7 days old, or a written exception (apt security updates). Installed root-owned; the sandbox reads it, never writes it. Runs stay offline. A new tool now goes through the toolbox (section 7.1); a new apt repository or anything else needing root stays a build session's.
 - **Simulation without a GPU:** Gazebo runs server-only with no rendering sensors at first, so it uses the CPU and leaves the RTX 5070 to voice. A camera in simulation is a later decision.
 - **Memory:** WSL has 16 GB, and the voice models are resident. The install session measures free memory with a headless sim running before saying the bench works.
 - **Smoke test** (`scripts/pc/bench-smoke.sh`, run as `jorah` under the project-run sandbox): a `colcon` build of a tiny package, 60 simulated seconds of a differential-drive model in Gazebo, a PlatformIO build for an ESP32 board, and a STEP export from build123d. All four exit 0 offline.
+- **Toolbox, 7.1 (Adam, 2026-11-17: "make him be able to install and get to know how to use these tools on his own"):** Jorah proposes a tool (contract `jorah-tool-v1`: source, version at least 7 days old, SHA-256, licence, size, commands, a smoke command, offline only), Adam approves it on a card (`toolbox_install`), and the installer, user `jorah-toolbox` with no root, puts it in `/opt/jorah-toolbox` without running it. The runner smoke-tests it offline and a short learning run writes Jorah's notes (`~/work/.toolbox/notes/`), which every project brief lists. Ubuntu packages end at a root command Adam runs. Fusion 360 isn't driven: parts are build123d, handed over as STEP. Runbook: `docs/runbooks/toolbox.md`; decision: ADR 0004.
 - **Hardware later:** a bench rig on the tailnet (the robot's controller and a Pi, wheels off the ground, a wired emergency stop) so Jorah can flash and test firmware himself. It follows `08-robotics.md`'s safety bench (M8) and hard rules, with its own gate. Until then, flashing is an Adam task.
 
 ## 8. Business reach

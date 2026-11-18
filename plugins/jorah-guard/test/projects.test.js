@@ -42,7 +42,7 @@ function fresh() {
 
 test("matrix: every jorah-projects tool has the class section 5 gives it", () => {
   const tools = JSON.parse(readFileSync(PROJECTS_MANIFEST, "utf8")).contracts.tools;
-  assert.equal(tools.length, 12);
+  assert.equal(tools.length, 16); // twelve project tools and four toolbox tools (toolbox.test.js)
   for (const t of tools) assert.notEqual(classify(matrix, t), null, t);
   for (const t of ["project_list", "project_status", "project_pause"]) assert.equal(classify(matrix, t), "read", t);
   assert.equal(classify(matrix, "project_digest"), "taintRead");

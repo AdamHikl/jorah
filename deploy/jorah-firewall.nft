@@ -26,8 +26,8 @@ table inet jorah_out {
 
   chain output {
     type filter hook output priority filter; policy accept;
-    # Site readers (docs/runbooks/site-readers.md, 2026-11-15). Fixed ids, so this file loads even
-    # before scripts/pc/install-site-readers.sh creates the users.
+    # Site readers (docs/runbooks/site-readers.md, 2026-11-15) and the toolbox installer. Fixed ids,
+    # so this file loads even before the install scripts create the users.
     # 1101 jorah-sites, the signed-in site browsers: the site proxy on 43219 (43218 is the test
     # proxy for jorah-dev's fake site) and nothing else.
     # Established covers Chrome's replies to the Gateway on its DevTools port, which jorah opened.
@@ -44,6 +44,16 @@ table inet jorah_out {
     meta skuid 1102 ip6 daddr @private6 counter reject
     meta skuid 1102 tcp dport 443 accept
     meta skuid 1102 counter reject
+    # 1103 jorah-toolbox, the toolbox installer (docs/runbooks/toolbox.md, 2026-11-17): DNS and public
+    # HTTPS, to fetch a tool Adam approved and GitHub's record of its release; never the LAN, the
+    # tailnet or loopback.
+    meta skuid 1103 ct state established,related accept
+    meta skuid 1103 ip daddr 10.255.255.254 meta l4proto { tcp, udp } th dport 53 accept
+    meta skuid 1103 oifname { "lo", "loopback0" } counter reject
+    meta skuid 1103 ip daddr @private4 counter reject
+    meta skuid 1103 ip6 daddr @private6 counter reject
+    meta skuid 1103 tcp dport 443 accept
+    meta skuid 1103 counter reject
     meta skuid != 1000 accept
     ct state established,related accept
     # Mirrored networking sends all loopback TCP through this interface, whether it ends up

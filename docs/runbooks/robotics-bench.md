@@ -36,6 +36,10 @@ All of `/opt/jorah-bench` is root-owned and read-only to `jorah`; so is `/opt/ro
 `deploy/jorah-bench/versions.env`, `requirements-pio.txt`, `requirements-cad.txt` and
 `smoke/pio/platformio.ini`.
 
+**KiCad, update 2026-11-17:** KiCad 10.0.8 now has its own install, `scripts/pc/install-kicad.sh`
+(KiCad's PPA, pinned), and a `kicad` part in `bench-smoke.sh`; see `docs/runbooks/toolbox.md`. The
+paragraph below is the earlier decision, kept for the record.
+
 **Not installed: KiCad CLI.** Decision: not now. Noble has no CLI-only package: `kicad-cli` comes
 in the full `kicad` package, which pulls wxWidgets and the GUI stack, and noble's own is KiCad 7.0
 (two majors behind; files saved by newer KiCad don't open in it). The current release needs the
@@ -217,8 +221,9 @@ For runs and the brief (`services/jorah-projects/brief.md`); a project gets it w
   copy the `platform_packages` lines from `/opt/jorah-bench/smoke/pio/platformio.ini`. Anything else
   needs a download the sandbox refuses. Flashing is Adam's, by hand (`08-robotics.md` hard rules).
 - CAD: `cad-python script.py` (build123d; STEP and STL export). Not `python3`.
-- A new package, board or tool is an Adam task: "install X: why, size, source", done by a build
-  session that adds it to this install.
+- A new tool goes through Jorah's toolbox (`docs/runbooks/toolbox.md`): a request, Adam's card, the
+  installer. A new PlatformIO platform or board, or anything needing root beyond Ubuntu's own
+  packages, is still an Adam task done by a build session that adds it to this install.
 
 ## For the runner (WS2) and the install session
 

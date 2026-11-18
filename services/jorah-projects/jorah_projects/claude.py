@@ -188,6 +188,10 @@ def build_env(settings, project):
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     }
     env.update(bench_environment(settings, project))
+    # Toolbox commands (docs/runbooks/toolbox.md) come last, so they never shadow the system's own.
+    toolbox_bin = Path(getattr(settings, "toolbox_dir", "/nonexistent")) / "bin"
+    if toolbox_bin.is_dir() and str(toolbox_bin) not in env["PATH"].split(":"):
+        env["PATH"] = f"{env['PATH']}:{toolbox_bin}"
     env["CLAUDE_CONFIG_DIR"] = str(settings.claude_config_dir)
     env["HOME"] = home
     return env

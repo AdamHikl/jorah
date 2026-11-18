@@ -13,7 +13,12 @@
 # commands, the home folder unreadable except ~/sandbox, ~/work and the jorah-github mirrors, the
 # same secret denies and credential env denies, npm and PyPI only. Differences:
 #   - effort high (Adam, 2026-11-16), model claude-opus-5-5
-#   - /opt/jorah-bench readable (the robotics bench; root-owned, the sandbox never writes it)
+#   - /opt/jorah-bench readable (the robotics bench; root-owned, the sandbox never writes it), and
+#     /opt/jorah-toolbox (Jorah's toolbox, docs/runbooks/toolbox.md; owned by jorah-toolbox) the same
+#   - packages from npm and PyPI only if released at least 7 days ago: npm's min-release-age, pip's
+#     uploaded-prior-to (pip 26.1 or newer) and uv's exclude-newer (Adam's 7-day rule)
+#   - editing anything in a dot folder or dot file directly in the home folder is denied too, as a
+#     second line behind the allow list (shell rc files, ~/.config/systemd/user units)
 #   - hooks off, and a second-line deny on editing any project's CHARTER.md (not in a setup run),
 #     its intake.md (never) and on history rewrites. Only Edit(path) rules: Claude Code matches
 #     file permissions on Edit rules alone (a Write(path) rule only draws a warning), and an
@@ -35,6 +40,7 @@ home = os.environ["HOME_DIR"]
 uid = os.environ["UID_NUM"]
 out_dir = sys.argv[1]
 sandbox, work, mirrors, bench = f"{home}/sandbox", f"{home}/work", f"{home}/.jorah-github/mirrors", "/opt/jorah-bench"
+toolbox, toolbox_var = "/opt/jorah-toolbox", "/var/lib/jorah-toolbox"
 workspace = f"{home}/workspace"
 secret_dirs = [".ssh", ".aws", ".gnupg", ".claude", ".claude-jorah", ".openclaw", ".openclaw-jorah", ".jorah-brain", ".acpx",
                ".codex", ".gemini", ".copilot", ".config", ".docker", ".kube", ".supabase", ".pulumi", ".amplify", ".mcp-auth",
@@ -54,12 +60,14 @@ env = {
     "GIT_COMMITTER_EMAIL": "jorah@localhost",
 }
 if packages:
-    env.update(npm_config_cache=f"{sandbox}/.cache/npm", PIP_CACHE_DIR=f"{sandbox}/.cache/pip")
+    env.update(npm_config_cache=f"{sandbox}/.cache/npm", PIP_CACHE_DIR=f"{sandbox}/.cache/pip",
+               npm_config_min_release_age="7", PIP_UPLOADED_PRIOR_TO="P7D", UV_EXCLUDE_NEWER="7 days")
 
 deny = [f"Read(/{workspace}/**)", f"Edit(/{workspace}/**)"]
 # The mirrors stay readable to sandboxed git (allowRead below); the deny is for the file tools.
 deny += [f"Read(/{home}/{d}/**)" for d in secret_dirs if d != ".jorah-github"]
 deny += [f"Read(/{home}/{f})" for f in secret_files]
+deny += [f"Edit(/{home}/.*)", f"Edit(/{home}/.*/**)"]
 charter_deny = f"Edit(/{work}/*/project/CHARTER.md)"
 deny += [
     f"Edit(/{work}/*/project/intake.md)",
@@ -85,7 +93,8 @@ def settings(web, setup):
         "env": env,
         "permissions": {
             "blockReadsOutsideWorkingDirectories": True,
-            "additionalDirectories": [sandbox, work, bench],
+            # The toolbox, and the tool-request contract a run reads before it asks for a tool.
+            "additionalDirectories": [sandbox, work, bench, toolbox, "/opt/jorah/docs/contracts"],
             "allow": allow,
             "deny": rules,
         },
@@ -96,8 +105,8 @@ def settings(web, setup):
             "allowUnsandboxedCommands": False,
             "filesystem": {
                 "denyRead": [home, f"/tmp/claude-{uid}/-*"],
-                "allowRead": [sandbox, work, mirrors, bench],
-                "denyWrite": [workspace, bench, f"/tmp/claude-{uid}/-*"],
+                "allowRead": [sandbox, work, mirrors, bench, toolbox],
+                "denyWrite": [workspace, bench, toolbox, toolbox_var, f"/tmp/claude-{uid}/-*"],
             },
             "credentials": {"envVars": [{"name": n, "mode": "deny"} for n in (
                 "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_MESSAGING_TOKEN",

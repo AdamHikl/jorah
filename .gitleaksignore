@@ -1,0 +1,3 @@
+# KiCad PPA's public signing-key fingerprint, not a secret (Adam's yes, 2026-11-18)
+deploy/kicad/versions.env:generic-api-key:9
+docs/runbooks/toolbox.md:generic-api-key:115

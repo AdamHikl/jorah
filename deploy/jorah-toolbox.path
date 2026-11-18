@@ -1,0 +1,12 @@
+# Starts the toolbox installer whenever an approval waits: the jorah-projects plugin renames a whole
+# approval into this folder after Adam's card (toolbox_install, toolbox_remove). The installer
+# empties the folder, moving anything that isn't an approval aside, so this doesn't loop.
+[Unit]
+Description=Jorah: start the toolbox installer when Adam approves a tool
+
+[Path]
+DirectoryNotEmpty=/var/lib/jorah-toolbox/approved
+Unit=jorah-toolbox.service
+
+[Install]
+WantedBy=paths.target

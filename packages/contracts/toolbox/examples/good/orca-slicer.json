@@ -1,0 +1,32 @@
+{
+  "contract": "jorah-tool-v1",
+  "name": "orca-slicer",
+  "title": "OrcaSlicer",
+  "version": "2.3.1",
+  "kind": "archive",
+  "purpose": "Slice STL parts into G-code for Adam's printer from the command line: set up its profile and slice a 20 mm test cube.",
+  "for_project": "tree-watering-robot",
+  "homepage": "https://www.orcaslicer.com/",
+  "licence": "AGPL-3.0-only",
+  "licence_source": "https://github.com/SoftFever/OrcaSlicer/blob/main/LICENSE.txt",
+  "released": "2026-09-01",
+  "release_page": "https://github.com/SoftFever/OrcaSlicer/releases/tag/v2.3.1",
+  "url": "https://github.com/SoftFever/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage",
+  "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "format": "appimage",
+  "download_mb": 120,
+  "installed_mb": 400,
+  "commands": {
+    "orca-slicer": "AppRun"
+  },
+  "env": {
+    "ORCA_DATA": "${STATE}/data"
+  },
+  "sandbox": {
+    "network": []
+  },
+  "smoke": [
+    "orca-slicer",
+    "--help"
+  ]
+}

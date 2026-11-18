@@ -68,6 +68,17 @@ class Settings:
     weekly_ceiling: float = 0.85
     default_hold_hours: int = 48
     require_root_owned_bench: bool = True
+    # Jorah's toolbox (jorah_projects/toolbox.py, docs/runbooks/toolbox.md).
+    toolbox_dir: Path = Path("/opt/jorah-toolbox")
+    toolbox_var: Path = Path("/var/lib/jorah-toolbox")
+    toolbox_state: Path = HOME / "sandbox/.cache/jorah-toolbox"
+    toolbox_contract: Path = REPO_ROOT / "packages/contracts/toolbox"
+    toolbox_brief_template: Path = Path(__file__).resolve().parents[1] / "brief-toolbox.md"
+    bwrap_bin: str = "/usr/bin/bwrap"
+    smoke_seconds: int = 180
+    # One learning run per tick at most, and these limits for it; at most learn_per_day a day.
+    learn_limits: dict = field(default_factory=lambda: {"runsPerDay": 3, "minutesPerRun": 30, "maxTurns": 80})
+    learn_per_day: int = 3
 
     def project_state(self, name):
         return Path(self.state_root) / name

@@ -1,0 +1,27 @@
+{
+  "_about": "Each bad example and a piece of the problem it must be refused for, checked by the Python and the JavaScript tests with today = 2026-11-17. Good examples are illustrative: versions, dates and the all-zero hashes aren't real. `digests`: the SHA-256 of each good example's canonical JSON, which both languages must compute alike.",
+  "today": "2026-11-17",
+  "bad": {
+    "address-not-host.json": "url: must name a public host",
+    "apt-package-name.json": "packages: 1 to 20 Ubuntu package names",
+    "apt-with-url.json": "url: unknown field",
+    "command-climbs-out.json": "commands.uv: must be a relative path",
+    "loader-variable.json": "env: LD_PRELOAD can't be set",
+    "missing-licence.json": "licence: missing",
+    "network-needed.json": "sandbox: must be",
+    "plain-http.json": "url: must be https",
+    "released-too-recently.json": "released: 2026-11-12 is less than 7 days ago",
+    "sha-upper-case.json": "sha256: 64 lower-case hex digits",
+    "shell-in-env.json": "env.UV_CACHE_DIR: text of at most 300 characters",
+    "smoke-not-a-command.json": "smoke: must start with one of the tool's commands",
+    "strip-on-appimage.json": "strip: only for tar and zip",
+    "unknown-field.json": "postinstall: unknown field",
+    "url-too-long.json": "url: must be an https URL of at most 150 characters",
+    "wrong-contract.json": "contract: must be jorah-tool-v1"
+  },
+  "digests": {
+    "java.json": "cf0bd671769efbf9a774d7d81dcf981be9f8d290cb49aac6e612bf96a4e30d2d",
+    "orca-slicer.json": "257f5445b79d0885b42bb2e5433438a5a6a1a152806dad91908f74d118e74650",
+    "uv.json": "2f917b6578ad60e8afc3a49e9a5304b7203e863feb2b76ef109faa884c4505ff"
+  }
+}

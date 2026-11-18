@@ -39,6 +39,9 @@ BindPaths=/home/jorah/work /home/jorah/.jorah-projects /home/jorah/.claude-jorah
 # Read only: the registry and runner.json, the guard's freeze flag, the App's key for the
 # read-only sync token.
 BindReadOnlyPaths=/home/jorah/.config/jorah-projects /home/jorah/.jorah-guard /home/jorah/.config/jorah-github
+# Jorah's toolbox (docs/runbooks/toolbox.md): the runner writes proposals from runs' requests and
+# its smoke-test records. The leading "-" lets the unit start before the toolbox is installed.
+ReadWritePaths=-/var/lib/jorah-toolbox/proposals -/var/lib/jorah-toolbox/tested
 InaccessiblePaths=/run/WSL
 PrivateTmp=yes
 ProtectKernelTunables=yes

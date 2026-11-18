@@ -1,0 +1,53 @@
+# Jorah's toolbox installer (docs/runbooks/toolbox.md): installs tools Adam approved on a card,
+# from /var/lib/jorah-toolbox/approved/, into /opt/jorah-toolbox. Started by jorah-toolbox.path.
+# Installed by scripts/pc/install-toolbox.sh on Adam's yes.
+#
+# User jorah-toolbox: no root, no login, no home; its firewall rule allows DNS and public HTTPS only
+# (deploy/jorah-firewall.nft, uid 1103). It never runs what it downloads: archives are unpacked by
+# Python and AppImages by unsquashfs. Jorah's home is out of reach.
+[Unit]
+Description=Jorah: toolbox installer (approved tools only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jorah-toolbox
+Group=jorah-toolbox
+UMask=0022
+WorkingDirectory=/var/lib/jorah-toolbox
+Environment=HOME=/nonexistent
+Environment=PATH=/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-toolbox/bin/jorah-toolbox run-queue
+# A big download over Wi-Fi; one approval at a time.
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryMax=4G
+TasksMax=256
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/jorah-toolbox /var/lib/jorah-toolbox
+ProtectHome=yes
+InaccessiblePaths=/run/WSL
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=

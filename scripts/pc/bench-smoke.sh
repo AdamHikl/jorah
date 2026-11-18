@@ -7,6 +7,9 @@
 #           seen to drive more than 1 m (its odometry over gz-transport); stuck or unseen fails
 #   pio     PlatformIO build for an ESP32 board (smoke/pio, env esp32dev)
 #   cad     STEP export from build123d (smoke/cad_box.py)
+#   kicad   only where KiCad is installed (scripts/pc/install-kicad.sh): kicad-cli's DRC, Gerbers,
+#           drill files and board STEP of deploy/kicad/smoke/board.kicad_pcb, and a symbol from
+#           KiCad's own library as SVG
 # Besides pass or fail it prints what spikes S3 and S4 need (docs/plan/11-project-mode.md section 14):
 # whether the ROS middleware and gz-transport start where it runs, /dev/shm, /dev/dri, and memory
 # during the simulation. Those are information and never fail the test.
@@ -23,7 +26,7 @@
 # Either way it checks it can't reach the PlatformIO registry, ROS or GitHub, and fails if it can
 # (--allow-network skips that check, for diagnosis only).
 #
-#   --part NAME      run only that part (repeatable): colcon, gz, pio, cad
+#   --part NAME      run only that part (repeatable): colcon, gz, pio, cad, kicad
 #   --no-netns       don't make a network namespace (it must already be offline)
 #   --allow-network  don't fail when the internet is reachable
 #   --via-claude     run it through Claude Code's sandbox (above); --part passes through
@@ -40,7 +43,7 @@ ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
     --part) [ $# -ge 2 ] || { echo "--part needs a name"; exit 2; }
-            case "$2" in colcon|gz|pio|cad) PARTS+=("$2") ;; *) echo "Unknown part: $2"; exit 2 ;; esac
+            case "$2" in colcon|gz|pio|cad|kicad) PARTS+=("$2") ;; *) echo "Unknown part: $2"; exit 2 ;; esac
             shift ;;
     --no-netns) NETNS=0 ;;
     --allow-network) ALLOW_NET=1 ;;
@@ -51,7 +54,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[ "${#PARTS[@]}" -gt 0 ] || PARTS=(colcon gz pio cad)
+if [ "${#PARTS[@]}" -eq 0 ]; then
+  PARTS=(colcon gz pio cad)
+  [ -x /usr/bin/kicad-cli ] && PARTS+=(kicad)
+fi
+KICAD_SMOKE="$(cd "$(dirname "$(readlink -f "$0")")/../../deploy/kicad/smoke" 2>/dev/null && pwd || echo /opt/jorah/deploy/kicad/smoke)"
 
 BENCH="${JORAH_BENCH:-/opt/jorah-bench}"
 CLAUDE_BIN=/opt/jorah-tools/claude-code/2.1.300/claude
@@ -255,6 +262,31 @@ if [[ " ${PARTS[*]} " == *" cad "* ]]; then
     result cad PASS $((SECONDS - start)) "box.step $(stat -c %s "$WORK/cad/box.step") bytes, $(grep -o 'volume_mm3=[0-9.]*' "$log")"
   else
     result cad FAIL $((SECONDS - start)) "see $log"; tail_log "$log"
+  fi
+fi
+
+# ---- kicad
+if [[ " ${PARTS[*]} " == *" kicad "* ]]; then
+  start=$SECONDS
+  K="$WORK/kicad"
+  mkdir -p "$K"
+  log="$WORK/kicad.log"
+  if [ ! -x /usr/bin/kicad-cli ]; then
+    result kicad FAIL 0 "kicad-cli isn't installed (scripts/pc/install-kicad.sh)"
+  elif cp "$KICAD_SMOKE/board.kicad_pcb" "$K/" && {
+         kicad-cli version \
+         && kicad-cli pcb drc --format json -o "$K/drc.json" "$K/board.kicad_pcb" \
+         && kicad-cli pcb export gerbers -o "$K/gerbers/" "$K/board.kicad_pcb" \
+         && kicad-cli pcb export drill -o "$K/gerbers/" "$K/board.kicad_pcb" \
+         && kicad-cli pcb export step -o "$K/board.step" "$K/board.kicad_pcb" \
+         && kicad-cli sym export svg -s R -o "$K/sym" /usr/share/kicad/symbols/Device.kicad_sym
+       } > "$log" 2>&1 \
+       && compgen -G "$K/gerbers/*Edge_Cuts*" >/dev/null && compgen -G "$K/gerbers/*.drl" >/dev/null \
+       && [ "$(head -c 13 "$K/board.step" 2>/dev/null)" = "ISO-10303-21;" ] && compgen -G "$K/sym/*.svg" >/dev/null; then
+    drc="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get("violations", [])), "violations,", len(d.get("unconnected_items", [])), "unconnected")' "$K/drc.json" 2>/dev/null || echo "DRC report unreadable")"
+    result kicad PASS $((SECONDS - start)) "$(head -1 "$log"): $(find "$K/gerbers" -type f | wc -l) Gerber and drill files, board.step $(stat -c %s "$K/board.step") bytes, DRC $drc"
+  else
+    result kicad FAIL $((SECONDS - start)) "see $log"; tail_log "$log"
   fi
 fi
 

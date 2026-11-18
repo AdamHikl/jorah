@@ -1,0 +1,32 @@
+{
+  "contract": "jorah-tool-v1",
+  "name": "uv",
+  "title": "uv, the Python package and project manager",
+  "version": "0.9.18",
+  "kind": "archive",
+  "purpose": "Make Python environments for project code quickly, with the 7-day release limit (UV_EXCLUDE_NEWER) applied to every install.",
+  "for_project": null,
+  "homepage": "https://docs.astral.sh/uv/",
+  "licence": "Apache-2.0 OR MIT",
+  "licence_source": "https://github.com/astral-sh/uv/blob/main/LICENSE-MIT",
+  "released": "2025-12-16",
+  "release_page": "https://github.com/astral-sh/uv/releases/tag/0.9.18",
+  "url": "https://github.com/astral-sh/uv/releases/download/0.9.18/uv-x86_64-unknown-linux-gnu.tar.gz",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "format": "appimage",
+  "strip": 1,
+  "download_mb": 21,
+  "installed_mb": 55,
+  "commands": {
+    "uv": "uv",
+    "uvx": "uvx"
+  },
+  "sandbox": {
+    "network": []
+  },
+  "smoke": [
+    "uv",
+    "--version"
+  ],
+  "smoke_expect": "uv 0.9.18"
+}

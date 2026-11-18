@@ -57,10 +57,19 @@ Only one session touches the live Gateway at a time. Tier reached before this: s
 
 **Undo:** `install-errands.sh --undo` removes the plugin and restores the config. The state folder stays. Waiting `jorah:restock:*` reminders stay in automations until removed. The rules files come back from `AGENTS.md.pre-errands`.
 
+**Deployed 2026-11-18 10:27 on Adam's yes ("Yes, deploy it")** [measured]:
+- **Files:** `/opt/jorah` holds `plugins/jorah-errands`, `install-errands.sh` and both rules files as at `20ed521`, and `errands.patch.json5` as at `3febf59`. All 18 files match by SHA-256, root-owned. The old copies are in `/root/opt-jorah-pre-errands-2026-11-18.tgz`. `/opt/jorah` had no `workspace-deep` folder before.
+- **Rules and the guard's list are `20ed521`'s, not `main`'s:** `main` already carried the toolbox commit `2402e98` (rules and guard entries for tools not installed yet), so only the errands lines went live. Live `workspace/AGENTS.md` is `7caf843c…`, `workspace-deep/AGENTS.md` `29bf7f7f…`, the guard's list `0012665f…`. Each old file is kept as `AGENTS.md.pre-errands`, and both matched `main` before the change.
+- **Install:** the dry run matched the preview. Main's 27 tools plus the six; `deep`: `group:web, price_compare`; three patches validated. The plugin hot-loaded, then the Gateway restarted at 10:27:32: 16 plugins, "jorah-guard: matrix loaded; state ok", 0 errors in the log since, audit 0 critical and 4 warnings (as before). `/home/jorah/.jorah-errands` is mode 700. Config backup `openclaw.json.pre-errands`. The recycle timer was not touched (next run 14:20).
+- **Test turns** in named sessions, read-only, nothing delivered:
+  - main (Haiku, `claude-cli`): `reminder_job` gave "Thursday 15 April 2027 at 09:00", `2027-04-15T07:00:00.000Z`, target `main`; `supply_list` count 0.
+  - `deep` (Opus, `claude-cli`): `price_compare` gave €4.9833 per lens, €9.97 a month and €59.80 for 180 days.
+  - The guard allowed all three. Both sessions were then deleted and forgotten from memory search. `health`'s recent list still named main's.
+
 **Not verified until Adam's test:**
-- that a plugin tool reaches `deep` on the `claude-cli` runtime the way the project tools reach main;
-- that a main-session reminder reaches Telegram while the heartbeat runs with `isolatedSession: true`;
-- that Haiku follows the new rules.
+- that a main-session reminder reaches Telegram while the heartbeat runs with `isolatedSession: true` (test 6);
+- that Haiku follows the new rules with Adam's real requests (tests 1 to 5);
+- a card from `supply_save` after outside text.
 
 ## Test in Telegram, after the deploy
 

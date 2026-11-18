@@ -631,7 +631,7 @@ The leak goes on at about 290 MB an hour: two pairs per hourly heartbeat (`main`
 
 ## Errands: shopping, things Adam buys again, exact reminders, 2026-11-17
 
-Built as source and tests on Adam's yes ("go with the plan, but make sure that it is not only for lens shopping"): `plugins/jorah-errands` (`reminder_job` for every one-shot reminder, `price_compare`, and a private supplies record with run-out and reorder dates worked out in code), new sections in main's and `deep`'s `AGENTS.md`, guard rules, `scripts/pc/install-errands.sh`. Not installed: the deploy waits for Adam's yes. Steps, privacy and the Telegram test: `docs/runbooks/errands.md`.
+Built as source and tests on Adam's yes ("go with the plan, but make sure that it is not only for lens shopping"): `plugins/jorah-errands` (`reminder_job` for every one-shot reminder, `price_compare`, and a private supplies record with run-out and reorder dates worked out in code), new sections in main's and `deep`'s `AGENTS.md`, guard rules, `scripts/pc/install-errands.sh`. **Deployed 2026-11-18 10:27 on Adam's yes** [measured]: Gateway restarted, 16 plugins, 0 errors, test turns on main and `deep` called the new tools. Adam's Telegram test is still open. Record, privacy and the test: `docs/runbooks/errands.md`.
 
 ## Still open
 

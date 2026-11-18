@@ -30,6 +30,9 @@
 #               user stay (they hold what was installed); the runbook says how to remove them.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Run this as root."; exit 3; }
+# openclaw runs as jorah and spawns workers in the current folder: from /root (unreadable to jorah)
+# `config validate` fails with "spawn ... EACCES" [measured 2026-11-18].
+cd /
 OC=(runuser -u jorah -- /usr/local/bin/openclaw --profile jorah)
 CFG=/home/jorah/.openclaw-jorah/openclaw.json
 SRC=/opt/jorah
@@ -173,6 +176,10 @@ if [ "$GATEWAY" = 1 ]; then
   [ -f "$CFG.pre-toolbox" ] || cp -p "$CFG" "$CFG.pre-toolbox"
   "${OC[@]}" config patch --file "$TMP/main-tools.json5"
   "${OC[@]}" config validate 2>&1 | tail -1
+  # The plugin now declares four more tools, so OpenClaw wants its capabilities accepted again;
+  # without it the plugin may not load at the next start [measured 2026-11-18: "requires
+  # capability consent"]. These are the four tools Adam approved.
+  "${OC[@]}" plugins enable jorah-projects --accept-capabilities
   restart
   "${OC[@]}" plugins list 2>&1 | grep -E "jorah-projects" || true
 fi

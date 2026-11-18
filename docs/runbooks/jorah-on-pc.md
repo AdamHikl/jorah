@@ -633,6 +633,25 @@ The leak goes on at about 290 MB an hour: two pairs per hourly heartbeat (`main`
 
 Built as source and tests on Adam's yes ("go with the plan, but make sure that it is not only for lens shopping"): `plugins/jorah-errands` (`reminder_job` for every one-shot reminder, `price_compare`, and a private supplies record with run-out and reorder dates worked out in code), new sections in main's and `deep`'s `AGENTS.md`, guard rules, `scripts/pc/install-errands.sh`. **Deployed 2026-11-18 10:27 on Adam's yes** [measured]: Gateway restarted, 16 plugins, 0 errors, test turns on main and `deep` called the new tools. Adam's Telegram test is still open. Record, privacy and the test: `docs/runbooks/errands.md`.
 
+## Toolbox and KiCad installed, 2026-11-18
+
+Adam's steps, the design and the full record are in `docs/runbooks/toolbox.md`.
+
+- **KiCad 10.0.8** from KiCad's PPA, pinned. Its smoke test passed offline and inside Claude Code's
+  sandbox [measured].
+- **The toolbox:**
+  - user `jorah-toolbox` (uid 1103), `/opt/jorah-toolbox` and `/var/lib/jorah-toolbox`;
+  - 7 firewall rules for uid 1103;
+  - `jorah-toolbox.path`;
+  - project-run settings rewritten;
+  - main's four `toolbox_*` tools, and the `jorah-projects` capabilities accepted [measured].
+- **Two Gateway restarts:**
+  - 11:27:44, by accident: `systemctl restart nftables` restarts the Gateway (`Requires=nftables`).
+    The script now uses `nft -f`. `install-site-readers.sh` and `install-phone.sh` still do the
+    same, and that is with Adam.
+  - 11:52:24, planned, with 16 plugins back.
+- **Open:** the end-to-end check, then Adam's slicer test.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

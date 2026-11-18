@@ -4,8 +4,8 @@ Adam asked on 2026-11-17 that Jorah be able to use Fusion 360, a Cura slicer for
 tool, coding environments and web research, and preferably install and learn new tools himself.
 He approved this plan the same day. The decision is recorded in `docs/adr/0004-toolbox-installs-and-licences.md`.
 
-**State, 2026-11-18:** source and tests only. Nothing is installed on the PC yet; each step
-below waits for Adam's yes.
+**State, 2026-11-18:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
+for main. See "Install record". Open: the end-to-end check (step 5) and Adam's slicer test.
 
 Checked off the PC [measured 2026-11-18, in fresh `ubuntu:24.04` containers on the Mac; amd64
 under emulation for KiCad]:
@@ -297,11 +297,36 @@ started this one relayed from him ("go ahead on both"). Every write was followed
    - `scripts/pc/install-site-readers.sh` and `scripts/pc/install-phone.sh` still use
      `systemctl restart nftables`, so they restart the Gateway the same way. Not changed here.
 
+5. **The Gateway part**, on Adam's yes typed in this session ("Yes, do it"), after the errands
+   session handed the Gateway back at 10:30.
+   - **Files [measured]:**
+     - copied: `plugins/jorah-projects`, `plugins/jorah-guard` and `config/permission-matrix.json`
+       from `main` at `3daa30e`, plus `workspace/AGENTS.md` into the live workspace;
+     - 32 SHA-256 matched;
+     - each differed from what was live only by the toolbox commit: the guard's own code is
+       unchanged, and errands' lines are kept;
+     - backups: `/root/opt-jorah-pre-toolbox-gw-2026-11-18.tgz` and `AGENTS.md.pre-toolbox`.
+   - **Dry run:** `--gateway-only --dry-run` gave "Dry run successful: 1 update(s)".
+   - **At 11:49:**
+     - the apply added the four `toolbox_*` tools to main's list (37 entries), applied by hot
+       reload;
+     - `config validate` then failed with `spawn /opt/node/bin/node EACCES` and stopped the
+       script before the restart;
+     - the failure was false: the script ran from `/root`, which jorah can't read, and from `/`
+       the config is valid.
+   - **Consent:** the plugin list warned that `jorah-projects` "requires capability consent",
+     because it declares four new tools. On Adam's yes ("Accept and restart"),
+     `plugins enable jorah-projects --accept-capabilities` recorded the accepted tools.
+   - **Restart at 11:52:24 [measured]:**
+     - listening at 11:52:44 with 16 plugins, including `jorah-projects`, `jorah-guard`
+       ("matrix loaded; state ok") and `jorah-errands`;
+     - config valid, no plugin warnings, no errors in the log afterwards;
+     - security audit 0 critical, 4 warnings, as before.
+   - **Fixed in the script:** it runs from `/`, and accepts the plugin's capabilities before
+     restarting.
+
 **Still open:**
-- the Gateway part (the plugin and the guard's list into `/opt/jorah`, then `--gateway-only`,
-  dry run first), after errands is done;
-- `AGENTS.md` into the live workspace;
-- the end-to-end check (step 5);
+- the end-to-end check (step 5): one Telegram message from Adam, and a card;
 - Adam's slicer test.
 
 ## Undo

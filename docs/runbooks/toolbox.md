@@ -256,6 +256,54 @@ What counts as "set up correctly":
 
 If he claims a slice without a file to show, that is the failure the test looks for.
 
+## Install record, 2026-11-18
+
+On Adam's yes, typed in this session ("Yes, all three steps"), after the go-ahead the session that
+started this one relayed from him ("go ahead on both"). Every write was followed by `sync`.
+
+1. **Files [measured]:**
+   - copied into `/opt/jorah`: 69 files from `main` at `ab57563`, the non-Gateway part only;
+   - SHA-256 of all 69 matched `main`;
+   - root-owned, nothing group- or world-writable;
+   - the 11 files they replaced are backed up in `/root/opt-jorah-pre-toolbox-2026-11-18.tgz`;
+   - each of those 11 differed from `main` only by the toolbox commit.
+
+   Held back while the errands session had the live Gateway: `plugins/jorah-projects`,
+   `plugins/jorah-guard`, `config/permission-matrix.json` and `workspace/AGENTS.md`.
+2. **KiCad [measured]:**
+   - dry run: the key matched the pin; 63 packages, about 140 MB to download, 893 MB installed;
+   - install: `INSTALL EXIT 0` at 10:27 UTC, and as jorah `kicad-cli version` printed `10.0.8`;
+   - smoke test, direct and offline, in its own network namespace: `kicad PASS ... 26 Gerber and
+     drill files, board.step 8841 bytes, DRC 0 violations, 0 unconnected`;
+   - the same inside Claude Code's sandbox (`--via-claude`): PASS, with `/dev/dri` absent;
+   - log: `/root/install-kicad-2026-11-18.log`.
+3. **Toolbox system part (`--no-gateway`) [measured]:**
+   - the dry run's firewall diff added only the 7 `skuid 1103` lines;
+   - install: `INSTALL EXIT 0`, user `jorah-toolbox` (uid 1103; `useradd` warned that uid 1103 is
+     above SYS_UID_MAX, as for 1101 and 1102);
+   - owners and modes as in the table above;
+   - `jorah-toolbox.path` active, 7 firewall rules loaded;
+   - the four project-run settings files rewritten, and the toolbox status `"tools": {}`;
+   - log: `/root/install-toolbox-2026-11-18.log`.
+4. **Incident: the live Gateway restarted at 11:27:44 CET**, during the errands session's hold on
+   it.
+   - Cause: the script ran `systemctl restart nftables`, and `openclaw-gateway.service` has
+     `Requires=nftables.service`, so systemd restarted the Gateway with it.
+   - It was back at 11:27:46 (`NRestarts=0`), and `openclaw health` answered.
+   - The ephemeral port set matched the live range again.
+   - Reported to the starting session at once.
+   - Fixed in the script: `nft -f /etc/nftables.conf` then `systemctl restart
+     jorah-firewall-ports`, which leaves the Gateway alone.
+   - `scripts/pc/install-site-readers.sh` and `scripts/pc/install-phone.sh` still use
+     `systemctl restart nftables`, so they restart the Gateway the same way. Not changed here.
+
+**Still open:**
+- the Gateway part (the plugin and the guard's list into `/opt/jorah`, then `--gateway-only`,
+  dry run first), after errands is done;
+- `AGENTS.md` into the live workspace;
+- the end-to-end check (step 5);
+- Adam's slicer test.
+
 ## Undo
 
 - **Toolbox:**

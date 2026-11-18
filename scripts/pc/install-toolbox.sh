@@ -49,6 +49,15 @@ done
 [ "$SYSTEM" = 1 ] || [ "$GATEWAY" = 1 ] || { echo "--no-gateway and --gateway-only together leave nothing to do."; exit 2; }
 TOOLS=(toolbox_list toolbox_propose toolbox_install toolbox_remove)
 
+# Load the firewall file without restarting nftables.service: openclaw-gateway.service has
+# Requires=nftables.service, so `systemctl restart nftables` restarts the Gateway too (it did,
+# 2026-11-18 11:27). nft -f replaces the ruleset (the file starts with flush ruleset); then
+# jorah-firewall-ports puts the live ephemeral port range back.
+load_firewall() {
+  nft -f /etc/nftables.conf
+  systemctl restart jorah-firewall-ports.service
+}
+
 restart() {
   systemctl restart openclaw-gateway
   for _ in $(seq 1 45); do "${OC[@]}" health >/dev/null 2>&1 && break; sleep 2; done
@@ -59,7 +68,7 @@ if [ "$UNDO" = 1 ]; then
   systemctl disable --now jorah-toolbox.path 2>/dev/null || true
   rm -f /etc/systemd/system/jorah-toolbox.service /etc/systemd/system/jorah-toolbox.path
   systemctl daemon-reload
-  if [ -f /etc/nftables.conf.pre-toolbox ]; then cp /etc/nftables.conf.pre-toolbox /etc/nftables.conf; systemctl restart nftables; fi
+  if [ -f /etc/nftables.conf.pre-toolbox ]; then cp /etc/nftables.conf.pre-toolbox /etc/nftables.conf; load_firewall; fi
   if [ "$GATEWAY" = 1 ] && [ -f "$CFG.pre-toolbox" ]; then
     cp "$CFG.pre-toolbox" "$CFG"; chown jorah:jorah "$CFG"; chmod 600 "$CFG"; restart
   fi
@@ -145,7 +154,7 @@ install -d -o jorah-toolbox -g jorah-toolbox -m 700 "$VAR/downloads"
 # ---- 3. firewall ------------------------------------------------------------------------------------
 [ -f /etc/nftables.conf.pre-toolbox ] || cp -p /etc/nftables.conf /etc/nftables.conf.pre-toolbox
 cp "$SRC/deploy/jorah-firewall.nft" /etc/nftables.conf
-systemctl restart nftables
+load_firewall
 echo "firewall: $(nft list chain inet jorah_out output | grep -c "skuid $UIDN") rules for jorah-toolbox loaded"
 
 # ---- 4. units ---------------------------------------------------------------------------------------

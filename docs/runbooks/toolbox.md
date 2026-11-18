@@ -161,20 +161,33 @@ Expected:
 It stops early if the permission list has no toolbox rules, if `unsquashfs` or `bwrap` is missing,
 or if uid 1103 is taken.
 
-**4. Toolbox, install.** This restarts the Gateway, so only the session that holds the live Gateway
-runs it, or it adds `--no-gateway` and leaves step 6 of the script to that session:
+**4. Toolbox, install**, in two parts.
+
+The system part leaves the live Gateway alone, so it can run while another session holds the
+Gateway. It needs only the non-Gateway files in `/opt/jorah`:
 
 ```bash
-ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-toolbox.sh
+ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-toolbox.sh --no-gateway
+```
+
+The Gateway part comes once no other session is on the live Gateway, and once `plugins/jorah-projects`,
+`plugins/jorah-guard` and `config/permission-matrix.json` from this commit are in `/opt/jorah`. It
+restarts the Gateway, so keep it clear of `jorah-gateway-recycle.timer`'s 02:20, 08:20, 14:20 and
+20:20. Run `--dry-run` first, as with every step:
+
+```bash
+ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- bash /opt/jorah/scripts/pc/install-toolbox.sh --gateway-only
 ```
 
 Expected:
-- `firewall: 7 rules for jorah-toolbox loaded`;
-- `active` for the path unit;
-- the four `wrote ... project-settings*.json` lines;
-- the Gateway's health line;
-- `jorah-projects` in the plugin list;
-- a status with `"tools": {}`.
+- from the system part:
+  - `firewall: 7 rules for jorah-toolbox loaded`;
+  - `active` for the path unit;
+  - the four `wrote ... project-settings*.json` lines;
+  - a status with `"tools": {}`;
+- from the Gateway part:
+  - the Gateway's health line;
+  - `jorah-projects` in the plugin list.
 
 Then copy `workspace/AGENTS.md` to the live workspace (backup `AGENTS.md.pre-toolbox`), as at the
 projects install.

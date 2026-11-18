@@ -21,7 +21,10 @@
 #
 #   --dry-run   checks the files, the users and the firewall file (nft -c), shows the firewall diff
 #               and validates the tool-list patch against the live config. Writes nothing.
-#   --no-gateway  steps 1 to 5 only (when another session holds the live Gateway).
+#   --no-gateway    steps 1 to 5 only: nothing in the live Gateway changes (when another session
+#                   holds it). Needs only the system files in $SRC, not the plugin or the guard's list.
+#   --gateway-only  step 6 only, once steps 1 to 5 are done and the plugin and the guard's list from
+#                   this commit are in $SRC.
 #   --undo      stops and removes the units, restores the firewall and main's tool list from the
 #               backups, restarts the Gateway. /opt/jorah-toolbox, /var/lib/jorah-toolbox and the
 #               user stay (they hold what was installed); the runbook says how to remove them.
@@ -33,15 +36,17 @@ SRC=/opt/jorah
 OPT=/opt/jorah-toolbox
 VAR=/var/lib/jorah-toolbox
 UIDN=1103
-DRY=0; GATEWAY=1; UNDO=0
+DRY=0; SYSTEM=1; GATEWAY=1; UNDO=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY=1 ;;
     --no-gateway) GATEWAY=0 ;;
+    --gateway-only) SYSTEM=0 ;;
     --undo) UNDO=1 ;;
     *) echo "Unknown option: $arg"; exit 2 ;;
   esac
 done
+[ "$SYSTEM" = 1 ] || [ "$GATEWAY" = 1 ] || { echo "--no-gateway and --gateway-only together leave nothing to do."; exit 2; }
 TOOLS=(toolbox_list toolbox_propose toolbox_install toolbox_remove)
 
 restart() {
@@ -64,23 +69,34 @@ if [ "$UNDO" = 1 ]; then
 fi
 
 # ---- checks ---------------------------------------------------------------------------------------
-for f in services/jorah-toolbox/bin/jorah-toolbox services/jorah-toolbox/jorah_toolbox/install.py packages/contracts/toolbox/toolcheck.py \
-         deploy/jorah-toolbox.service deploy/jorah-toolbox.path deploy/jorah-projects.service deploy/jorah-firewall.nft \
-         plugins/jorah-projects/lib/toolbox.js plugins/jorah-projects/index.js config/permission-matrix.json \
-         scripts/pc/setup-project-permissions.sh scripts/pc/toolbox-apt.sh services/jorah-projects/jorah_projects/toolbox.py; do
+need=()
+[ "$SYSTEM" = 1 ] && need+=(services/jorah-toolbox/bin/jorah-toolbox services/jorah-toolbox/jorah_toolbox/install.py
+  packages/contracts/toolbox/toolcheck.py deploy/jorah-toolbox.service deploy/jorah-toolbox.path deploy/jorah-projects.service
+  deploy/jorah-firewall.nft scripts/pc/setup-project-permissions.sh scripts/pc/toolbox-apt.sh
+  services/jorah-projects/jorah_projects/toolbox.py)
+[ "$GATEWAY" = 1 ] && need+=(plugins/jorah-projects/lib/toolbox.js plugins/jorah-projects/index.js config/permission-matrix.json)
+for f in "${need[@]}"; do
   [ -f "$SRC/$f" ] || { echo "Missing $SRC/$f: copy the reviewed commit to $SRC first."; exit 1; }
   [ "$(stat -c %U "$SRC/$f")" = root ] || { echo "$SRC/$f isn't root-owned."; exit 1; }
 done
-grep -q '"toolbox_install"' "$SRC/config/permission-matrix.json" || { echo "The permission list has no toolbox rules: install jorah-guard's list from this commit first."; exit 1; }
-for bin in unsquashfs bwrap python3 nft; do command -v "$bin" >/dev/null || { echo "$bin is missing."; exit 1; }; done
-if have=$(id -u jorah-toolbox 2>/dev/null); then
-  [ "$have" = "$UIDN" ] || { echo "jorah-toolbox exists with uid $have, not $UIDN: stopping."; exit 1; }
-elif getent passwd "$UIDN" >/dev/null; then
-  echo "uid $UIDN is taken by $(getent passwd "$UIDN" | cut -d: -f1): stopping."; exit 1
+if [ "$GATEWAY" = 1 ]; then
+  grep -q '"toolbox_install"' "$SRC/config/permission-matrix.json" || { echo "The permission list has no toolbox rules: install jorah-guard's list from this commit first."; exit 1; }
 fi
-nft -c -f "$SRC/deploy/jorah-firewall.nft" && echo "firewall file: valid (nft -c)"
-echo "firewall change against the live /etc/nftables.conf (comments left out):"
-diff <(grep -v '^\s*#' /etc/nftables.conf) <(grep -v '^\s*#' "$SRC/deploy/jorah-firewall.nft") | sed 's/^/  /' || true
+if [ "$SYSTEM" = 0 ]; then
+  if ! { [ -f "$OPT/installed.json" ] && systemctl is-active --quiet jorah-toolbox.path; }; then
+    echo "The toolbox's system part isn't installed: run with --no-gateway first."; exit 1
+  fi
+else
+  for bin in unsquashfs bwrap python3 nft; do command -v "$bin" >/dev/null || { echo "$bin is missing."; exit 1; }; done
+  if have=$(id -u jorah-toolbox 2>/dev/null); then
+    [ "$have" = "$UIDN" ] || { echo "jorah-toolbox exists with uid $have, not $UIDN: stopping."; exit 1; }
+  elif getent passwd "$UIDN" >/dev/null; then
+    echo "uid $UIDN is taken by $(getent passwd "$UIDN" | cut -d: -f1): stopping."; exit 1
+  fi
+  nft -c -f "$SRC/deploy/jorah-firewall.nft" && echo "firewall file: valid (nft -c)"
+  echo "firewall change against the live /etc/nftables.conf (comments left out):"
+  diff <(grep -v '^\s*#' /etc/nftables.conf) <(grep -v '^\s*#' "$SRC/deploy/jorah-firewall.nft") | sed 's/^/  /' || true
+fi
 
 TMP=""
 if [ "$GATEWAY" = 1 ]; then
@@ -102,14 +118,17 @@ fi
 
 if [ "$DRY" = 1 ]; then
   [ "$GATEWAY" = 1 ] && "${OC[@]}" config patch --file "$TMP/main-tools.json5" --dry-run
-  echo "Would: create user jorah-toolbox ($UIDN) unless present; make $OPT and $VAR with the owners above;"
-  echo "load the firewall file above (backup /etc/nftables.conf.pre-toolbox); install jorah-toolbox.service and .path,"
-  echo "start the path unit; install the updated jorah-projects.service; rerun setup-project-permissions.sh as jorah."
+  if [ "$SYSTEM" = 1 ]; then
+    echo "Would: create user jorah-toolbox ($UIDN) unless present; make $OPT and $VAR with the owners above;"
+    echo "load the firewall file above (backup /etc/nftables.conf.pre-toolbox); install jorah-toolbox.service and .path,"
+    echo "start the path unit; install the updated jorah-projects.service; rerun setup-project-permissions.sh as jorah."
+  fi
   [ "$GATEWAY" = 1 ] && echo "Then add ${TOOLS[*]} to main's tools (backup $CFG.pre-toolbox) and restart the Gateway."
   echo "Dry run only: nothing written."
   exit 0
 fi
 
+if [ "$SYSTEM" = 1 ]; then
 # ---- 1. user ----------------------------------------------------------------------------------------
 id jorah-toolbox >/dev/null 2>&1 || useradd --system --uid "$UIDN" --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin jorah-toolbox
 
@@ -137,6 +156,8 @@ systemctl is-active jorah-toolbox.path
 
 # ---- 5. project-run settings ------------------------------------------------------------------------
 runuser -u jorah -- env HOME=/home/jorah bash "$SRC/scripts/pc/setup-project-permissions.sh"
+sync
+fi
 
 # ---- 6. Gateway: the four tools for main ------------------------------------------------------------
 if [ "$GATEWAY" = 1 ]; then

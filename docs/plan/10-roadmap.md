@@ -134,6 +134,7 @@ git -C ~/Documents/jorah log --oneline | head -5
 | **P5** | Bridge and guard, then M3's hard gate on the PC | M2b-C, M2b-D, M3 | Voice-started jobs, web answers, ready for private data |
 | **P5a** | Typed Haiku pilot on Telegram, two weeks, then Adam decides | New, on P5's bridge | A measured answer on whether everyday typed chat can run on Haiku |
 | **PM** | Project mode: Jorah runs a project such as `tree-watering-robot` on a schedule, asking Adam only founder questions. Plan: `11-project-mode.md` | New, Adam 2026-11-16 | A project that moves while Adam sleeps |
+| **VI** | Voice identity: `jorah-voice` checks who is speaking on every turn, and anyone but Adam gets a `guest` agent with nothing private. Plan: `12-voice-identity.md` | New, Adam 2026-11-19; carries P5's G-S8 | Visitors can talk to Jorah without hearing Adam's things |
 | **Then** | M4 onward, in the existing order | Table below | Mail, calendar and the rest |
 
 **The honest catch:** voice reaches the same agent with the same tools as Telegram, so anything said in the room, or misheard, reaches Jorah. Stage 0's limits have to be on before sound connects, and nothing private connects before M3's gate.
@@ -260,6 +261,10 @@ As M10, on the local stack rather than hosted realtime: 10.3 to 10.7 and 10.9 to
 ### PM. Project mode (added on Adam's request, 2026-11-16)
 
 Adam: Jorah should work on a project "as a business and engineer duo", do 99% of it, and ask only for founder and idea guidance. **`11-project-mode.md` is the plan and wins over this paragraph.** Phase 0 moves `main` and `deep` to the Max plan ("switch it to the max plan now"); `background` stays on the API key for its sandboxed shell. Then four build sessions in parallel (project folder contract, runner, plugin, robotics bench), one install session, and a trust ladder from one push card a day to a standing grant after the P5 review. Nothing private connects through it before M3's gate.
+
+### VI. Voice identity and guest mode (added on Adam's request, 2026-11-19)
+
+Adam: "if it doesn't recognize my voice, it goes into host mode and can only do some limited things". **`12-voice-identity.md` is the plan and wins over this paragraph.** Today every spoken turn reaches `agent:main:main` with Adam's memory and chat in context, so the guard stops a visitor's writes but not what Jorah reads aloud. `jorah-voice` gets a local speaker check (NeMo TitaNet-Large through the sherpa-onnx already installed, CPU only), routes Adam's turns to `main` as today and everyone else's to a `guest` agent with no memory and web search only, on the API key. The guard gains a `guest` section, and Adam overrides from Telegram with `/voice` commands. Voice identity is a privacy line, not a key: recordings and clones pass it, so `p5-plan.md` 4.3's confirmation rules stand. It carries P5's G-S8 as VI-S1. Two build sessions, then an install that starts in shadow mode, each step on Adam's yes. Nothing is built until Adam answers V1 to V5.
 
 ### Decisions recorded for this path
 
@@ -1811,6 +1816,7 @@ Session M0-F applies these. Until then, this table wins over the row it names.
 | `04-voice-and-vision.md` | M10.1 E1 at M10. M10.11 mute "if the device has one". Section 13 U9 pick yes. M2.20 flips the daily config | E1 at M7. Switch required. U9 off, my pick no. VIS-V0 on a scratch profile (`02` N8) |
 | `05-growth-and-skills.md` | Section 0 "M2, start" is fine. No change needed beyond naming M2a | M2a |
 | `06-connectors.md` | G3 places GROW-S13 at M3. D10 pick on U9 | M2a. U9 off, my pick no |
+| `01-vision-and-ux.md`, `03-security-and-privacy.md` 9.4, `04-voice-and-vision.md` M2.42, `07-apps-and-devices.md` guest row | Guest mode closes Talk, typed only | On the local voice stack, guest mode is limited, not closed: guests reach a `guest` agent with nothing private (`12-voice-identity.md` section 6). Closed is `/voice off`. The cloud-provider reason for closing Talk no longer applies while audio stays on the PC |
 | `07-apps-and-devices.md` | 5.1: `jorah-talk` starts at M10. 5.4 "roadmap gate 9". A7 path `docs/evidence/apps/a7-log.md`. M31 at 6-9 weeks | Mac at M2b, on D1. Now gate 8. `docs/evidence/a7.md`. 5-8 weeks |
 | `08-robotics.md` | Section 1 dates. Budgets omit USB hub and base safety items | This file's sections 3 and 9 |
 | `09-engineering-and-ops.md` | 12.1 dates after M10, 12.2 totals, 12.5 stop points. 15.2 ear token. 15.2 hooks test at M3. Tree and `02`'s table with `jorah-robot-guard` first at M17. Tree with `jorah-presence` only at M20 and no `mcp-edupage-feed`, `jorah-iphone-read`, `jorah-adam-data` | Sections 3 and 11 here. `03` ruling 20. M2a. First at M16 (step 16.1). M10, and add those |

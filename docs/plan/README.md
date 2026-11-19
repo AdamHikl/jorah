@@ -41,6 +41,7 @@
 | `08-robotics.md` | Parts lists, wiring, firmware, safety, arm and base stages, drones last | M5, M8, M13 to M17, M21, M23 to M25 |
 | `09-engineering-and-ops.md` | Repo, secrets, upgrades, services, tests, backups, session rules, budget | M0, every session |
 | `11-project-mode.md` | Jorah runs a project on his own: project folder, runner, founder loop, trust ladder, robotics bench | Project work, `tree-watering-robot` |
+| `12-voice-identity.md` | Voice identity: a local speaker check on every spoken turn, and a guest mode for anyone who isn't Adam, enforced by routing, tool policy and the guard. Decisions V1 to V9 | Voice work, the room ear, anything read aloud |
 | `research/` | 13 research tracks and 5 gap studies with sources | When a claim needs checking |
 
 If two documents disagree on order, dates, hours or purchases, `10-roadmap.md` wins. Its section 13 lists stale rows elsewhere, and session M0-F fixes them.

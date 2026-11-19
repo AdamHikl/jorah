@@ -223,15 +223,31 @@ def daily_mark(state, kind, key, now):
         advisories.mark_sent(state, kind, key, now)
 
 
+def merged_installed(read_installed, report, now):
+    """openclaw and its bundled plugins, plus the npm-installed plugins from the drift report.
+    Raises OSError when that list is missing or stale: those plugins are then unknown."""
+    found = {name: [version] for name, version in read_installed().items()}
+    fresh = now - float(report.get("checked_at") or 0) <= DRIFT_STALE_AFTER
+    if not fresh or not isinstance(report.get("packages"), dict):
+        raise OSError("no fresh list of the plugins in Jorah's state folder (jorah-drift's report)")
+    for name, versions in report["packages"].items():
+        found[name] = sorted(set(found.get(name, [])) | set(versions))
+    return found
+
+
 def daily(args, now, opener, read_installed):
     state = load_state(args.daily_state)
-    due = advisories.step(state, now, lambda known: advisories.fetch(known, opener), read_installed)
+    report = load_state(args.drift_report)
+    due = advisories.step(state, now, lambda known: advisories.fetch(known, opener),
+                          lambda: merged_installed(read_installed, report, now))
     if state.get("source", {}).get("problem"):
         log(f"advisories: unknown, {state['source']['problem']}")
     else:
-        log(f"advisories: {len(state.get('advisories', {}))} known, installed openclaw "
-            f"{state.get('installed', {}).get('openclaw')}, {len(state.get('notified', {}))} told")
-    due += drift_step(state, load_state(args.drift_report), now)
+        installed = ", ".join(f"{k} {'/'.join(v)}" for k, v in sorted(state.get("installed", {}).items())
+                              if k == "openclaw" or k in report.get("packages", {}))
+        log(f"advisories: {len(state.get('advisories', {}))} known; checked against {installed}; "
+            f"{len(state.get('notified', {}))} told so far")
+    due += drift_step(state, report, now)
     if args.dry_run:
         for kind, _, text in due:
             log(f"would send ({kind}):\n{text}")

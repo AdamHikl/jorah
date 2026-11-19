@@ -12,8 +12,9 @@ How:
 - Keeps every advisory's ranges for `openclaw` and `@openclaw/*`, and checks all of them against the
   installed versions each day, so an upgrade into an old advisory's range is caught too.
 - Installed versions: `openclaw` from its package.json (what `openclaw --version` prints; the
-  installer checks they agree), and the `@openclaw/*` plugin packages bundled with it or installed
-  next to it in /opt/node.
+  installer checks they agree), the `@openclaw/*` plugin packages bundled with it or installed next
+  to it in /opt/node, and the npm-installed ones in Jorah's state folder, which the root drift check
+  lists in its report (watchdog.py merges them; without a fresh list it's unknown).
 - One message per advisory that affects what's running. A range it can't read counts as possibly
   affected and says so. A source it can't read is unknown, never "no advisories": after a day
   without a good read it says so once, and once more when it can read again.
@@ -183,15 +184,17 @@ def fetch(known, opener=urllib.request.urlopen, max_pages=MAX_PAGES):
 # --- deciding what to say --------------------------------------------------------------------------
 
 def affecting(advisory, installed):
-    """[(package, version, range, verdict)] where verdict is True (affected) or None (can't tell)."""
+    """[(package, version, range, verdict)] where verdict is True (affected) or None (can't tell).
+
+    `installed` maps a package to a version or a list of versions (a plugin can sit on disk in more
+    than one generation); each is checked."""
     hits = []
     for v in advisory.get("vulns", []):
-        version = installed.get(v["package"])
-        if version is None:
-            continue
-        verdict = in_range(version, v["range"])
-        if verdict is not False:
-            hits.append((v["package"], version, v["range"], verdict))
+        versions = installed.get(v["package"])
+        for version in [versions] if isinstance(versions, str) else versions or []:
+            verdict = in_range(version, v["range"])
+            if verdict is not False:
+                hits.append((v["package"], version, v["range"], verdict))
     return hits
 
 
@@ -207,6 +210,10 @@ def message(advisory, hits):
     if unsure:
         lines.insert(1, f"(Couldn't read the range {unsure[0]!r}, so it may or may not apply. Check by hand.)")
     return "\n".join(line for line in lines if line)
+
+
+def _versions(value):
+    return value if isinstance(value, str) else "/".join(value or ["unknown"])
 
 
 def step(state, now, read_list, read_installed):
@@ -254,7 +261,7 @@ def step(state, now, read_list, read_installed):
         ids = ", ".join(a["id"] for a, _ in new)
         due.append(("many", [a["id"] for a, _ in new],
                     f"Jorah's advisory watch: {len(new)} OpenClaw advisories match what Jorah runs "
-                    f"({', '.join(f'{k} {v}' for k, v in sorted(installed.items()) if k == 'openclaw')}): {ids}. "
+                    f"(openclaw {_versions(installed.get('openclaw'))}): {ids}. "
                     f"That many at once may mean a misread; check "
                     f"https://github.com/openclaw/openclaw/security/advisories"))
     else:

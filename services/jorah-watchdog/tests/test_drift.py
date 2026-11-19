@@ -124,6 +124,20 @@ class Drift(unittest.TestCase):
         self.assertEqual(found[f"{self.live}AGENTS.md"], sha("rules\n"))
         self.assertEqual(found[f"{self.live}MEMORY.md"], "refused")
 
+    def test_packages_reads_only_openclaw_names_and_versions(self):
+        base = self.root / "npm/projects"
+        for proj, name, version in (("a", "@openclaw/acpx", "2026.10.9"), ("a2", "@openclaw/acpx", "2026.10.33"),
+                                    ("b", "@openclaw/duckduckgo-plugin", "2026.10.9")):
+            folder = base / proj / "node_modules" / name
+            folder.mkdir(parents=True)
+            (folder / "package.json").write_text(json.dumps({"name": name, "version": version}))
+        other = base / "c/node_modules/@openclaw/odd"
+        other.mkdir(parents=True)
+        (other / "package.json").write_text(json.dumps({"name": "not-openclaw", "version": "1"}))
+        found = drift.packages(str(base / "*/node_modules/@openclaw/*/package.json"))
+        self.assertEqual(found, {"@openclaw/acpx": ["2026.10.33", "2026.10.9"],
+                                 "@openclaw/duckduckgo-plugin": ["2026.10.9"]})
+
     def test_long_lists_are_cut(self):
         report = {"ok": True, "changed": [], "missing": [], "unrecorded": [f"/opt/jorah/f{i}" for i in range(50)]}
         text = drift.report_text(report)

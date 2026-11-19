@@ -252,6 +252,7 @@ class Step(unittest.TestCase):
         due = self.run_step()
         self.assertEqual([k for k, _, _ in due], ["many"])
         self.assertIn("8 OpenClaw advisories", due[0][2])
+        self.assertIn("(openclaw 2026.10.9)", due[0][2])
         self.assertEqual(self.run_step(), [])
 
 
@@ -286,7 +287,7 @@ class Daily(unittest.TestCase):
 
     def write_report(self, **fields):
         report = {"checked_at": self.now + DAY, "ok": True, "files": 3, "changed": [], "missing": [],
-                  "unrecorded": [], "refused": []}
+                  "unrecorded": [], "refused": [], "packages": {"@openclaw/acpx": ["2026.10.9"]}}
         report.update(fields)
         (self.dir / "report.json").write_text(json.dumps(report))
 
@@ -329,10 +330,21 @@ class Daily(unittest.TestCase):
         self.run_daily(days=0)
         self.assertEqual(self.net.sent, [])
         self.run_daily(days=1.1)
-        self.assertEqual(len(self.net.sent), 1)
-        self.assertIn("drift check: unknown", self.net.sent[0]["text"])
+        texts = sorted(m["text"] for m in self.net.sent)
+        self.assertEqual(len(texts), 2)
+        self.assertIn("advisory watch: unknown", texts[0])
+        self.assertIn("plugins in Jorah's state folder", texts[0])
+        self.assertIn("drift check: unknown", texts[1])
+        self.run_daily()
+        self.assertEqual(len(self.net.sent), 2)
+
+    def test_npm_plugins_from_the_drift_report_are_checked(self):
+        self.net.github.items = [advisory("GHSA-acpx", [("< 2026.10.33", "2026.10.33")], package="@openclaw/acpx")]
+        self.write_report(packages={"@openclaw/acpx": ["2026.10.33", "2026.10.9"]})
         self.run_daily()
         self.assertEqual(len(self.net.sent), 1)
+        self.assertIn("@openclaw/acpx 2026.10.9", self.net.sent[0]["text"])
+        self.assertNotIn("2026.10.33,", self.net.sent[0]["text"].split("Fixed in")[0])
 
     def test_github_down_is_never_reported_as_no_advisories(self):
         self.net.github.fail = urllib.error.URLError("down")

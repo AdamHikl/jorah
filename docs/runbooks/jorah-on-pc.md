@@ -751,7 +751,11 @@ OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under C
 - Every night at 03:40 (`jorah-daily-watch.timer`, between the 02:20 and 08:20 restarts), as `jorah-watchdog`, with the watchdog's bot.
 - Reads `api.github.com/repos/openclaw/openclaw/security-advisories`: published only, most recently updated first, 100 a page. It stops at the first advisory it has already seen with the same update time. The first run reads all of them (about 723, 8 requests); later runs need about one. Sorting by update rather than publication also catches corrected ranges.
 - Keeps every advisory's ranges for `openclaw` and `@openclaw/*`, and checks them all against the installed versions each night, so an upgrade into an old range is caught too.
-- **Installed versions:** `openclaw`, from `/opt/node/lib/node_modules/openclaw/package.json`, the file `openclaw --version` prints from. The installer checks that the two agree. Also every `@openclaw/*` package bundled inside it or installed next to it. Plugins installed under Jorah's state folder can't be seen by this user. With the install policy below, none can be installed without Adam.
+- **Installed versions:**
+  - `openclaw`, from `/opt/node/lib/node_modules/openclaw/package.json`, the file `openclaw --version` prints from. The installer checks that the two agree.
+  - Every `@openclaw/*` package bundled inside it.
+  - The npm-installed plugins in Jorah's state folder: `@openclaw/acpx` and `@openclaw/duckduckgo-plugin`, 2026.10.9 today [measured]. `jorah-watchdog` can't read them, so the root drift job lists their `package.json` name and version in its report.
+  - Without a fresh list, the watch says "unknown".
 - **Messages:** one per advisory that affects what runs: id, severity, summary, fixed versions, link. If more than 5 match at once, one message lists them, because that many probably means a misread.
   - A range it can't read counts as "may apply".
   - When the source is unreadable for a day (GitHub down, rate limit, unreadable version), it says "unknown" once, and says so again when it can read the list. It never reports that as "no advisories".

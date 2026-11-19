@@ -11,7 +11,8 @@ that each file on disk has exactly the hash git gives (scripts/pc/deploy_reviewe
 hashes on the Mac from the commit, so the manifest never just trusts what is on the PC).
 
   check    (root, no network; jorah-drift.service) Hash every file in the manifest, list files in
-           /opt/jorah that aren't in it, write the report for the watchdog to send.
+           /opt/jorah that aren't in it, write the report for the watchdog to send. The report also
+           lists the versions of OpenClaw's npm-installed plugins for the advisory watch.
   record   (root) Read {"commit": ..., "files": {path: {"sha256": ..., "source": ...}}} on stdin,
            check each file on disk matches, then merge the entries into the manifest.
   forget   (root) Remove the named paths from the manifest (a file deleted from main).
@@ -27,6 +28,7 @@ are listed by name and never opened.
 
 import argparse
 import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -43,6 +45,10 @@ LIVE_NAMES = ("AGENTS.md", "SOUL.md", "IDENTITY.md")
 SECRET_NAMES = ("openclaw.json", "*.token", "*.key", "*.pem", ".env", ".env.*", "*credentials*",
                 "id_rsa*", "id_ed25519*")
 MAX_LISTED = 20
+# OpenClaw's npm-installed plugins for live Jorah (acpx, duckduckgo), in jorah's private home where
+# the watchdog's user can't look. Only name and version are read from each package.json, for the
+# advisory watch.
+PACKAGE_GLOB = "/home/jorah/.openclaw-jorah/npm/projects/*/node_modules/@openclaw/*/package.json"
 
 
 def log(line):
@@ -106,6 +112,20 @@ def write_json(path, data, mode=0o644):
     with open(tmp, "rb") as handle:
         os.fsync(handle.fileno())
     tmp.replace(path)
+
+
+def packages(pattern=PACKAGE_GLOB):
+    """{"@openclaw/<name>": [versions]} of the plugin packages OpenClaw installed from npm."""
+    found = {}
+    for path in glob.glob(pattern):
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            continue
+        name, version = data.get("name"), data.get("version")
+        if isinstance(name, str) and name.startswith("@openclaw/") and isinstance(version, str):
+            found.setdefault(name, set()).add(version)
+    return {name: sorted(versions) for name, versions in sorted(found.items())}
 
 
 def check(manifest_path, tree=TREE, now=None):
@@ -219,6 +239,7 @@ def main(argv=None):
         return 0
     if args.command == "check":
         report = check(args.manifest, args.tree)
+        report["packages"] = packages()
         write_json(args.report, report)
         if report["ok"]:
             log(f"checked {report['files']} files: {len(report['changed'])} changed, {len(report['missing'])} "

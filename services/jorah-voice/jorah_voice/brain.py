@@ -15,9 +15,9 @@ GATEWAY_URL = "http://127.0.0.1:43181/v1/chat/completions"
 SESSION_KEY = "agent:main:main"
 TOKEN_FILE = Path.home() / ".config" / "jorah-voice" / "gateway-token"
 
-VOICE_NOTE = """Adam is talking to you out loud, and your reply is read aloud.
-Keep it short enough to say in one breath unless Adam asks for more: one to three sentences.
-Use plain sentences with no lists, markdown, links, code or emoji.
+VOICE_NOTE = """Adam is talking to you out loud, and only the start of your reply is read aloud.
+If the answer fits in about 35 words, just say it: plain sentences, no lists, markdown, links, code or emoji.
+If it's longer, start with an overview of at most 35 words that can be read aloud: the outcome first, then any question Adam must answer or anything he must do. Then a line with only "Full message:" on it, then the whole answer. Adam sees the whole answer on screen or asks to hear it.
 Adam's words come from speech recognition, so a strange word was probably misheard. If a reply depends on it, ask."""
 
 

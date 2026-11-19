@@ -7,7 +7,8 @@ import time
 from contextlib import aclosing
 
 from .brain import BrainError
-from .core import FollowUp, IdleClock, Resampler, SentenceChunker, TurnEnd, classify, join_waiting, percentile
+from .core import (FollowUp, IdleClock, LastFullMessage, OverviewSplit, Resampler, SentenceChunker, TurnEnd,
+                   classify, join_waiting, percentile, speakable_sentences)
 
 BLOCK_SECONDS = 0.1
 BYTES_PER_SAMPLE = 2
@@ -17,6 +18,12 @@ STAY_LINE = "I'm here."
 # Said once when no reply text has come for a while, which mostly means Jorah is using a tool
 # (2026-11-11: GitHub turns took 7 to 21 s to the first word), so the quiet isn't a dead line.
 FILLER_LINE = "One moment."
+# A long reply is spoken only up to about this many words, about 15 s, and shown or read in full on
+# request (Adam, 2026-11-19: "always the most important stuff, maybe 5-15 seconds max").
+SPOKEN_WORDS = 45
+ON_SCREEN_LINE = "The full message is on your screen."
+READ_ALL_HINT = "Say 'read the whole message' for the rest."
+NO_FULL_LINE = "There's no longer message to read."
 
 
 class Filler(str):
@@ -33,7 +40,7 @@ class VoiceSession:
                  barge_in=False, idle_seconds=60, max_seconds=1800,
                  clock=time.monotonic, sleep=asyncio.sleep, lead=0.2, turn_end=None,
                  follow_up=False, input_rate=16000, filler_seconds=None, client_ends=False,
-                 stream_speech=True, log=None):
+                 stream_speech=True, log=None, shows_full=False, full_store=None, spoken_words=SPOKEN_WORDS):
         self._ears = ears
         self._listener = listener
         self._speaker = speaker
@@ -64,6 +71,11 @@ class VoiceSession:
         # Speakers that can (Qwen3-TTS) send a sentence's audio as it's made, not when it's done.
         self._stream_speech = stream_speech
         self._log = log or (lambda line: print(line, flush=True))
+        # Long replies: the client shows `full_reply` (the HUD), and the last full message is kept
+        # for "read the whole message", shared across sessions by the server.
+        self._shows_full = shows_full
+        self._full_store = full_store if full_store is not None else LastFullMessage()
+        self._spoken_words = spoken_words
         # On standby, audio is dropped unheard until the client hangs up.
         self.standby = False
         self.closed = False
@@ -206,6 +218,12 @@ class VoiceSession:
         if kind == "end_quietly":
             await self.end("said thanks")
             return
+        if kind == "read_all":
+            full = self._full_store.get()
+            await self._speak_lines(speakable_sentences(full) if full else [NO_FULL_LINE], heard_at, record=False)
+            self._replied("")
+            await self._state("listening")
+            return
         if kind == "stay":
             if self._follow_up:
                 self._follow_up.stay(self._clock())
@@ -240,13 +258,23 @@ class VoiceSession:
         sentences = asyncio.Queue()
         speaking = asyncio.create_task(self._speak_queue(sentences, heard_at, record=True, marks=marks))
         chunker = SentenceChunker()
+        split = OverviewSplit()
         reply = []
+        spoken = []
+        held = False  # part of the reply went unspoken: over the word limit
         got_text = asyncio.Event()
 
         def since_heard():
             return round(self._clock() - heard_at, 2)
 
         def queue_sentence(sentence):
+            """Speak the overview, up to the word limit. The first sentence is always spoken."""
+            nonlocal held
+            words = len(sentence.split())
+            if held or (spoken and sum(len(s.split()) for s in spoken) + words > self._spoken_words):
+                held = True
+                return
+            spoken.append(sentence)
             if "first_sentence" not in marks:
                 marks["first_sentence"] = since_heard()
                 self.numbers["first_sentence"].append(marks["first_sentence"])
@@ -270,17 +298,34 @@ class VoiceSession:
                     self.numbers["first_token"].append(first_token - heard_at)
                     marks["first_token"] = round(first_token - heard_at, 2)
                 reply.append(delta)
-                for sentence in chunker.feed(delta):
+                for sentence in chunker.feed(split.feed(delta)):
                     queue_sentence(sentence)
             marks["reply_done"] = since_heard()
-            for sentence in chunker.flush():
+            for sentence in chunker.feed(split.finish()) + chunker.flush():
                 queue_sentence(sentence)
+            full = (split.full or "").strip()
+            if full and not spoken:
+                # The overview was missing: speak the start of the full message instead.
+                for sentence in speakable_sentences(full):
+                    queue_sentence(sentence)
+            elif held and not full:
+                full = "".join(reply).strip()  # no "Full message:" line, and too long to say
+            if full:
+                # Shown on screen (the HUD) while the overview is spoken, and kept for "read the whole message".
+                await self._send_json({"type": "full_reply", "text": full})
+                self._full_store.keep(full)
+                marks["full_chars"] = len(full)
+                if not self._shows_full:
+                    sentences.put_nowait(Filler(READ_ALL_HINT))
+                elif held:
+                    sentences.put_nowait(Filler(ON_SCREEN_LINE))
             if not reply:
                 sentences.put_nowait(EMPTY_LINE)
             sentences.put_nowait(None)
             await speaking
             marks["reply_chars"] = sum(len(part) for part in reply)
-            return "".join(reply)
+            marks["spoken_words"] = sum(len(s.split()) for s in spoken)
+            return " ".join(spoken)
         except BrainError as error:
             print(f"brain failed: {error}", flush=True)
             marks["brain_failed"] = since_heard()

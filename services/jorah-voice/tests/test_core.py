@@ -76,7 +76,8 @@ class Chunker(unittest.TestCase):
         chunker = SentenceChunker()
         self.assertEqual(chunker.feed("Hello there"), [])
         self.assertEqual(chunker.feed(". How are"), ["Hello there."])
-        self.assertEqual(chunker.flush(), ["How are"])
+        # The end of a line ends the sentence, so it is spoken with a full stop.
+        self.assertEqual(chunker.flush(), ["How are."])
 
     def test_abbreviation_does_not_end_a_sentence(self):
         chunker = SentenceChunker()
@@ -86,7 +87,7 @@ class Chunker(unittest.TestCase):
         chunker = SentenceChunker(max_chars=20)
         out = chunker.feed("one two three four five six seven")
         self.assertEqual(out, ["one two three four"])
-        self.assertEqual(chunker.flush(), ["five six seven"])
+        self.assertEqual(chunker.flush(), ["five six seven."])
 
     def test_markup_is_not_read_aloud(self):
         self.assertEqual(clean_for_speech("**Bold** and [a link](http://x.y) `code`"), "Bold and a link code")
@@ -145,3 +146,101 @@ class JoinWaitingTest(unittest.TestCase):
         q = self.queue("x" * 20, "Next.", None)
         self.assertEqual(join_waiting("One.", q, 10), ("One.", False))
         self.assertEqual([q.get_nowait() for _ in range(3)], ["x" * 20, "Next.", None])
+
+
+class Speakable(unittest.TestCase):
+    def test_links_hashes_paths_and_code_become_short_words(self):
+        from jorah_voice.core import speakable
+        self.assertEqual(speakable("See https://github.com/astral-sh/uv/releases for it."), "See a link for it.")
+        self.assertEqual(speakable("[the release page](https://x.y/z) is blocked"), "the release page is blocked")
+        self.assertEqual(speakable("SHA-256 3b1f0c9e8d7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0 is needed."),
+                         "SHA-256 a long code is needed.")
+        self.assertEqual(speakable("Pushed 8874bcf to main."), "Pushed a long code to main.")
+        self.assertEqual(speakable("It's in /home/jorah/work/uv/SHA256SUMS now."), "It's in a file path now.")
+        self.assertEqual(speakable("Run `just check` then `sha256sum ~/work/uv-0.9.1-x86_64.tar.gz`."),
+                         "Run just check then a long code.")
+
+    def test_ordinary_words_and_numbers_stay(self):
+        from jorah_voice.core import speakable
+        for text in ("Call 1234567 after the decade ends.", "The 2026 plan has 3 steps.", "A uv-0.9.1 toolbox."):
+            self.assertEqual(speakable(text), text)
+
+    def test_list_marks_and_rules_go(self):
+        from jorah_voice.core import speakable
+        self.assertEqual(speakable("- Option A: wait"), "Option A: wait")
+        self.assertEqual(speakable("|---|:---:|"), "")
+
+
+class ChunkerLines(unittest.TestCase):
+    TEXT = "## Status\n- Card is waiting\n1. Option A: paste the hash\n2. Option B: skip it\n| a | b |\n|---|---|\n```bash\nsha256sum x\n```\nDone."
+
+    def test_each_line_is_a_sentence_and_code_is_named_not_read(self):
+        from jorah_voice.core import speakable_sentences
+        self.assertEqual(speakable_sentences(self.TEXT), [
+            "Status.", "Card is waiting.", "Option A: paste the hash.", "Option B: skip it.", "a b.",
+            "A code block.", "Done."])
+
+    def test_the_same_when_it_arrives_in_small_pieces(self):
+        from jorah_voice.core import speakable_sentences
+        for size in (1, 2, 3, 7):
+            chunker = SentenceChunker()
+            out = []
+            for start in range(0, len(self.TEXT), size):
+                out += chunker.feed(self.TEXT[start : start + size])
+            out += chunker.flush()
+            self.assertEqual(out, speakable_sentences(self.TEXT), size)
+
+
+class Overview(unittest.TestCase):
+    def split(self, text, size=None):
+        from jorah_voice.core import OverviewSplit
+        split = OverviewSplit()
+        size = size or len(text)
+        spoken = "".join(split.feed(text[i : i + size]) for i in range(0, len(text), size)) + split.finish()
+        return spoken, split.full
+
+    def test_the_line_splits_overview_from_full_message(self):
+        text = "It's blocked. Pick A or B?\n\nFull message:\n- A: paste the hash\n- B: skip it"
+        for size in (None, 1, 4, 9):
+            spoken, full = self.split(text, size)
+            self.assertEqual(spoken.strip(), "It's blocked. Pick A or B?")
+            self.assertEqual(full, "- A: paste the hash\n- B: skip it")
+
+    def test_markup_around_the_line_and_the_line_after_a_sentence(self):
+        self.assertEqual(self.split("Done.\n**Full message:**\nAll of it.")[1], "All of it.")
+        spoken, full = self.split("Done. Full message:\nAll of it.", 3)
+        self.assertEqual((spoken.strip(), full), ("Done.", "All of it."))
+
+    def test_words_that_only_start_like_the_line_are_spoken(self):
+        text = "The full message is on screen. Full messages are long.\nBye."
+        self.assertEqual(self.split(text, 2), (text, None))
+
+    def test_text_is_released_before_the_line_arrives(self):
+        from jorah_voice.core import OverviewSplit
+        split = OverviewSplit()
+        self.assertEqual(split.feed("It worked. Full mes"), "It worked.")
+        self.assertEqual(split.feed("sage:\nRest."), "")
+        self.assertEqual(split.full, "Rest.")
+
+    def test_no_line_means_no_full_message(self):
+        self.assertEqual(self.split("Just a short answer."), ("Just a short answer.", None))
+
+
+class ReadAll(unittest.TestCase):
+    def test_phrases(self):
+        for text in ("Read the whole message.", "Jorah, read the whole message.", "Read it all, please.",
+                     "Read me everything.", "read the full message jorah", "Read the rest."):
+            self.assertEqual(classify(text), "read_all", text)
+        for text in ("Read my email.", "Read the whole message from Peter.", "Can you read it all to Peter?"):
+            self.assertEqual(classify(text), "talk", text)
+
+    def test_the_last_full_message_is_kept_for_half_an_hour_only(self):
+        from jorah_voice.core import LastFullMessage
+        now = [0.0]
+        store = LastFullMessage(clock=lambda: now[0])
+        self.assertIsNone(store.get())
+        store.keep("All of it.")
+        now[0] = 1799
+        self.assertEqual(store.get(), "All of it.")
+        now[0] = 1801
+        self.assertIsNone(store.get())

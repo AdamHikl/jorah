@@ -39,6 +39,17 @@ Measured 2026-11-14 in `docs/evidence/voice-latency/`: about 3 to 3.5 s from you
 
 `tools/latency_probe.py` times the brain the way a spoken turn reaches it, on `agent:main:voice-probe`.
 
+## Long replies
+
+Adam's rule of 2026-11-19: by voice, Jorah says only the most important part, at most about 15 seconds, and the whole message goes to the screen.
+
+- `VOICE_NOTE` asks for a spoken overview of at most 35 words when the answer is longer than that. The overview gives the outcome first, then any question Adam must answer or anything he must do. Then comes a line reading only `Full message:`, then the whole answer.
+- Only the overview is spoken, starting on its first sentence as before. Anything spoken stops at about 45 words (`SPOKEN_WORDS`). The full message goes to the client once per turn as `{"type": "full_reply", "text": ...}` when the reply is complete.
+- If the reply has no `Full message:` line but runs past 45 words, Jorah speaks the first sentences up to the limit, and the whole reply is the full message.
+- Clients that show `full_reply` say so with `"shows_full": true` in their hello (the HUD, `mac-ear`). They hear "The full message is on your screen." when a reply was cut short. Others, such as the iPhone's Talk, hear "Say 'read the whole message' for the rest."
+- "Read the whole message", "read it all", "read me everything", "read the rest" and similar exact phrases read the last full message aloud, with no model call. It is kept in memory only, for 30 minutes, across sessions, and never logged or written to disk.
+- Everything spoken goes through `core.speakable`: links, hashes, keys, file paths and code become "a link", "a long code", "a file path" and "a code block". Each line is a sentence, so list items are read one by one.
+
 ## What it needs from the Gateway
 
 - `gateway.http.endpoints.chatCompletions.enabled: true`. The endpoint stays on loopback, and Tailscale Serve exposes only the speech port, 43210.

@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from jorah_voice.brain import BrainError
 from jorah_voice.core import TurnEnd, parse_hello
-from jorah_voice.session import FAILURE_LINE, VoiceSession
+from jorah_voice.session import (FAILURE_LINE, NO_FULL_LINE, ON_SCREEN_LINE, READ_ALL_HINT, SPOKEN_WORDS,
+                                VoiceSession)
 
 
 class FakeEars:
@@ -540,13 +541,17 @@ class Hello(unittest.TestCase):
         return json.dumps({"type": "hello", **fields})
 
     def test_right_token(self):
-        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False, "client_ends": False}
+        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False, "client_ends": False, "shows_full": False}
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN), self.TOKEN), plain)
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN, barge_in=True), self.TOKEN), {**plain, "barge_in": True})
 
     def test_the_talk_relay_options(self):
         hello = parse_hello(self.hello(token=self.TOKEN, input_rate=24000, client_ends=True), self.TOKEN)
-        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": False, "client_ends": True})
+        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": False, "client_ends": True, "shows_full": False})
+
+    def test_a_client_with_a_screen_says_so(self):
+        hello = parse_hello(self.hello(token=self.TOKEN, shows_full=True), self.TOKEN)
+        self.assertTrue(hello["shows_full"])
 
     def test_an_unknown_rate_is_refused(self):
         self.assertIsNone(parse_hello(self.hello(token=self.TOKEN, input_rate=44100), self.TOKEN))
@@ -619,3 +624,94 @@ class TurnLog(unittest.IsolatedAsyncioTestCase):
         await h.say()
         await h.settle()
         self.assertIn("brain_failed", json.loads(lines[0][len("turn: "):]))
+
+
+LONG_REPORT = ("The uv toolbox is blocked because the guard needs its SHA-256 first. Should I wait or skip it?\n\n"
+               "Full message:\n## uv toolbox\n- The release page https://github.com/astral-sh/uv/releases is blocked.\n"
+               "- Option A: paste the hash 3b1f0c9e8d7a6b5c4d3e2f1a0b9c8d7e.\n- Option B: skip uv for now.")
+RAMBLE = " ".join(f"Point number {n} is about the toolbox and what the guard did with it." for n in range(1, 7))
+
+
+class LongReplies(unittest.IsolatedAsyncioTestCase):
+    def fulls(self, h):
+        return [m["text"] for m in h.sent if m["type"] == "full_reply"]
+
+    def said(self, h):
+        return " ".join(h.speaker.lines)
+
+    async def test_only_the_overview_is_spoken_and_the_full_message_is_sent(self):
+        h = Harness(brain=FakeBrain([LONG_REPORT[:50], LONG_REPORT[50:120], LONG_REPORT[120:]]), shows_full=True)
+        await h.say()
+        await h.settle()
+        self.assertEqual(self.said(h), "The uv toolbox is blocked because the guard needs its SHA-256 first. Should I wait or skip it?")
+        self.assertEqual(self.fulls(h), [LONG_REPORT.split("Full message:\n")[1]])
+        self.assertEqual(h.states(), ["thinking", "speaking", "listening"])
+
+    async def test_without_a_screen_jorah_says_how_to_hear_the_rest(self):
+        h = Harness(brain=FakeBrain([LONG_REPORT]))
+        await h.say()
+        await h.settle()
+        self.assertTrue(self.said(h).endswith(READ_ALL_HINT))
+        self.assertEqual(len(self.fulls(h)), 1)
+
+    async def test_a_long_reply_without_the_line_is_cut_to_about_fifteen_seconds(self):
+        h = Harness(brain=FakeBrain([RAMBLE]), shows_full=True)
+        await h.say()
+        await h.settle()
+        spoken = self.said(h)
+        self.assertTrue(spoken.startswith("Point number 1"))
+        self.assertTrue(spoken.endswith(ON_SCREEN_LINE))
+        self.assertLessEqual(len(spoken.removesuffix(ON_SCREEN_LINE).split()), SPOKEN_WORDS)
+        self.assertNotIn("Point number 6", spoken)
+        self.assertEqual(self.fulls(h), [RAMBLE])
+
+    async def test_a_short_reply_is_spoken_whole_with_nothing_else_sent(self):
+        h = Harness(shows_full=True)
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.speaker.lines, ["Hi Adam.", "All good."])
+        self.assertEqual(self.fulls(h), [])
+
+    async def test_read_the_whole_message_reads_it_without_the_brain(self):
+        h = Harness(brain=FakeBrain([LONG_REPORT]), shows_full=True)
+        await h.say()
+        await h.settle()
+        h.speaker.lines.clear()
+        h.listener.text = "Read the whole message."
+        await h.say()
+        await h.settle()
+        self.assertEqual(len(h.brain.prompts), 1)
+        said = self.said(h)
+        self.assertIn("uv toolbox.", said)
+        self.assertIn("The release page a link is blocked.", said)
+        self.assertIn("Option A: paste the hash a long code.", said)
+        self.assertIn("Option B: skip uv for now.", said)
+        self.assertNotIn("http", said)
+
+    async def test_nothing_to_read_says_so(self):
+        h = Harness(text="Read it all.")
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.prompts, [])
+        self.assertEqual(h.speaker.lines, [NO_FULL_LINE])
+
+    async def test_the_full_message_outlasts_the_session(self):
+        from jorah_voice.core import LastFullMessage
+        store = LastFullMessage()
+        first = Harness(brain=FakeBrain([LONG_REPORT]), full_store=store)
+        await first.say()
+        await first.settle()
+        later = Harness(text="Read me everything.", full_store=store)
+        await later.say()
+        await later.settle()
+        self.assertIn("Option B: skip uv for now.", " ".join(later.speaker.lines))
+
+    async def test_the_turn_log_counts_words_never_says_them(self):
+        lines = []
+        h = Harness(brain=FakeBrain([LONG_REPORT]), shows_full=True, log=lines.append)
+        await h.say()
+        await h.settle()
+        marks = json.loads(lines[0][len("turn: "):])
+        self.assertEqual(marks["spoken_words"], 18)
+        self.assertGreater(marks["full_chars"], 100)
+        self.assertNotIn("toolbox", lines[0])

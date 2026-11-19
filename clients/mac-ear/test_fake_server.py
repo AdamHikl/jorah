@@ -65,6 +65,7 @@ def serve(listener):
     send_json(conn, {"type": "ready", "sample_rate": 24000})
     send_json(conn, {"type": "heard", "text": "hello from the stand-in"})
     send_json(conn, {"type": "reply", "text": "a very quiet tone"})
+    send_json(conn, {"type": "full_reply", "text": "the whole report, line one\nline two"})
     tone = b"".join(struct.pack("<h", int(300 * math.sin(i / 20))) for i in range(4800))
     send_frame(conn, 2, tone)
     send_json(conn, {"type": "cut"})
@@ -96,9 +97,11 @@ checks = {
     "exits cleanly": client.returncode == 0,
     "sends the token": results.get("hello", {}).get("token") == TOKEN,
     "says hello with barge_in false": results.get("hello", {}).get("barge_in") is False,
+    "says it shows full messages": results.get("hello", {}).get("shows_full") is True,
     "Enter sends interrupt": results.get("interrupt", {}).get("type") == "interrupt",
     "shows what was heard": "You:   hello from the stand-in" in output,
     "shows the reply": "Jorah: a very quiet tone" in output,
+    "prints a full message": "the whole report, line one\nline two" in output,
     "reports timings": "first_audio: median 0.50, P90 0.75, 2 turns" in output,
     "reports a missing number as no samples": "transcribe: no samples" in output,
     "says why it closed": "MIC CLOSED (test finished)" in output,

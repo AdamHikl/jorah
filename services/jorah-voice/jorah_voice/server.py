@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from . import models
-from .core import TurnEnd, parse_hello
+from .core import LastFullMessage, TurnEnd, parse_hello
 
 DEFAULT_PORT = 43210
 HELLO_SECONDS = 5
@@ -62,6 +62,8 @@ async def serve(args):
                         log=lambda line: print(line, flush=True))
         warmer.start()
     one_at_a_time = asyncio.Lock()
+    # The last long reply, for "read the whole message" in this or a later session. Memory only.
+    last_full = LastFullMessage()
 
     async def handler(ws):
         try:
@@ -92,6 +94,8 @@ async def serve(args):
                 filler_seconds=args.filler,
                 client_ends=hello["client_ends"],
                 stream_speech=args.stream_speech,
+                shows_full=hello["shows_full"],
+                full_store=last_full,
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())

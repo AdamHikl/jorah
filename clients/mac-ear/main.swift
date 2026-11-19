@@ -160,7 +160,8 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        let hello: [String: Any] = ["type": "hello", "token": token, "barge_in": options.bargeIn]
+        // shows_full: this terminal prints a long reply's full message, so Jorah need only say it's here.
+        let hello: [String: Any] = ["type": "hello", "token": token, "barge_in": options.bargeIn, "shows_full": true]
         sendJSON(hello)
     }
 
@@ -214,6 +215,11 @@ final class Ear: NSObject, URLSessionWebSocketDelegate {
             print("You:   \(message["text"] as? String ?? "")")
         case "reply":
             print("Jorah: \(message["text"] as? String ?? "")")
+        case "full_reply":
+            // A long reply: only an overview is spoken. "Read the whole message" reads this aloud.
+            if let text = message["text"] as? String, !text.isEmpty {
+                print("── Full message ──\n\(text)\n──────────────────")
+            }
         case "cut":
             player.stop()
             player.play()

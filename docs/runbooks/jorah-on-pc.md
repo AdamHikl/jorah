@@ -81,6 +81,14 @@ Adam: "switch it to the max plan now", so a business-and-engineering project loo
 
 **Fix:** `deploy/openclaw-gateway.service` runs `podman info` (60 s cap) as `ExecStartPre`, so the refresh is done before the Gateway starts. A failure there doesn't block the Gateway, and the sandbox still fails closed. `scripts/pc/install-gateway-unit.sh` installs it (`--dry-run`, `--undo`), backup `openclaw-gateway.service.pre-podman-warmup`, no restart. Verified with `systemd-analyze verify` on the PC. **Installed 2026-11-14 15:28 on Adam's yes** [measured]: `/opt/jorah` files match `8b7dfe6` by SHA-256, dry run then install, `systemctl show` lists the `ExecStartPre`, Gateway still active, not restarted. Not tested across a reboot: after the next boot, expect no Telegram warning and `Heartbeat (main)` `ok` in `cron list`. Undo: the script's `--undo`.
 
+## Long replies by voice, 2026-11-19
+
+**Why** [measured]: on 2026-11-19 at 16:46 a voice turn after a tool chain read a multi-bullet report aloud for about 36 s until the turn was cut. `VOICE_NOTE` already asked for one to three sentences, but after tool turns Jorah ignored it.
+
+**Built on Adam's yes ("Yes, build it")**: Jorah speaks an overview of at most 35 words, then a `Full message:` line, then the whole answer. Only the overview is spoken, capped at about 45 words. The whole answer goes to the client as `full_reply`, which the HUD shows and `mac-ear` prints. "Read the whole message" reads it aloud with no model call. It's kept in memory for 30 minutes only. Links, hashes, paths and code are spoken as short words. Details: `services/jorah-voice/README.md`, "Long replies". Adam's call: with no screen (iPhone Talk), the full message goes nowhere else for now, and "read the whole message" works on every client.
+
+**Open:** when voice identity (`docs/plan/12-voice-identity.md`) lands, "read the whole message" must work only in Adam's voice, or a guest could replay his last message.
+
 ## Voice latency, 2026-11-14
 
 **Measured** (`docs/evidence/voice-latency/`, from logs and 49 probe turns on `agent:main:voice-probe` on Adam's yes): about 3 to 3.5 s from Adam's last word to first audio on a simple turn, but about 12 s on the first voice turn after any Gateway start. OpenClaw loads its plugins on the first HTTP chat request of each Gateway process, which takes about 7 s. Tool turns took 8 to 16 s to the first text. `/think:low` and `/think:off` gave no gain, the reply text arrives in one piece when the model is done, and Active Memory blocked probe tool turns for 2.6 to 3.0 s with no result.

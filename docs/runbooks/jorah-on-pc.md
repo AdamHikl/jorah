@@ -676,7 +676,8 @@ Adam's steps, the design and the full record are in `docs/runbooks/toolbox.md`.
 - Adam created @adam_jorah_watchdog_bot and stored its token with `store-watchdog-token.sh`. The script's `getMe` timed out once. A minute later the PC reached `api.telegram.org` in 0.08 s over IPv4, as root and as `jorah-watchdog`. IPv6 fails at once, so it falls back.
 - The first `--test` got 400 "chat not found", because the bot hadn't been started yet.
 - After Adam sent `/start`, `install-watchdog.sh --test` said "test message sent", and Telegram accepted it.
-- Not yet confirmed: that the message showed on Adam's phone.
+- Adam confirmed the message arrived in Telegram (2026-11-19).
+- A real outage alert hasn't happened yet.
 
 **Adam's steps:**
 1. In Telegram, open @BotFather, send `/newbot`, and name it, for example "Jorah watchdog". BotFather replies with a token.

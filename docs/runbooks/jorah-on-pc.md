@@ -670,7 +670,13 @@ Adam's steps, the design and the full record are in `docs/runbooks/toolbox.md`.
 - Files copied with SHA-256 matching `main`; `systemd-analyze verify` clean; dry run, then the install.
 - The user `jorah-watchdog`, and `/etc/jorah-watchdog/watchdog.conf` with the chat id from `allowFrom` and port 43181.
 - The timer is enabled. The first check in the hardened unit printed "checks: gateway ok, runner ok".
-- **No token yet**, so nothing can be sent.
+- **No token yet**, so nothing could be sent at first.
+
+**Bot set up, 2026-11-19** [measured]:
+- Adam created @adam_jorah_watchdog_bot and stored its token with `store-watchdog-token.sh`. The script's `getMe` timed out once. A minute later the PC reached `api.telegram.org` in 0.08 s over IPv4, as root and as `jorah-watchdog`. IPv6 fails at once, so it falls back.
+- The first `--test` got 400 "chat not found", because the bot hadn't been started yet.
+- After Adam sent `/start`, `install-watchdog.sh --test` said "test message sent", and Telegram accepted it.
+- Not yet confirmed: that the message showed on Adam's phone.
 
 **Adam's steps:**
 1. In Telegram, open @BotFather, send `/newbot`, and name it, for example "Jorah watchdog". BotFather replies with a token.

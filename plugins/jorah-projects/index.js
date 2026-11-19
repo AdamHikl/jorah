@@ -16,7 +16,9 @@
 // Jorah's toolbox (docs/runbooks/toolbox.md, contract jorah-tool-v1): toolbox_list marks the chat
 // (it shows tool output and run-written proposals); toolbox_propose only writes an inert proposal,
 // so it is a read; toolbox_install and toolbox_remove are always a card with the exact fields, and
-// only they write the installer's queue.
+// only they write the installer's queue. For a GitHub release asset, toolbox_propose asks GitHub's
+// API for the release itself (api.github.com only, a fixed path built from the URL) and takes the
+// hash, the date and the size from GitHub's answer, so Jorah never has to find a checksum page.
 // Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
 
 import { randomBytes } from "node:crypto";
@@ -28,7 +30,8 @@ import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
 import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUESTION, MAX_WORDS } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
-import { CARD_ROOM, cardFields, cardLength, checkManifest, digest, ID as TOOL_ID, NAME as TOOL_NAME, proposalId, readProposal, readToolbox, writeFresh } from "./lib/toolbox.js";
+import { applyGithub, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
+  readProposal, readToolbox, writeFresh } from "./lib/toolbox.js";
 import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
@@ -83,7 +86,52 @@ export function pauseState(entry, state, requests) {
   return { paused: last.type === "pause", why: last.type === "pause" ? "pause requested" : null, pending: `${last.type} requested at ${last.at}, not yet taken in by the runner` };
 }
 
-export function register(api, { now = () => new Date() } = {}) {
+const GITHUB_TIMEOUT_MS = 20_000;
+const GITHUB_MAX_BYTES = 4 << 20;
+const GITHUB_CACHE_MS = 10 * 60_000;
+
+/** GitHub's answer for a release (or, with `path` = where.list, its list of releases): {ok: true,
+ * release, at} or {ok: false, final, reason}. `final`: the request itself is wrong (no such
+ * release); otherwise GitHub can't be asked right now. */
+export async function githubRelease(fetchImpl, where, now = () => new Date(), path = where.path) {
+  const what = `${where.owner}/${where.repo} ${where.tag}`.slice(0, 120);
+  let res;
+  try {
+    res = await fetchImpl(`${GITHUB_API}${path}`, {
+      headers: { accept: "application/vnd.github+json", "user-agent": "jorah-toolbox/1", "x-github-api-version": "2022-11-28" },
+      redirect: "follow", signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+    });
+  } catch (e) {
+    return { ok: false, final: false, reason: `GitHub's API didn't answer (${e?.name ?? "error"}); try again in a few minutes` };
+  }
+  if (res.url && !String(res.url).startsWith(`${GITHUB_API}/`)) return { ok: false, final: false, reason: "GitHub's API redirected away from api.github.com" };
+  const header = (k) => res.headers?.get?.(k) ?? null;
+  if (res.status === 404) {
+    return { ok: false, final: true, reason: `GitHub has no published release ${what} (drafts aren't visible): check the owner, repo and tag in url` };
+  }
+  if ((res.status === 403 || res.status === 429) && (header("x-ratelimit-remaining") === "0" || header("retry-after"))) {
+    const reset = Number(header("x-ratelimit-reset"));
+    const until = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString().slice(11, 16) + " UTC"
+      : `in ${Number(header("retry-after")) || 60} seconds`;
+    return { ok: false, final: false, reason: `GitHub's API limit for this machine (60 lookups an hour, no sign-in) is used up until ${until}; propose again then` };
+  }
+  if (res.status !== 200) return { ok: false, final: false, reason: `GitHub's API answered ${res.status} for ${what}; try again later` };
+  if (Number(header("content-length")) > GITHUB_MAX_BYTES) return { ok: false, final: false, reason: "GitHub's answer is over 4 MB" };
+  let text;
+  try {
+    text = await res.text();
+  } catch (e) {
+    return { ok: false, final: false, reason: `GitHub's answer was cut off (${e?.name ?? "error"}); try again` };
+  }
+  if (text.length > GITHUB_MAX_BYTES) return { ok: false, final: false, reason: "GitHub's answer is over 4 MB" };
+  try {
+    return { ok: true, release: JSON.parse(text), at: now().toISOString() };
+  } catch {
+    return { ok: false, final: false, reason: "GitHub's answer isn't JSON" };
+  }
+}
+
+export function register(api, { now = () => new Date(), fetch: fetchImpl = globalThis.fetch } = {}) {
   const s = settings(api.pluginConfig ?? {});
   const tracker = new MediaTracker(() => now().getTime());
   const calls = new Map(); // toolCallId -> { sessionKey, via }
@@ -584,6 +632,17 @@ export function register(api, { now = () => new Date() } = {}) {
   // ---- Jorah's toolbox (docs/runbooks/toolbox.md) ----------------------------------------------
 
   const tail = (v, n) => (typeof v === "string" ? v.slice(-n) : null);
+  const releases = new Map(); // API path -> {until, got}: one lookup per release per 10 minutes
+  const lookup = async (where, path = where.path) => {
+    const hit = releases.get(path);
+    if (hit && hit.until > now().getTime()) return hit.got;
+    const got = await githubRelease(fetchImpl, where, now, path);
+    if (got.ok) {
+      releases.set(path, { until: now().getTime() + GITHUB_CACHE_MS, got });
+      if (releases.size > 20) releases.delete(releases.keys().next().value);
+    }
+    return got;
+  };
   const today = () => localDate(now(), s.timeZone);
   const APT_HELP = "Ubuntu packages need root, which Jorah's installer never has. Adam runs, from the Mac: "
     + "ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u root -- <rootCommand>; "
@@ -623,7 +682,7 @@ export function register(api, { now = () => new Date() } = {}) {
         return {
           id: p.id, from: p.from, at: p.at, purpose: m.purpose, for_project: m.for_project ?? null, title: m.title, kind: m.kind,
           homepage: m.homepage, release_page: m.release_page, licence_source: m.licence_source, commands: m.commands ? Object.keys(m.commands) : undefined,
-          smoke: m.smoke, last_result: resultOf.get(p.id) ? { status: resultOf.get(p.id).status, error: resultOf.get(p.id).error } : null,
+          smoke: m.smoke, ...(p.github ? { github: p.github } : {}), last_result: resultOf.get(p.id) ? { status: resultOf.get(p.id).status, error: resultOf.get(p.id).error } : null,
           ...(problems.length ? { problems } : { card: fields }),
         };
       });
@@ -639,31 +698,64 @@ export function register(api, { now = () => new Date() } = {}) {
     },
   });
 
+  // A release too new for the 7-day rule, a draft or a pre-release: name the newest full release
+  // that is old enough, from GitHub's list, so Jorah needn't open the releases page.
+  const TOO_NEW = /^released: .* less than \d+ days ago/;
+  const older = async (where, problems) => {
+    if (problems && !problems.some((x) => TOO_NEW.test(x) || /^url: GitHub marks .* (a draft|a pre-release)/.test(x))) return {};
+    const got = await lookup(where, where.list);
+    if (!got.ok) return { older_release: `unknown: ${got.reason}` };
+    const found = olderRelease(got.release, where, today());
+    if (!found) return { older_release: `none: no full release in GitHub's latest 10 is ${MIN_AGE_DAYS} days old` };
+    return { older_release: { ...found, next: found.url
+      ? "Propose it again with this version and url, and the version in release_page and smoke_expect; leave sha256, released and download_mb out."
+      : "That release has no asset named like yours: find its asset for x86_64 Linux on its release page." } };
+  };
+
   api.registerTool({
     name: "toolbox_propose",
     label: "Propose a tool for the toolbox",
-    description: "Propose one tool for Jorah's toolbox, as a request in contract jorah-tool-v1 (/opt/jorah/docs/contracts/jorah-tool-v1.md): name, version released at least 7 days ago, the download URL and its SHA-256 from the publisher (or Ubuntu packages), licence and where it's stated, sizes, the commands it adds, a smoke-test command, purpose (what you will do with it; the learning run's task) and sandbox {network: []} (tools run offline). Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
+    description: "Propose one tool for Jorah's toolbox, as a request in contract jorah-tool-v1 (/opt/jorah/docs/contracts/jorah-tool-v1.md): name, version released at least 7 days ago, the download URL (or Ubuntu packages), licence and where it's stated, installed size, the commands it adds, a smoke-test command, purpose (what you will do with it; the learning run's task) and sandbox {network: []} (tools run offline). For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256, the release date and the download size. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
     parameters: { type: "object", additionalProperties: false, required: ["manifest"], properties: { manifest: { type: "object", description: "The jorah-tool-v1 request" } } },
     async execute(id, p) {
       if (frozen(s.guardStateDir)) return refuse("Jorah is frozen (/jorah-freeze), so no tool is proposed until Adam clears it");
-      const m = p?.manifest;
-      const problems = checkManifest(m, today());
+      const request = p?.manifest;
+      const where = request?.kind === "archive" ? githubAsset(request.url) : null;
+      // For a GitHub asset, GitHub's date decides the 7-day rule, after the lookup.
+      let problems = checkRequest(request, today()).filter((x) => !(where && TOO_NEW.test(x)));
       if (problems.length) return refuse("the request doesn't pass jorah-tool-v1", { problems });
-      if (canonicalSize(m) > 64 * 1024) return refuse("the request is over 64 KB");
+      if (canonicalSize(request) > 64 * 1024) return refuse("the request is over 64 KB");
+      const dir = join(s.toolboxVar, "proposals");
+      if (!existsSync(dir)) return unavailable("the toolbox isn't installed on this machine yet (scripts/pc/install-toolbox.sh)");
+      let m = request;
+      let github = null;
+      if (where) {
+        const got = await lookup(where);
+        if (!got.ok) return got.final ? refuse(got.reason, await older(where, null)) : unavailable(got.reason);
+        const r = applyGithub(request, got.release);
+        if (r.problems.length) return refuse("GitHub's record of the release doesn't fit the request", { problems: r.problems, ...(await older(where, r.problems)) });
+        m = r.manifest;
+        github = { ...r.record, checkedAt: got.at };
+        problems = checkManifest(m, today());
+        if (problems.length) return refuse("with GitHub's values filled in, the request doesn't pass jorah-tool-v1", { problems, ...(await older(where, problems)) });
+      }
       const pid = proposalId(m);
       const fields = cardFields(m, pid);
       if (cardLength(fields) > CARD_ROOM) return refuse("Adam's card would be cut short: use a shorter licence text or URL");
-      const dir = join(s.toolboxVar, "proposals");
-      if (!existsSync(dir)) return unavailable("the toolbox isn't installed on this machine yet (scripts/pc/install-toolbox.sh)");
       let fresh;
       try {
-        fresh = writeFresh(dir, `${pid}.json`, { v: 1, id: pid, at: now().toISOString(), from: { via: caller(id).via }, manifest: m, digest: digest(m), card: fields });
+        fresh = writeFresh(dir, `${pid}.json`, { v: 1, id: pid, at: now().toISOString(), from: { via: caller(id).via }, manifest: m, digest: digest(m), card: fields,
+          ...(github ? { github } : {}) });
       } catch (e) {
         return unavailable(`the proposal couldn't be written: ${firstLine(e)}`);
       }
+      const fromGithub = github ? {
+        github: { filled_in: github.filled, published_at: github.publishedAt, asset_bytes: github.assetBytes, digest: github.digest ? "GitHub's own" : "none on GitHub: the hash is the one you gave",
+          immutable: github.immutable },
+      } : {};
       return reply({
-        status: fresh ? "proposed" : "already proposed", id: pid, card: fields,
-        next: "Tell Adam what it is, why, its licence and size, and that it runs offline. When he says yes, call toolbox_install with exactly these card fields.",
+        status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub,
+        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} When he says yes, call toolbox_install with exactly these card fields.`,
       });
     },
   });

@@ -7,7 +7,9 @@ The runner does the rest, as jorah, outside the sandbox:
   (contract jorah-tool-v1). After the run, the runner checks each one and turns the good ones into
   proposals in /var/lib/jorah-toolbox/proposals/, where Jorah sees them (toolbox_list) and Adam
   approves them on a card (toolbox_install). Bad ones move to requests/bad/ with the reason beside
-  them, so the next run can fix them.
+  them, so the next run can fix them. For a GitHub release asset the runner asks GitHub's API for
+  the release itself and takes the hash, the date and the size from it (`github_get`); a request
+  waits in place while GitHub can't be asked.
 - **Smoke test.** Every newly installed tool's smoke command runs once in bubblewrap: no network,
   the system read-only, the home folder empty except the tool's own state folder. The record goes
   to /var/lib/jorah-toolbox/tested/<name>.json. This is the runner's measurement, not a run's word.
@@ -25,10 +27,14 @@ import json
 import os
 import re
 import shutil
+import ssl
 import stat
 import subprocess
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import fsio
 from .gitsafe import GitError, Repo, UnsafeRepo, init_local
@@ -140,7 +146,8 @@ A local repo with no remote: the project runner commits every change after a run
 - `notes/<tool>.md`: what the tool is for, commands that worked, profiles and settings, pitfalls.
 - `examples/<tool>/`: small working examples (each file under 5 MB).
 - `requests/<tool>.json`: a request for a new tool (contract jorah-tool-v1,
-  /opt/jorah/docs/contracts/jorah-tool-v1.md). The runner takes it after the run; Adam approves it on a card.
+  /opt/jorah/docs/contracts/jorah-tool-v1.md). For a GitHub release asset, leave sha256, released and
+  download_mb out: the runner reads them from GitHub. The runner takes it after the run; Adam approves it on a card.
   Refused requests move to `requests/bad/` with the reason in a `.why.txt` beside them.
 """
 
@@ -198,12 +205,70 @@ def commit_notes(settings, home, message):
         return {"error": f"notes not committed: {str(error)[:160]}"}
 
 
+# ---- GitHub's record of a release ------------------------------------------------------------------
+# One GET to api.github.com per GitHub-hosted request, unauthenticated (60 an hour per address).
+
+GITHUB_TIMEOUT = 20
+GITHUB_MAX_BYTES = 4 << 20
+
+
+class GitHubLookupError(Exception):
+    """`final`: the request itself is wrong (no such release). Otherwise GitHub can't be asked now."""
+
+    def __init__(self, reason, final=False):
+        super().__init__(reason)
+        self.final = final
+
+
+class _HttpsOnly(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.startswith("https://api.github.com/"):
+            raise GitHubLookupError("GitHub's API redirected away from api.github.com")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_HttpsOnly, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+
+
+def github_get(url, opener=_OPENER):
+    """GitHub's API answer at `url` (https://api.github.com/...), parsed. Raises GitHubLookupError."""
+    if not url.startswith("https://api.github.com/"):
+        raise GitHubLookupError("only api.github.com", final=True)
+    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "jorah-toolbox/1",
+                                                   "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with opener.open(request, timeout=GITHUB_TIMEOUT) as response:
+            data = response.read(GITHUB_MAX_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        headers = error.headers or {}
+        if error.code == 404:
+            raise GitHubLookupError("GitHub has no published release for this URL (drafts aren't visible): check the owner, repo and tag",
+                                    final=True) from None
+        if error.code in (403, 429) and (headers.get("x-ratelimit-remaining") == "0" or headers.get("retry-after")):
+            reset = headers.get("x-ratelimit-reset")
+            until = (datetime.fromtimestamp(int(reset), timezone.utc).strftime("%H:%M UTC") if reset and reset.isdigit()
+                     else f"in {headers.get('retry-after') or 60} seconds")
+            raise GitHubLookupError(f"GitHub's API limit for this machine (60 lookups an hour, no sign-in) is used up until {until}") from None
+        raise GitHubLookupError(f"GitHub's API answered {error.code}") from None
+    except GitHubLookupError:
+        raise
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise GitHubLookupError(f"GitHub's API didn't answer: {type(error).__name__}") from None
+    if len(data) > GITHUB_MAX_BYTES:
+        raise GitHubLookupError("GitHub's answer is over 4 MB")
+    try:
+        return json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise GitHubLookupError("GitHub's answer isn't JSON") from None
+
+
 # ---- requests from runs ----------------------------------------------------------------------------
 
-def collect_requests(settings, source, today):
-    """Turn run-written requests into proposals. `source`: {"project", "run"}. Returns
-    {"proposed": [{"id", "name", "version"}], "refused": [{"file", "why"}]}."""
-    out = {"proposed": [], "refused": []}
+def collect_requests(settings, source, today, get=github_get):
+    """Turn run-written requests into proposals. `source`: {"project", "run"}. `get`: GitHub's API,
+    for release assets. Returns {"proposed": [{"id", "name", "version"}], "refused": [{"file", "why"}],
+    "waiting": [{"file", "why"}]}; a waiting request stays in requests/ for the next run's turn."""
+    out = {"proposed": [], "refused": [], "waiting": []}
     folder = work_dir(settings) / "requests"
     if not _plain_tree(folder):
         return out
@@ -217,17 +282,34 @@ def collect_requests(settings, source, today):
         return out
     for path in entries[:10]:
         name = path.name[:60]
-        why = None
+        why = wait = github = None
         try:
             info = os.lstat(path)
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError("isn't a plain file")
             manifest = tc.load_file(path)
-            problems = tc.check(manifest, today)
+            problems = tc.check_request(manifest, today)
             if problems:
                 raise ValueError("; ".join(problems[:5]))
+            where = tc.github_asset(manifest.get("url")) if manifest.get("kind") == "archive" else None
+            if where:
+                try:
+                    release = get(tc.GITHUB_API + where["path"])
+                except GitHubLookupError as error:
+                    if error.final:
+                        raise ValueError(f"url: {error}") from None
+                    wait = str(error)
+                else:
+                    manifest, github, problems = tc.apply_github(manifest, release)
+                    problems = problems or tc.check(manifest, today)
+                    if problems:
+                        raise ValueError("; ".join(problems[:5]))
+                    github = {**github, "checkedAt": _now()}
         except (OSError, ValueError) as error:
             why = str(error)[:600]
+        if wait and not why:
+            out["waiting"].append({"file": name, "why": wait[:200]})
+            continue
         if why:
             bad = real_dir(folder / "bad")
             if os.path.isdir(bad / name) and not os.path.islink(bad / name):
@@ -242,6 +324,8 @@ def collect_requests(settings, source, today):
         pid = tc.proposal_id(manifest)
         record = {"v": 1, "id": pid, "at": _now(), "from": {"via": "run", **source}, "manifest": manifest,
                   "digest": tc.digest(manifest), "card": tc.card_fields(manifest, pid)}
+        if github:
+            record["github"] = github
         target = proposals / f"{pid}.json"
         if not target.exists():
             tmp = proposals / f".{pid}.tmp"
@@ -354,7 +438,8 @@ def brief_text(settings):
         "Tools beyond the project's own packages (read a tool's notes before you use it, and add what you learn: "
         "exact commands that worked, settings, pitfalls; commit in ~/work/.toolbox):\n" + have + "\n"
         "  To ask for a new tool, write ~/work/.toolbox/requests/<name>.json following "
-        "/opt/jorah/docs/contracts/jorah-tool-v1.md; the runner proposes it and Adam approves it on a card. "
+        "/opt/jorah/docs/contracts/jorah-tool-v1.md; for a GitHub release asset give the version and its download URL and leave "
+        "sha256, released and download_mb out: the runner reads them from GitHub's API. The runner proposes it and Adam approves it on a card. "
         "A request refused by the checks is in requests/bad/ with the reason. Packages from npm or PyPI need no request: "
         "install them into the project (uv, or pip 26.1 or newer, or npm), which take only releases at least 7 days old."
     )

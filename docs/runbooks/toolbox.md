@@ -40,6 +40,8 @@ Not checked: anything on the PC, inside Claude Code's sandbox, or through the Ga
 ```
 Jorah: toolbox_propose, or a run writes ~/work/.toolbox/requests/<name>.json
    |   (contract jorah-tool-v1, docs/contracts/jorah-tool-v1.md; checked by the plugin or the runner)
+   |   GitHub release asset: the plugin or the runner asks api.github.com for the release and fills
+   |   in sha256, released and download_mb from GitHub's answer (Jorah gives version + URL only)
    v
 /var/lib/jorah-toolbox/proposals/<id>.json           toolbox_list shows it waiting for a card
    |
@@ -192,20 +194,31 @@ Expected:
 Then copy `workspace/AGENTS.md` to the live workspace (backup `AGENTS.md.pre-toolbox`), as at the
 projects install.
 
-**5. End-to-end check, in Telegram** (it costs one short learning run on the Max plan):
+**5. End-to-end check, in Telegram** (it costs one short learning run on the Max plan). Use a chat
+that has already searched the web, as the 2026-11-19 test did: ask him something that needs a
+web search first, or say it in the same chat as one.
 
 > Jorah, add uv to your toolbox: it's the Python package manager. Show me the card.
 
 Expected:
-1. Jorah finds uv's latest release that is at least 7 days old on GitHub. He says its version, the
-   licence (Apache-2.0 OR MIT), about 20 MB, and that it runs offline, then sends a card titled
-   "Jorah wants to install a tool (runs offline, read-only to him)" with id, name, version, source,
-   sha256, licence, released and size.
-2. Tap Allow. Within a minute, `toolbox_list` (ask "what's in your toolbox?") shows uv installed.
-3. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
+1. Jorah picks uv's latest release on GitHub and proposes it with only the version and the asset
+   URL. He doesn't look for a checksum page and doesn't ask you to paste anything. If his first
+   pick is under 7 days old, `toolbox_propose` refuses it and names the newest release old enough;
+   he proposes that one. On 2026-11-19 that is **0.13.8** (0.13.9 came out on 2026-11-17).
+2. He says its version, the licence (Apache-2.0 OR MIT), about 17 MB, that it runs offline, and
+   that the hash and date are GitHub's own record of the release, which GitHub marks immutable.
+   Then a card titled "Jorah wants to install a tool (runs offline, read-only to him)" with:
+   - `source: https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz`;
+   - `sha256: 5acfd9177cfecf0b` (the first 16 digits of GitHub's digest);
+   - `released: 2026-11-12`;
+   - `size: 17 MB download, <his figure> MB installed`;
+   - id, name `uv`, version `0.13.8`, licence.
+3. Tap Allow. Within a minute, `toolbox_list` (ask "what's in your toolbox?") shows uv installed.
+4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
    done and `~/work/.toolbox/notes/uv.md` exists.
 
-If anything fails, `toolbox_list` says why. Copy that line to the build session.
+If anything fails, `toolbox_list` says why. Copy that line to the build session. If Jorah says
+GitHub's hourly limit is used up, ask again after the time he gives.
 
 **6. Ubuntu packages** (only when Jorah asks for one, for example Java for an autorouter). After
 the card, Jorah shows the command. From the Mac:
@@ -236,8 +249,11 @@ What should happen:
 1. Jorah says which slicer he picked for that printer and why. It runs headless on Linux and has
    a profile for the printer; Cura, PrusaSlicer or OrcaSlicer are the likely ones. He gives the
    version, licence (these three are AGPL or LGPL), size, and that it runs offline.
-2. A card with the fields above. The source is the slicer's own GitHub release, and the release
-   is at least 7 days old. Tap Allow.
+2. A card with the fields above. The source is the slicer's own GitHub release asset (the x86_64
+   Linux AppImage), the release is at least 7 days old, and the hash and date come from GitHub's
+   record of it, as for uv. Jorah doesn't hunt for a checksum file; slicers often publish none. If
+   GitHub holds no digest for that release (an old one), Jorah says so and needs the publisher's
+   own checksum; pick a newer release instead if there is one. Tap Allow.
 3. If the slicer's smoke test shows a missing system library, Jorah proposes the Ubuntu package (a
    second card) and shows the root command for step 6.
 4. Within about an hour Jorah reports from `toolbox_list` and his notes:
@@ -329,6 +345,41 @@ started this one relayed from him ("go ahead on both"). Every write was followed
 - the end-to-end check (step 5): one Telegram message from Adam, and a card;
 - Adam's slicer test.
 
+## GitHub lookup, 2026-11-19
+
+On 2026-11-19 Adam's step 5 stalled: `toolbox_propose` needed `sha256` and `released` from Jorah.
+In a chat that had read web results, `jorah-guard` (rightly) wouldn't open the release URL Jorah
+had built, and GitHub's API answer for a release (about 96 KB for uv 0.13.8) is longer than
+`web_fetch`'s 20,000-character cut. Adam had to paste a link.
+
+Since then, for a GitHub release asset, code reads the release from GitHub's API
+(`docs/contracts/jorah-tool-v1.md`, "GitHub release assets"):
+
+- `toolbox_propose` in `plugins/jorah-projects` (in the Gateway, as jorah), with Node's `fetch`;
+- the runner, for requests a run writes (`services/jorah-projects`, as jorah, with `urllib`). A
+  request waits in `requests/` while GitHub can't be asked.
+
+The rules are in `toolcheck.py` (`github_asset`, `check_request`, `apply_github`,
+`older_release`) and their JavaScript copy, tested against the same examples
+(`packages/contracts/toolbox/examples/github/`). The installer is unchanged: it asks GitHub again
+at install and checks the download.
+
+**Network [measured 2026-11-19, 17:45 CET]:**
+- the Gateway runs as `jorah` (uid 1000), and the live `jorah_out` chain lets uid 1000 reach public
+  TCP 443;
+- as jorah on the PC, `curl` and Node's `fetch` both got HTTP 200 from
+  `https://api.github.com/rate_limit`.
+
+The project runner's unit allows `AF_INET`, and its runs already reach the network, but no lookup
+from inside the unit has been measured.
+
+**The hourly limit is shared.** GitHub allows 60 unauthenticated API requests an hour per public
+address. The PC and the Mac share one: at 17:46 both had 2 left, used by build sessions' own
+lookups. A test right after a busy build session can hit the limit; Jorah then says until when.
+If that keeps happening, a follow-up could sign the lookups with the jorah-github App's
+installation token (5,000 an hour). That is a build-session decision, because the token is a
+secret.
+
 ## Undo
 
 - **Toolbox:**
@@ -347,7 +398,12 @@ started this one relayed from him ("go ahead on both"). Every write was followed
 - A result says `GitHub says the release was published ..., less than 7 days ago`: pick an older
   release, or wait.
 - `the download's SHA-256 is ...`: the hash in the request isn't the file's. Jorah took it from the
-  wrong asset, or the file changed.
+  wrong asset, or the file changed. For a GitHub asset the hash is GitHub's own digest, so this
+  means the file GitHub served differs from GitHub's record: stop and tell the build session.
+- `toolbox_propose` is `unavailable` with "GitHub's API limit for this machine ... is used up until
+  HH:MM UTC": the PC's address used its 60 unauthenticated lookups for the hour. Ask again after
+  that time. "GitHub's API didn't answer": the network or the firewall (see "GitHub lookup" below).
+- `GitHub has no published release ...`: the tag in the URL is wrong, or the release is a draft.
 - `command X: Y isn't a file inside the tool`: the path in `commands` is wrong. The installer
   removed what it had unpacked.
 - The smoke test failed with a missing `lib*.so`: the tool needs an Ubuntu package (step 6).

@@ -66,9 +66,10 @@ class ProjectState:
 
 
 class Runner:
-    def __init__(self, settings, *, now=None, disk_free=None, claude_run=None, log=None, smoke_run=None):
+    def __init__(self, settings, *, now=None, disk_free=None, claude_run=None, log=None, smoke_run=None, github_get=None):
         self.s = settings
         self._smoke_run = smoke_run or subprocess.run
+        self._github_get = github_get or toolbox.github_get
         self.tz = ZoneInfo(settings.timezone)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._disk_free = disk_free or (lambda path: shutil.disk_usage(path).free)
@@ -752,7 +753,7 @@ class Runner:
         """After any run: take the tool requests it wrote, and commit its notes."""
         out = {"requests": None, "notes": None}
         try:
-            out["requests"] = toolbox.collect_requests(self.s, source, self.now().date())
+            out["requests"] = toolbox.collect_requests(self.s, source, self.now().date(), self._github_get)
         except (OSError, ValueError) as error:
             out["requests"] = {"proposed": [], "refused": [{"file": "*", "why": f"couldn't read requests: {str(error)[:160]}"}]}
         out["notes"] = toolbox.commit_notes(self.s, folder, f"Notes from {label}")
@@ -881,6 +882,8 @@ class Runner:
             item["notes"].append(f"tool request: {req['name']} {req['version']} ({req['id']}) waits for Adam's card (toolbox_list)")
         for bad in (box.get("requests") or {}).get("refused", []):
             item["problems"].append(f"tool request {bad['file']} refused: {bad['why']}")
+        for wait in (box.get("requests") or {}).get("waiting", []):
+            item["notes"].append(f"tool request {wait['file']} waits for GitHub: {wait['why']}")
         if (box.get("notes") or {}).get("files"):
             item["notes"].append(f"toolbox notes changed: {', '.join(box['notes']['files'][:5])}")
         snap = None

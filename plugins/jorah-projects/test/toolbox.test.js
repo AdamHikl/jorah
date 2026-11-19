@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { register } from "../index.js";
-import { canonical, cardFields, checkManifest, digest, proposalId } from "../lib/toolbox.js";
+import { applyGithub, canonical, cardFields, checkManifest, checkRequest, digest, githubAsset, MISSING_HINT, olderRelease, proposalId } from "../lib/toolbox.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = join(here, "..", "..", "..", "packages", "contracts", "toolbox", "examples");
@@ -17,6 +17,44 @@ const EXPECTED = JSON.parse(readFileSync(join(EXAMPLES, "expected.json"), "utf8"
 const NOW = new Date("2026-11-17T10:00:00Z");
 const ADAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
 const example = (kind, name) => JSON.parse(readFileSync(join(EXAMPLES, kind, name), "utf8"));
+const GH = EXPECTED.github;
+const GH_NOW = new Date(`${GH.today}T10:00:00Z`);
+
+// A stand-in for GitHub's API: `answers` maps an API URL to {status, body, headers}; every call is kept.
+function fakeGithub(answers) {
+  const calls = [];
+  const fn = async (url, init) => {
+    calls.push({ url, init });
+    const a = answers[url];
+    if (a instanceof Error) throw a;
+    if (!a) return { status: 404, url, headers: new Headers(), text: async () => "{}" };
+    return { status: a.status ?? 200, url, headers: new Headers(a.headers ?? {}), text: async () => JSON.stringify(a.body) };
+  };
+  fn.calls = calls;
+  return fn;
+}
+const RELEASE_URL = `https://api.github.com${GH.path}`;
+
+// GitHub's answers for the good examples that are GitHub release assets, agreeing with them.
+function goodReleases() {
+  const out = {};
+  for (const name of readdirSync(join(EXAMPLES, "good"))) {
+    const m = example("good", name);
+    const where = m.kind === "archive" ? githubAsset(m.url) : null;
+    if (!where) continue;
+    out[`https://api.github.com${where.path}`] = { body: { tag_name: where.tag, draft: false, prerelease: false, published_at: `${m.released}T12:00:00Z`,
+      assets: [{ name: where.asset, state: "uploaded", size: m.download_mb * 1048576, digest: `sha256:${m.sha256}` }] } };
+  }
+  return out;
+}
+
+function githubCase(c) {
+  const request = { ...example("github", GH.request), ...(c.request ?? {}) };
+  const release = { ...JSON.parse(JSON.stringify(example("github", GH.release))), ...(c.release ?? {}) };
+  const name = githubAsset(request.url).asset;
+  for (const a of release.assets) if (a.name === name) Object.assign(a, c.asset ?? {});
+  return { request, release, today: c.today ?? GH.today };
+}
 
 function fixture({ installed = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "jorah-toolbox-plugin-"));
@@ -27,7 +65,7 @@ function fixture({ installed = true } = {}) {
   return { root, opt, var: v };
 }
 
-function load(fx) {
+function load(fx, { now = NOW, fetch = fakeGithub(goodReleases()) } = {}) {
   const tools = new Map();
   const hooks = {};
   register({
@@ -36,7 +74,7 @@ function load(fx) {
     logger: { info: () => {}, warn: () => {} },
     on: (name, fn) => { (hooks[name] ??= []).push(fn); },
     registerTool: (t) => tools.set(t.name, t),
-  }, { now: () => NOW });
+  }, { now: () => now, fetch });
   let n = 0;
   return async (name, params = {}, ctx = ADAM) => {
     const id = `call-${++n}`;
@@ -156,4 +194,124 @@ test("toolbox_remove: always for an installed tool and version, into the install
   assert.match(file, /^rm-uv-[0-9a-f]{8}\.json$/);
   assert.equal(JSON.parse(readFileSync(join(fx.var, "approved", file), "utf8")).action, "remove");
   assert.ok(!existsSync(join(fx.var, "approved", "tb-aaaaaaaaaa.json")));
+});
+
+test("contract: GitHub's record fills in hash, date and size alike in both languages", () => {
+  const request = example("github", GH.request);
+  assert.deepEqual(checkRequest(request, EXPECTED.today), []);
+  assert.ok(checkManifest(request, EXPECTED.today).includes(`sha256: missing${MISSING_HINT}`));
+  assert.ok(checkRequest({ ...request, url: "https://downloads.example.org/uv-0.13.8.tar.gz" }, EXPECTED.today).includes(`sha256: missing${MISSING_HINT}`));
+  assert.equal(githubAsset(request.url).path, GH.path);
+  assert.equal(githubAsset("https://github.com/astral-sh/../releases/download/x/y"), null);
+  const odd = githubAsset("https://github.com/o/r/releases/download/v1.0%2Bbuild%2F2/a.zip");
+  assert.deepEqual([odd.tag, odd.path], ["v1.0+build/2", "/repos/o/r/releases/tags/v1.0%2Bbuild%2F2"]);
+  const { request: r, release } = githubCase({});
+  const out = applyGithub(r, release);
+  assert.deepEqual(out.problems, []);
+  assert.deepEqual(Object.fromEntries(Object.keys(GH.filled).map((k) => [k, out.manifest[k]])), GH.filled);
+  assert.deepEqual(out.record, GH.record);
+  assert.equal(digest(out.manifest), GH.digest, "the resolved request's digest must match Python's");
+  for (const c of GH.cases) {
+    const { request: q, release: rel, today } = githubCase(c);
+    const res = applyGithub(q, rel);
+    const problems = res.problems.length ? res.problems : checkManifest(res.manifest, today);
+    if (c.problem === null) assert.deepEqual(problems, [], c.about);
+    else assert.ok(problems.some((x) => x.includes(c.problem)), `${c.about}: ${JSON.stringify(problems)}`);
+  }
+});
+
+test("toolbox_propose: a GitHub release asset gets GitHub's hash, date and size, and the card shows them", async () => {
+  const fx = fixture();
+  const gh = fakeGithub({ [RELEASE_URL]: { body: example("github", GH.release) } });
+  const call = load(fx, { now: GH_NOW, fetch: gh });
+  const r = await call("toolbox_propose", { manifest: example("github", GH.request) });
+  assert.equal(r.status, "proposed", JSON.stringify(r));
+  assert.equal(gh.calls.length, 1);
+  assert.equal(gh.calls[0].url, RELEASE_URL);
+  assert.equal(gh.calls[0].init.headers["user-agent"], "jorah-toolbox/1");
+  assert.equal(r.id, `tb-${GH.digest.slice(0, 10)}`, "the id covers the values GitHub filled in");
+  assert.equal(r.card.sha256, GH.filled.sha256.slice(0, 16));
+  assert.equal(r.card.released, "2026-11-12");
+  assert.equal(r.card.size, "17 MB download, 55 MB installed");
+  assert.equal(r.github.immutable, true);
+  assert.match(r.next, /GitHub marks immutable/);
+  const saved = JSON.parse(readFileSync(join(fx.var, "proposals", `${r.id}.json`), "utf8"));
+  assert.equal(saved.digest, GH.digest);
+  assert.equal(saved.manifest.sha256, GH.filled.sha256);
+  assert.deepEqual({ ...saved.github, checkedAt: undefined }, { ...GH.record, checkedAt: undefined });
+  assert.equal(saved.github.checkedAt, GH_NOW.toISOString());
+
+  // Proposed again within 10 minutes: no second lookup. Then installed from the card as before.
+  assert.equal((await call("toolbox_propose", { manifest: example("github", GH.request) })).status, "already proposed");
+  assert.equal(gh.calls.length, 1);
+  const list = await call("toolbox_list");
+  assert.equal(list.waiting_for_card[0].github.immutable, true);
+  const ok = await call("toolbox_install", r.card);
+  assert.equal(ok.status, "approved");
+  assert.equal(JSON.parse(readFileSync(join(fx.var, "approved", `${r.id}.json`), "utf8")).manifest.sha256, GH.filled.sha256);
+});
+
+test("toolbox_propose: values that differ from GitHub's, and a wrong tag, are refused with the reason", async () => {
+  const fx = fixture();
+  const call = load(fx, { now: GH_NOW, fetch: fakeGithub({ [RELEASE_URL]: { body: example("github", GH.release) } }) });
+  const wrong = await call("toolbox_propose", { manifest: { ...example("github", GH.request), sha256: "0".repeat(64) } });
+  assert.equal(wrong.status, "refused");
+  assert.ok(wrong.problems.some((x) => x.startsWith("sha256: GitHub's digest for uv-x86_64-unknown-linux-gnu.tar.gz is 5acfd9177cfecf0b")));
+  const tag = { ...example("github", GH.request), url: example("github", GH.request).url.replace("0.13.8", "0.13.99") };
+  const missing = await call("toolbox_propose", { manifest: tag });
+  assert.equal(missing.status, "refused");
+  assert.match(missing.reason, /GitHub has no published release astral-sh\/uv 0.13.99/);
+  assert.deepEqual(readdirSync(join(fx.var, "proposals")), []);
+});
+
+test("toolbox_propose: GitHub out of reach or its hourly limit used up is unavailable, not a guess", async () => {
+  const request = example("github", GH.request);
+  const limited = await load(fixture(), { now: GH_NOW, fetch: fakeGithub({ [RELEASE_URL]: { status: 403, body: { message: "rate limit" },
+    headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Date.parse("2026-11-19T11:07:00Z") / 1000) } } }) })("toolbox_propose", { manifest: request });
+  assert.equal(limited.status, "unavailable");
+  assert.match(limited.reason, /60 lookups an hour.*until 11:07 UTC/);
+  const down = await load(fixture(), { now: GH_NOW, fetch: fakeGithub({ [RELEASE_URL]: new TypeError("fetch failed") }) })("toolbox_propose", { manifest: request });
+  assert.equal(down.status, "unavailable");
+  assert.match(down.reason, /didn't answer \(TypeError\)/);
+  const moved = await load(fixture(), { now: GH_NOW, fetch: async () => ({ status: 200, url: "https://evil.example/x", headers: new Headers(), text: async () => "{}" }) })(
+    "toolbox_propose", { manifest: request });
+  assert.match(moved.reason, /redirected away/);
+});
+
+test("toolbox_propose: other hosts make no lookup and still need the publisher's checksum", async () => {
+  const gh = fakeGithub({});
+  const call = load(fixture(), { now: GH_NOW, fetch: gh });
+  const r = await call("toolbox_propose", { manifest: { ...example("github", GH.request), url: "https://downloads.example.org/uv-0.13.8.tar.gz" } });
+  assert.equal(r.status, "refused");
+  assert.ok(r.problems.includes(`sha256: missing${MISSING_HINT}`));
+  assert.equal((await call("toolbox_propose", { manifest: example("good", "orca-slicer.json") })).status, "refused", "orca's example is a GitHub asset the stand-in doesn't know");
+  assert.deepEqual(gh.calls.map((c) => c.url.split("/releases")[1]), ["/tags/v2.3.1", "?per_page=10"], "only orca's: its release, then the list for an older one");
+});
+
+test("contract: the newest release old enough is named alike in both languages", () => {
+  const older = GH.older;
+  assert.deepEqual(olderRelease(older.list, githubAsset(older.url), older.today), older.expect);
+  assert.deepEqual(olderRelease(older.versioned.list, githubAsset(older.versioned.url), older.today), older.versioned.expect);
+  assert.equal(olderRelease(older.list.slice(0, 2), githubAsset(older.url), older.today), null);
+});
+
+test("toolbox_propose: a release too new is refused, naming the newest one old enough and its URL", async () => {
+  const older = GH.older;
+  const where = githubAsset(older.url);
+  const release = { ...example("github", GH.release), tag_name: "0.13.9", published_at: "2026-11-17T15:00:00Z" };
+  const gh = fakeGithub({ [`https://api.github.com${where.path}`]: { body: release }, [`https://api.github.com${where.list}`]: { body: older.list } });
+  const call = load(fixture(), { now: GH_NOW, fetch: gh });
+  const r = await call("toolbox_propose", { manifest: { ...example("github", GH.request), version: "0.13.9", url: older.url } });
+  assert.equal(r.status, "refused");
+  assert.ok(r.problems.some((x) => x.startsWith("released: 2026-11-17 is less than 7 days ago")));
+  assert.deepEqual({ ...r.older_release, next: undefined }, { ...older.expect, next: undefined });
+  assert.match(r.older_release.next, /Propose it again/);
+
+  // His own (true) date for 0.13.9 gets the same answer, and so does a tag that doesn't exist.
+  const own = await call("toolbox_propose", { manifest: { ...example("github", GH.request), version: "0.13.9", url: older.url, released: "2026-11-17" } });
+  assert.equal(own.older_release.url, older.expect.url, JSON.stringify(own));
+  const none = await call("toolbox_propose", { manifest: { ...example("github", GH.request), version: "0.14.0", url: older.url.replaceAll("0.13.9", "0.14.0") } });
+  assert.match(none.reason, /no published release/);
+  assert.equal(none.older_release.tag, "0.13.8");
+  assert.equal(gh.calls.filter((c) => c.url.endsWith("per_page=10")).length, 1, "the list is asked once in 10 minutes");
 });

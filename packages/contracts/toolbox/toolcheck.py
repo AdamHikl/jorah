@@ -8,13 +8,19 @@ jorah-toolbox, just before installing).
 
 Python 3 standard library only. `check(manifest, today)` returns a list of problems, empty when the
 manifest is good. `digest(manifest)` is the SHA-256 of its canonical JSON, which names a proposal.
+
+GitHub release assets: a request whose `url` is one may leave out `sha256`, `released` and
+`download_mb`. Whoever turns the request into a proposal (the plugin, the runner) asks GitHub's API
+for the release (`github_asset`), and `apply_github` fills them in from GitHub's answer, or refuses
+the request when Jorah's own values differ. No network here: the callers fetch.
 """
 
 import hashlib
 import json
+import math
 import re
-from datetime import date, timedelta
-from urllib.parse import urlsplit
+from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote, unquote, urlsplit
 
 CONTRACT = "jorah-tool-v1"
 MIN_AGE_DAYS = 7  # Adam's rule: a release is at least 7 days old before it's installed
@@ -102,8 +108,10 @@ def _relpath(value):
     return all(RELPART.match(p) and p not in (".", "..") for p in value.split("/"))
 
 
-def check(m, today=None):
-    """Problems with manifest `m` (a dict from JSON). `today` (a date) is for the 7-day rule."""
+def check(m, today=None, *, filled_later=()):
+    """Problems with manifest `m` (a dict from JSON). `today` (a date) is for the 7-day rule.
+    `filled_later`: required fields that may be missing because a lookup fills them in (see
+    `check_request`)."""
     today = today or date.today()
     if not isinstance(m, dict):
         return ["the request must be a JSON object"]
@@ -118,8 +126,8 @@ def check(m, today=None):
         if key not in fields:
             problems.append(f"{str(key)[:40]}: unknown field")
     for key, required in fields.items():
-        if required and key not in m:
-            problems.append(f"{key}: missing")
+        if required and key not in m and key not in filled_later:
+            problems.append(f"{key}: missing" + (MISSING_HINT if key in GITHUB_FILLS else ""))
     if problems:
         return problems
 
@@ -136,7 +144,7 @@ def check(m, today=None):
     _text(problems, m, "licence", 2, MAX_LICENCE)
     _text(problems, m, "licence_source", 2, 300)
 
-    released = m["released"]
+    released = m.get("released", "2000-01-01")
     if not isinstance(released, str) or not DAY.match(released):
         problems.append("released: must be a date, YYYY-MM-DD")
     else:
@@ -160,11 +168,12 @@ def check(m, today=None):
 
     if kind == "archive":
         _https(problems, "url", m["url"], MAX_URL)
-        if not isinstance(m["sha256"], str) or not SHA256.match(m["sha256"]):
+        if "sha256" in m and (not isinstance(m["sha256"], str) or not SHA256.match(m["sha256"])):
             problems.append("sha256: 64 lower-case hex digits, from the publisher's checksum")
         if m["format"] not in FORMATS:
             problems.append(f"format: must be one of {', '.join(FORMATS)}")
-        _number(problems, m, "download_mb", MAX_DOWNLOAD_MB)
+        if "download_mb" in m:
+            _number(problems, m, "download_mb", MAX_DOWNLOAD_MB)
         _number(problems, m, "installed_mb", MAX_INSTALLED_MB)
         strip = m.get("strip", 0)
         if not isinstance(strip, int) or isinstance(strip, bool) or not 0 <= strip <= 3:
@@ -220,6 +229,163 @@ def check(m, today=None):
     if "smoke_expect" in m:
         _text(problems, m, "smoke_expect", 1, 200)
     return problems
+
+
+# ---- GitHub release assets ---------------------------------------------------------------------
+# The same pattern as the installer's (services/jorah-toolbox/jorah_toolbox/fetch.py), which asks
+# GitHub again at install.
+
+GITHUB_ASSET = re.compile(r"^https://github\.com/([A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100})/releases/download/([^/?#]{1,100})/([^/?#]{1,200})$")
+GITHUB_API = "https://api.github.com"
+GITHUB_FILLS = ("sha256", "released", "download_mb")
+GITHUB_DIGEST = re.compile(r"^sha256:([0-9a-f]{64})$")
+ASSET_NAME = re.compile(r"^[A-Za-z0-9._+-]{1,120}$")
+MISSING_HINT = " (filled in from GitHub only when url is a GitHub release asset)"
+MIB = 1048576
+
+
+def github_asset(url):
+    """For a GitHub release asset URL: {"owner", "repo", "tag", "asset", "path"}, where `path` is the
+    API path of the release (append it to GITHUB_API). None for any other URL."""
+    match = GITHUB_ASSET.match(url) if isinstance(url, str) else None
+    if not match or match.group(2) in (".", ".."):
+        return None
+    owner, repo = match.group(1), match.group(2)
+    tag, asset = unquote(match.group(3)), unquote(match.group(4))
+    return {"owner": owner, "repo": repo, "tag": tag, "asset": asset,
+            "path": f"/repos/{owner}/{repo}/releases/tags/{quote(tag, safe='')}",
+            "list": f"/repos/{owner}/{repo}/releases?per_page=10"}
+
+
+def check_request(m, today=None):
+    """`check` for a request as Jorah writes it: for a GitHub release asset, the fields GitHub
+    fills in may be missing. Run `check` again on what `apply_github` returns."""
+    url = m.get("url") if isinstance(m, dict) and m.get("kind") == "archive" else None
+    return check(m, today, filled_later=GITHUB_FILLS if github_asset(url) else ())
+
+
+def download_cap(download_mb):
+    """The most bytes the installer downloads for `download_mb` (jorah_toolbox/install.py)."""
+    return int(download_mb * 1.1 * MIB) + 5 * MIB
+
+
+def apply_github(m, release):
+    """Fill in and check a GitHub release asset request against GitHub's answer for its release
+    (the parsed JSON of GET /repos/<owner>/<repo>/releases/tags/<tag>).
+
+    Returns (manifest, record, problems). `manifest` is a copy of `m` with `sha256`, `released`
+    and `download_mb` filled in where Jorah left them out. `record` is what GitHub said, kept beside
+    the proposal: {"tag", "asset", "publishedAt", "assetBytes", "digest", "immutable", "filled"}.
+    A problem means the request is refused: Jorah's value differs from GitHub's, or GitHub's
+    release can't be installed (a draft, a pre-release, no such asset, no digest and none given)."""
+    where = github_asset(m.get("url"))
+    if where is None:
+        return m, None, ["url: isn't a GitHub release asset URL"]
+    tag, name = where["tag"], where["asset"]
+    if not isinstance(release, dict):
+        return m, None, ["GitHub's answer isn't a release"]
+    problems = []
+    out = dict(m)
+    record = {"tag": tag, "asset": name, "publishedAt": None, "assetBytes": None, "digest": None,
+              "immutable": release.get("immutable") if isinstance(release.get("immutable"), bool) else None, "filled": []}
+    if release.get("draft"):
+        problems.append(f"url: GitHub marks release {tag} a draft")
+    if release.get("prerelease"):
+        problems.append(f"url: GitHub marks {tag} a pre-release; pick a full release")
+
+    published = release.get("published_at")
+    day = None
+    if isinstance(published, str) and re.match(r"^\d{4}-\d{2}-\d{2}T", published):
+        try:
+            day = datetime.fromisoformat(published.replace("Z", "+00:00")).astimezone(timezone.utc).date().isoformat()
+        except ValueError:
+            day = None
+    if day is None:
+        problems.append(f"released: GitHub gives no publication date for {tag}")
+    else:
+        record["publishedAt"] = published
+        if "released" not in m:
+            out["released"] = day
+            record["filled"].append("released")
+        elif m["released"] != day:
+            problems.append(f"released: GitHub says {tag} was published {day} (UTC), not {m['released']}; "
+                            "leave released out and it is filled in")
+
+    assets = [a for a in release.get("assets") or [] if isinstance(a, dict)]
+    found = next((a for a in assets if a.get("name") == name), None)
+    if found is None:
+        names = [a["name"] for a in assets if isinstance(a.get("name"), str) and ASSET_NAME.match(a["name"])][:8]
+        problems.append(f"url: release {tag} has no asset named {name[:80]}" + (f"; its assets include {', '.join(names)}" if names else ""))
+        return out, record, problems
+    if found.get("state") not in (None, "uploaded"):
+        problems.append(f"url: GitHub says {name[:80]} isn't fully uploaded")
+
+    digest_match = GITHUB_DIGEST.match(found["digest"]) if isinstance(found.get("digest"), str) else None
+    if digest_match:
+        record["digest"] = found["digest"]
+        hexdigest = digest_match.group(1)
+        if "sha256" not in m:
+            out["sha256"] = hexdigest
+            record["filled"].append("sha256")
+        elif m["sha256"] != hexdigest:
+            problems.append(f"sha256: GitHub's digest for {name[:80]} is {hexdigest[:16]}..., not {str(m['sha256'])[:16]}...; "
+                            "leave sha256 out and it is filled in")
+    elif "sha256" not in m:
+        problems.append("sha256: GitHub holds no digest for this asset (an older release): give the publisher's own checksum")
+
+    size = found.get("size")
+    if isinstance(size, int) and not isinstance(size, bool) and size > 0:
+        record["assetBytes"] = size
+        need = max(1, math.ceil(size / MIB))
+        given = m.get("download_mb")
+        if given is None:
+            out["download_mb"] = need
+            record["filled"].append("download_mb")
+        elif isinstance(given, int) and not isinstance(given, bool) and (size > download_cap(given) or abs(given - size / MIB) > max(3, size / MIB / 4)):
+            problems.append(f"download_mb: GitHub says {name[:80]} is {size} bytes; use {need}, or leave download_mb out")
+    elif "download_mb" not in m:
+        problems.append(f"download_mb: GitHub gives no size for {name[:80]}: give download_mb")
+    return out, record, problems
+
+
+TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_~-]{0,59}$")
+
+
+def _published_day(release):
+    published = release.get("published_at")
+    if not isinstance(published, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T", published):
+        return None
+    try:
+        return datetime.fromisoformat(published.replace("Z", "+00:00")).astimezone(timezone.utc).date()
+    except ValueError:
+        return None
+
+
+def older_release(releases, where, today):
+    """From GitHub's list of releases (GET <where["list"]>), the newest full release published at
+    least MIN_AGE_DAYS before `today`: {"tag", "released", "url"}, `url` being its asset named like
+    the request's (the tag or version swapped in), or None when it has none. None if there is no
+    such release."""
+    limit = today - timedelta(days=MIN_AGE_DAYS)
+    best = None
+    for release in releases if isinstance(releases, list) else []:
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+            continue
+        tag, day = release.get("tag_name"), _published_day(release)
+        if not isinstance(tag, str) or not TAG.match(tag) or day is None or day > limit:
+            continue
+        if best is None or release["published_at"] > best[0]["published_at"]:
+            best = (release, tag, day)
+    if best is None:
+        return None
+    release, tag, day = best
+    names = {a.get("name") for a in release.get("assets") or [] if isinstance(a, dict)}
+    old, new = where["tag"], tag
+    tries = [where["asset"].replace(old, new), where["asset"].replace(old.lstrip("vV"), new.lstrip("vV")) if old.lstrip("vV") else None]
+    found = next((n for n in tries if n and n in names and ASSET_NAME.match(n)), None)
+    url = (f"https://github.com/{where['owner']}/{where['repo']}/releases/download/{quote(tag, safe='')}/{quote(found, safe='')}"
+           if found else None)
+    return {"tag": tag, "released": day.isoformat(), "url": url}
 
 
 def digest(m):

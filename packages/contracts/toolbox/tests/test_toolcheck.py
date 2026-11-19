@@ -76,7 +76,7 @@ class Rules(unittest.TestCase):
     def test_card_fields(self):
         f = toolcheck.card_fields(self.m, "tb-0123456789")
         self.assertEqual(f["source"], self.m["url"])
-        self.assertEqual(f["sha256"], "0" * 16)
+        self.assertEqual(f["sha256"], "c2def3db178ade63")
         self.assertEqual(f["size"], "21 MB download, 55 MB installed")
         apt = toolcheck.card_fields(load("good", "java.json"), "tb-x")
         self.assertEqual(apt["source"], "Ubuntu archive: openjdk-21-jre-headless")
@@ -92,3 +92,71 @@ class Rules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+GH = EXPECTED["github"]
+
+
+def github_case(case):
+    """Request, release and today for one of expected.json's GitHub cases."""
+    request = dict(load("github", GH["request"]), **case.get("request", {}))
+    release = json.loads(json.dumps(load("github", GH["release"])))
+    release.update(case.get("release", {}))
+    name = toolcheck.github_asset(request["url"])["asset"]
+    for asset in release["assets"]:
+        if asset["name"] == name:
+            asset.update(case.get("asset", {}))
+    return request, release, date.fromisoformat(case.get("today", GH["today"]))
+
+
+class GitHubLookup(unittest.TestCase):
+    def test_the_request_passes_without_the_fields_github_fills_in(self):
+        request = load("github", GH["request"])
+        self.assertEqual(toolcheck.check_request(request, TODAY), [])
+        self.assertIn("sha256: missing" + toolcheck.MISSING_HINT, toolcheck.check(request, TODAY))
+
+    def test_other_hosts_still_need_the_publishers_checksum(self):
+        request = dict(load("github", GH["request"]), url="https://downloads.example.org/uv-0.13.8.tar.gz")
+        problems = toolcheck.check_request(request, TODAY)
+        self.assertIn("sha256: missing" + toolcheck.MISSING_HINT, problems)
+        self.assertIn("released: missing" + toolcheck.MISSING_HINT, problems)
+
+    def test_the_asset_url_names_the_release_and_its_api_path(self):
+        request = load("github", GH["request"])
+        where = toolcheck.github_asset(request["url"])
+        self.assertEqual(where["path"], GH["path"])
+        self.assertEqual(where["asset"], "uv-x86_64-unknown-linux-gnu.tar.gz")
+        self.assertIsNone(toolcheck.github_asset("https://github.com/astral-sh/../releases/download/x/y"))
+        self.assertIsNone(toolcheck.github_asset("https://example.org/astral-sh/uv/releases/download/x/y"))
+        odd = toolcheck.github_asset("https://github.com/o/r/releases/download/v1.0%2Bbuild%2F2/a.zip")
+        self.assertEqual((odd["tag"], odd["path"]), ("v1.0+build/2", "/repos/o/r/releases/tags/v1.0%2Bbuild%2F2"))
+
+    def test_github_fills_in_hash_date_and_size(self):
+        request, release, today = github_case({})
+        m, record, problems = toolcheck.apply_github(request, release)
+        self.assertEqual(problems, [])
+        self.assertEqual({k: m[k] for k in GH["filled"]}, GH["filled"])
+        self.assertEqual(record, GH["record"])
+        self.assertEqual(toolcheck.check(m, today), [])
+        self.assertEqual(toolcheck.digest(m), GH["digest"])
+        self.assertNotIn("sha256", request, "the request itself is left alone")
+
+    def test_every_case(self):
+        for case in GH["cases"]:
+            with self.subTest(case["about"]):
+                request, release, today = github_case(case)
+                m, _record, problems = toolcheck.apply_github(request, release)
+                problems = problems or toolcheck.check(m, today)
+                if case["problem"] is None:
+                    self.assertEqual(problems, [])
+                else:
+                    self.assertTrue(any(case["problem"] in p for p in problems), problems)
+
+    def test_the_newest_release_old_enough_is_named_with_its_asset(self):
+        older = GH["older"]
+        today = date.fromisoformat(older["today"])
+        self.assertEqual(toolcheck.older_release(older["list"], toolcheck.github_asset(older["url"]), today), older["expect"])
+        v = older["versioned"]
+        self.assertEqual(toolcheck.older_release(v["list"], toolcheck.github_asset(v["url"]), today), v["expect"])
+        self.assertIsNone(toolcheck.older_release(older["list"][:2], toolcheck.github_asset(older["url"]), today))
+        self.assertEqual(toolcheck.github_asset(older["url"])["list"], "/repos/astral-sh/uv/releases?per_page=10")

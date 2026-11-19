@@ -1,0 +1,47 @@
+{
+  "html_url": "https://github.com/astral-sh/uv/releases/tag/0.13.8",
+  "tag_name": "0.13.8",
+  "name": "0.13.8",
+  "draft": false,
+  "prerelease": false,
+  "immutable": true,
+  "created_at": "2026-11-12T16:03:03Z",
+  "published_at": "2026-11-12T17:03:07Z",
+  "assets": [
+    {
+      "name": "source.tar.gz",
+      "state": "uploaded",
+      "size": 9023050,
+      "digest": "sha256:d4c04b6e4ca197f016cf0877814bcb81d210b962f452ca423ae8c3cd507b5785",
+      "browser_download_url": "https://github.com/astral-sh/uv/releases/download/0.13.8/source.tar.gz"
+    },
+    {
+      "name": "uv-aarch64-unknown-linux-gnu.tar.gz",
+      "state": "uploaded",
+      "size": 16065638,
+      "digest": "sha256:74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585",
+      "browser_download_url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-aarch64-unknown-linux-gnu.tar.gz"
+    },
+    {
+      "name": "uv-x86_64-pc-windows-msvc.zip",
+      "state": "uploaded",
+      "size": 15529884,
+      "digest": "sha256:529e78a9cec6cd7e3e014f7ecd8bda0c113969d4ed0f2efeedb85c30943325b8",
+      "browser_download_url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-pc-windows-msvc.zip"
+    },
+    {
+      "name": "uv-x86_64-unknown-linux-gnu.tar.gz",
+      "state": "uploaded",
+      "size": 16855069,
+      "digest": "sha256:5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91",
+      "browser_download_url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz"
+    },
+    {
+      "name": "uv-x86_64-unknown-linux-gnu.tar.gz.sha256",
+      "state": "uploaded",
+      "size": 101,
+      "digest": "sha256:8c851ba7acac29dd00d2a3452085b6265430a3bc5e3ade575b2c68fe2473b718",
+      "browser_download_url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz.sha256"
+    }
+  ]
+}

@@ -53,7 +53,7 @@ class ToolboxTest(unittest.TestCase):
 
     def runner(self):
         w = self.w
-        return runner.Runner(w.settings, now=w.clock, disk_free=lambda _p: w.free, log=w.logs.append, smoke_run=self.smoke_run,
+        return runner.Runner(w.settings, now=w.clock, disk_free=lambda _p: w.free, log=w.logs.append, smoke_run=self.smoke_run, github_get=w.github_api,
                              claude_run=lambda s, p, b, *, minutes, setup=False: claude.run(s, p, b, minutes=minutes, setup=setup))
 
     @property
@@ -89,6 +89,57 @@ class ToolboxTest(unittest.TestCase):
         # Requests aren't part of the notes history.
         self.assertNotIn("requests/", git(self.notes, "log", "--name-only", "--format=").stdout)
 
+    def test_a_github_request_gets_githubs_hash_date_and_size(self):
+        w = self.w
+        gh_dir = REPO_ROOT / "packages/contracts/toolbox/examples/github"
+        expected = json.loads((REPO_ROOT / "packages/contracts/toolbox/examples/expected.json").read_text())["github"]
+        request = json.loads((gh_dir / expected["request"]).read_text())
+        api = "https://api.github.com" + expected["path"]
+        w.github_api.pages[api] = json.loads((gh_dir / expected["release"]).read_text())
+        w.clock.advance(days=2)
+        notes = toolbox.work_dir(w.settings) / "requests"
+        toolbox.ensure_repo(w.settings, w.home)
+        (notes / "uv.json").write_text(json.dumps(request))
+        (notes / "uv-wrong.json").write_text(json.dumps(dict(request, sha256="0" * 64)))
+        out = toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date(), w.github_api)
+        [proposed] = out["proposed"]
+        self.assertEqual(proposed["id"], "tb-" + expected["digest"][:10])
+        proposal = json.loads((self.var / "proposals" / f"{proposed['id']}.json").read_text())
+        self.assertEqual(proposal["digest"], expected["digest"])
+        self.assertEqual(proposal["card"]["sha256"], expected["filled"]["sha256"][:16])
+        self.assertEqual(proposal["card"]["released"], "2026-11-12")
+        self.assertEqual(proposal["github"]["immutable"], True)
+        self.assertEqual(proposal["github"]["filled"], ["released", "sha256", "download_mb"])
+        [bad] = out["refused"]
+        self.assertIn("sha256: GitHub's digest for uv-x86_64-unknown-linux-gnu.tar.gz is 5acfd9177cfecf0b", bad["why"])
+        self.assertTrue((notes / "bad/uv-wrong.json.why.txt").is_file())
+        self.assertEqual(w.github_api.calls, [api, api])
+
+    def test_a_github_request_waits_while_github_cant_be_asked(self):
+        w = self.w
+        gh_dir = REPO_ROOT / "packages/contracts/toolbox/examples/github"
+        expected = json.loads((REPO_ROOT / "packages/contracts/toolbox/examples/expected.json").read_text())["github"]
+        w.github_api.pages["https://api.github.com" + expected["path"]] = toolbox.GitHubLookupError(
+            "GitHub's API limit for this machine (60 lookups an hour, no sign-in) is used up until 11:07 UTC")
+        notes = toolbox.work_dir(w.settings) / "requests"
+        toolbox.ensure_repo(w.settings, w.home)
+        (notes / "uv.json").write_text((gh_dir / expected["request"]).read_text())
+        out = toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date(), w.github_api)
+        self.assertEqual((out["proposed"], out["refused"]), ([], []))
+        self.assertIn("used up until 11:07 UTC", out["waiting"][0]["why"])
+        self.assertTrue((notes / "uv.json").is_file(), "it stays for the next run's turn")
+        self.assertEqual(list((self.var / "proposals").iterdir()), [])
+        tag = dict(json.loads((gh_dir / expected["request"]).read_text()))
+        tag["url"] = tag["url"].replace("0.13.8", "0.13.99")
+        (notes / "uv.json").write_text(json.dumps(tag))
+        out = toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date(), w.github_api)
+        self.assertIn("url: GitHub has no published release", out["refused"][0]["why"])
+
+    def test_github_get_reads_only_api_github_com(self):
+        with self.assertRaises(toolbox.GitHubLookupError) as caught:
+            toolbox.github_get("https://evil.example/repos/x")
+        self.assertTrue(caught.exception.final)
+
     def test_links_a_run_leaves_in_the_requests_folder_are_never_followed(self):
         w = self.w
         outside = w.home / ".claude-jorah"
@@ -120,7 +171,7 @@ class ToolboxTest(unittest.TestCase):
         (self.notes / "requests/bad").mkdir()
         (self.notes / "requests/bad/x.json.why.txt").symlink_to(target)
         (self.notes / "requests/x.json").write_text("{ not json")
-        toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date())
+        toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date(), w.github_api)
         self.assertEqual(target.read_text(), "keep")
         self.assertFalse(os.path.islink(self.notes / "requests/bad/x.json.why.txt"))
 

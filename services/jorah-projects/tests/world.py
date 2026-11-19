@@ -159,6 +159,38 @@ class Clock:
         self.at = self.at + timedelta(**delta)
 
 
+class FakeGitHub:
+    """GitHub's API for the runner's toolbox lookups, without the network: by default the good
+    examples' releases, agreeing with them. `pages[url]` is an answer, or an exception to raise."""
+
+    def __init__(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("toolcheck_for_tests", REPO_ROOT / "packages/contracts/toolbox/toolcheck.py")
+        self.tc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.tc)
+        self.calls = []
+        self.pages = {}
+        for path in sorted((REPO_ROOT / "packages/contracts/toolbox/examples/good").glob("*.json")):
+            m = json.loads(path.read_text())
+            where = self.tc.github_asset(m.get("url")) if m.get("kind") == "archive" else None
+            if where:
+                self.pages[self.tc.GITHUB_API + where["path"]] = {
+                    "tag_name": where["tag"], "draft": False, "prerelease": False, "published_at": f"{m['released']}T12:00:00Z",
+                    "assets": [{"name": where["asset"], "state": "uploaded", "size": m["download_mb"] * 1048576, "digest": f"sha256:{m['sha256']}"}]}
+
+    def __call__(self, url):
+        from jorah_projects.toolbox import GitHubLookupError
+
+        self.calls.append(url)
+        answer = self.pages.get(url)
+        if answer is None:
+            raise GitHubLookupError("GitHub has no published release for this URL (drafts aren't visible): check the owner, repo and tag", final=True)
+        if isinstance(answer, Exception):
+            raise answer
+        return json.loads(json.dumps(answer))
+
+
 class World:
     def __init__(self, name="robot", *, entry=None, files=None, clone=True, github=True):
         self.tmp = Path(tempfile.mkdtemp(prefix="jorah-projects-test-"))
@@ -222,6 +254,7 @@ class World:
         self.free = 100 * 1024**3
         self.minutes = None
         self.logs = []
+        self.github_api = FakeGitHub()
 
     def make_github(self, files):
         """Adam's repo on GitHub, a bare repo with `files` on main."""
@@ -275,7 +308,8 @@ class World:
     def runner(self):
         def claude_run(settings, project, brief, *, minutes, setup=False):
             return claude.run(settings, project, brief, minutes=self.minutes if self.minutes is not None else minutes, setup=setup)
-        return runner.Runner(self.settings, now=self.clock, disk_free=lambda _p: self.free, claude_run=claude_run, log=self.logs.append)
+        return runner.Runner(self.settings, now=self.clock, disk_free=lambda _p: self.free, claude_run=claude_run, log=self.logs.append,
+                             github_get=self.github_api)
 
     @property
     def state_dir(self):

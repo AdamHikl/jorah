@@ -90,15 +90,18 @@ function addDays(day, n) {
   return d.toISOString().slice(0, 10);
 }
 
-/** Problems with manifest `m`; `today` is "YYYY-MM-DD". Empty when it's good. */
-export function checkManifest(m, today) {
+/** Problems with manifest `m`; `today` is "YYYY-MM-DD". Empty when it's good. `filledLater`: required
+ * fields that may be missing because a lookup fills them in (see checkRequest). */
+export function checkManifest(m, today, filledLater = []) {
   if (!isObj(m)) return ["the request must be a JSON object"];
   const problems = [];
   let fields = { ...COMMON };
   if (!KINDS.includes(m.kind)) problems.push(`kind: must be one of ${KINDS.join(", ")}`);
   else fields = { ...COMMON, ...(m.kind === "archive" ? ARCHIVE : APT) };
   for (const key of Object.keys(m)) if (!(key in fields)) problems.push(`${key.slice(0, 40)}: unknown field`);
-  for (const [key, required] of Object.entries(fields)) if (required && !(key in m)) problems.push(`${key}: missing`);
+  for (const [key, required] of Object.entries(fields)) {
+    if (required && !(key in m) && !filledLater.includes(key)) problems.push(`${key}: missing${GITHUB_FILLS.includes(key) ? MISSING_HINT : ""}`);
+  }
   if (problems.length) return problems;
 
   if (m.contract !== CONTRACT) problems.push(`contract: must be ${CONTRACT}`);
@@ -111,10 +114,11 @@ export function checkManifest(m, today) {
   text(problems, m, "licence", 2, MAX_LICENCE);
   text(problems, m, "licence_source", 2, 300);
 
-  if (typeof m.released !== "string" || !DAY.test(m.released)) problems.push("released: must be a date, YYYY-MM-DD");
-  else if (Number.isNaN(Date.parse(`${m.released}T00:00:00Z`)) || new Date(`${m.released}T00:00:00Z`).toISOString().slice(0, 10) !== m.released) problems.push("released: isn't a real date");
-  else if (m.released > addDays(today, -MIN_AGE_DAYS)) {
-    problems.push(`released: ${m.released} is less than ${MIN_AGE_DAYS} days ago; wait until ${addDays(m.released, MIN_AGE_DAYS)} or pick an older release`);
+  const released = m.released ?? "2000-01-01";
+  if (typeof released !== "string" || !DAY.test(released)) problems.push("released: must be a date, YYYY-MM-DD");
+  else if (Number.isNaN(Date.parse(`${released}T00:00:00Z`)) || new Date(`${released}T00:00:00Z`).toISOString().slice(0, 10) !== released) problems.push("released: isn't a real date");
+  else if (released > addDays(today, -MIN_AGE_DAYS)) {
+    problems.push(`released: ${released} is less than ${MIN_AGE_DAYS} days ago; wait until ${addDays(released, MIN_AGE_DAYS)} or pick an older release`);
   }
   if (m.for_project !== undefined && m.for_project !== null && (typeof m.for_project !== "string" || !PROJECT.test(m.for_project))) problems.push("for_project: a project's name, or null");
   const sb = m.sandbox;
@@ -125,9 +129,9 @@ export function checkManifest(m, today) {
   let smokeNames = null;
   if (m.kind === "archive") {
     https(problems, "url", m.url, MAX_URL);
-    if (typeof m.sha256 !== "string" || !SHA256.test(m.sha256)) problems.push("sha256: 64 lower-case hex digits, from the publisher's checksum");
+    if ("sha256" in m && (typeof m.sha256 !== "string" || !SHA256.test(m.sha256))) problems.push("sha256: 64 lower-case hex digits, from the publisher's checksum");
     if (!FORMATS.includes(m.format)) problems.push(`format: must be one of ${FORMATS.join(", ")}`);
-    whole(problems, m, "download_mb", 4096);
+    if ("download_mb" in m) whole(problems, m, "download_mb", 4096);
     whole(problems, m, "installed_mb", 16384);
     const strip = m.strip ?? 0;
     if (!Number.isInteger(strip) || strip < 0 || strip > 3) problems.push("strip: a whole number from 0 to 3");
@@ -178,6 +182,135 @@ export function checkManifest(m, today) {
   }
   if ("smoke_expect" in m) text(problems, m, "smoke_expect", 1, 200);
   return problems;
+}
+
+// ---- GitHub release assets (toolcheck.py's github_asset, check_request, apply_github) ----------
+
+const GITHUB_ASSET = /^https:\/\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/releases\/download\/([^/?#]{1,100})\/([^/?#]{1,200})$/;
+export const GITHUB_API = "https://api.github.com";
+export const GITHUB_FILLS = ["sha256", "released", "download_mb"];
+const GITHUB_DIGEST = /^sha256:([0-9a-f]{64})$/;
+const ASSET_NAME = /^[A-Za-z0-9._+-]{1,120}$/;
+export const MISSING_HINT = " (filled in from GitHub only when url is a GitHub release asset)";
+const MIB = 1048576;
+
+// Python's unquote: a bad escape stays as it is instead of throwing.
+const unquote = (v) => v.replace(/(%[0-9A-Fa-f]{2})+/g, (run) => {
+  try {
+    return decodeURIComponent(run);
+  } catch {
+    return run;
+  }
+});
+// Python's quote(v, safe=""): encodeURIComponent also leaves ! ' ( ) * alone.
+const quote = (v) => encodeURIComponent(v).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
+/** {owner, repo, tag, asset, path} for a GitHub release asset URL, `path` being the release's API path; else null. */
+export function githubAsset(url) {
+  const match = typeof url === "string" ? GITHUB_ASSET.exec(url) : null;
+  if (!match || match[2] === "." || match[2] === "..") return null;
+  const [, owner, repo] = match;
+  const tag = unquote(match[3]);
+  return { owner, repo, tag, asset: unquote(match[4]), path: `/repos/${owner}/${repo}/releases/tags/${quote(tag)}`, list: `/repos/${owner}/${repo}/releases?per_page=10` };
+}
+
+/** checkManifest for a request as Jorah writes it: for a GitHub release asset, the fields GitHub fills in may be missing. */
+export function checkRequest(m, today) {
+  const url = isObj(m) && m.kind === "archive" ? m.url : null;
+  return checkManifest(m, today, githubAsset(url) ? GITHUB_FILLS : []);
+}
+
+export const downloadCap = (mb) => Math.trunc(mb * 1.1 * MIB) + 5 * MIB;
+
+/** GitHub's answer for the release fills in and checks the request: {manifest, record, problems}. */
+export function applyGithub(m, release) {
+  const where = githubAsset(m?.url);
+  if (!where) return { manifest: m, record: null, problems: ["url: isn't a GitHub release asset URL"] };
+  const { tag, asset: name } = where;
+  if (!isObj(release)) return { manifest: m, record: null, problems: ["GitHub's answer isn't a release"] };
+  const problems = [];
+  const out = { ...m };
+  const record = { tag, asset: name, publishedAt: null, assetBytes: null, digest: null,
+    immutable: typeof release.immutable === "boolean" ? release.immutable : null, filled: [] };
+  if (release.draft) problems.push(`url: GitHub marks release ${tag} a draft`);
+  if (release.prerelease) problems.push(`url: GitHub marks ${tag} a pre-release; pick a full release`);
+
+  const published = release.published_at;
+  const ms = typeof published === "string" && /^\d{4}-\d{2}-\d{2}T/.test(published) ? Date.parse(published) : NaN;
+  if (Number.isNaN(ms)) problems.push(`released: GitHub gives no publication date for ${tag}`);
+  else {
+    const day = new Date(ms).toISOString().slice(0, 10);
+    record.publishedAt = published;
+    if (!("released" in m)) {
+      out.released = day;
+      record.filled.push("released");
+    } else if (m.released !== day) {
+      problems.push(`released: GitHub says ${tag} was published ${day} (UTC), not ${m.released}; leave released out and it is filled in`);
+    }
+  }
+
+  const assets = (Array.isArray(release.assets) ? release.assets : []).filter(isObj);
+  const found = assets.find((a) => a.name === name);
+  if (!found) {
+    const names = assets.map((a) => a.name).filter((n) => typeof n === "string" && ASSET_NAME.test(n)).slice(0, 8);
+    problems.push(`url: release ${tag} has no asset named ${name.slice(0, 80)}${names.length ? `; its assets include ${names.join(", ")}` : ""}`);
+    return { manifest: out, record, problems };
+  }
+  if (found.state !== undefined && found.state !== null && found.state !== "uploaded") problems.push(`url: GitHub says ${name.slice(0, 80)} isn't fully uploaded`);
+
+  const dm = typeof found.digest === "string" ? GITHUB_DIGEST.exec(found.digest) : null;
+  if (dm) {
+    record.digest = found.digest;
+    if (!("sha256" in m)) {
+      out.sha256 = dm[1];
+      record.filled.push("sha256");
+    } else if (m.sha256 !== dm[1]) {
+      problems.push(`sha256: GitHub's digest for ${name.slice(0, 80)} is ${dm[1].slice(0, 16)}..., not ${String(m.sha256).slice(0, 16)}...; leave sha256 out and it is filled in`);
+    }
+  } else if (!("sha256" in m)) {
+    problems.push("sha256: GitHub holds no digest for this asset (an older release): give the publisher's own checksum");
+  }
+
+  const size = found.size;
+  if (Number.isInteger(size) && size > 0) {
+    record.assetBytes = size;
+    const need = Math.max(1, Math.ceil(size / MIB));
+    const given = m.download_mb;
+    if (given === undefined || given === null) {
+      out.download_mb = need;
+      record.filled.push("download_mb");
+    } else if (Number.isInteger(given) && (size > downloadCap(given) || Math.abs(given - size / MIB) > Math.max(3, size / MIB / 4))) {
+      problems.push(`download_mb: GitHub says ${name.slice(0, 80)} is ${size} bytes; use ${need}, or leave download_mb out`);
+    }
+  } else if (!("download_mb" in m)) {
+    problems.push(`download_mb: GitHub gives no size for ${name.slice(0, 80)}: give download_mb`);
+  }
+  return { manifest: out, record, problems };
+}
+
+const TAG = /^[A-Za-z0-9][A-Za-z0-9.+_~-]{0,59}$/;
+const publishedDay = (r) => {
+  const ms = typeof r.published_at === "string" && /^\d{4}-\d{2}-\d{2}T/.test(r.published_at) ? Date.parse(r.published_at) : NaN;
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString().slice(0, 10);
+};
+
+/** The newest full release at least MIN_AGE_DAYS old in GitHub's list: {tag, released, url}, or null (toolcheck.older_release). */
+export function olderRelease(releases, where, today) {
+  const limit = addDays(today, -MIN_AGE_DAYS);
+  let best = null;
+  for (const r of Array.isArray(releases) ? releases : []) {
+    if (!isObj(r) || r.draft || r.prerelease) continue;
+    const tag = r.tag_name;
+    const day = publishedDay(r);
+    if (typeof tag !== "string" || !TAG.test(tag) || !day || day > limit) continue;
+    if (!best || r.published_at > best.r.published_at) best = { r, tag, day };
+  }
+  if (!best) return null;
+  const names = new Set((Array.isArray(best.r.assets) ? best.r.assets : []).filter(isObj).map((a) => a.name));
+  const strip = (t) => t.replace(/^[vV]+/, "");
+  const tries = [where.asset.replaceAll(where.tag, best.tag), strip(where.tag) ? where.asset.replaceAll(strip(where.tag), strip(best.tag)) : null];
+  const found = tries.find((n) => n && names.has(n) && ASSET_NAME.test(n));
+  return { tag: best.tag, released: best.day, url: found ? `https://github.com/${where.owner}/${where.repo}/releases/download/${quote(best.tag)}/${quote(found)}` : null };
 }
 
 // Python's json.dumps(m, sort_keys=True, separators=(",", ":"), ensure_ascii=False). Manifests

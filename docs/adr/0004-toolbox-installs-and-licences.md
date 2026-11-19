@@ -33,8 +33,17 @@ digits of the SHA-256, the licence, the release date and the sizes. `toolbox_ins
 fields, the plugin refuses them unless they equal the stored proposal, and the installer checks
 the proposal's hash again. A proposal edited after Adam saw it has a different id and is refused.
 
-**The installer trusts the source's record over Jorah's word.**
-- It refuses a file whose SHA-256 differs.
+**The source's record, read by code, not Jorah's word.**
+- For a GitHub release asset, Jorah gives only the version and the URL (since 2026-11-19).
+  `toolbox_propose`, or the runner for a run's request, reads the release from GitHub's API in code
+  and takes the hash (GitHub's digest of the asset), the date (`published_at`) and the download size
+  from it. Jorah's own values are refused when they differ. Drafts, pre-releases and missing assets
+  are refused. The card shows those values, and the proposal id covers them. GitHub's `immutable`
+  flag is kept with the proposal. Before this, Jorah had to find the hash himself, and in a chat
+  that had read the web the guard rightly kept him from opening a URL he had built.
+- Older releases without a digest on GitHub, and other hosts, still need the publisher's own
+  checksum from Jorah.
+- The installer refuses a file whose SHA-256 differs.
 - For a GitHub release asset, it reads the release's publication date and GitHub's own digest of
   the asset from GitHub's API, and refuses a release under 7 days old, a draft or pre-release, or
   a digest that differs.
@@ -79,6 +88,13 @@ build-session install (`scripts/pc/install-kicad.sh`), pinned in `deploy/kicad/v
 ## What it costs
 
 - Every new tool adds trust in its publisher. Adam weighs that on the card.
+- For GitHub assets, GitHub is the root of trust for the hash and the date, at proposal and again
+  at install. A publisher's own signature (where one exists) isn't checked.
+- `toolbox_propose` makes one unauthenticated request to `api.github.com` from the Gateway, for a
+  path built from an owner, repo and tag that match a strict pattern. A prompt-injected Jorah could
+  make it ask about any public repo; that tells GitHub nothing private, and the answer only becomes
+  an inert proposal. The limit is 60 requests an hour from the PC's address; past it, proposing
+  waits, it never falls back to Jorah's word.
 - The 7-day rule protects only against releases pulled within a week. A slow-burn compromise isn't
   caught.
 - A tool's own runtime can't reach the network in a run, so a tool that needs downloads while it

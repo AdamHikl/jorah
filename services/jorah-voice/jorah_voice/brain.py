@@ -21,6 +21,14 @@ If it's longer, start with an overview of at most 35 words that can be read alou
 Adam's words come from speech recognition, so a strange word was probably misheard. If a reply depends on it, ask."""
 
 
+# Put in front of Adam's words on every spoken turn. Measured 2026-11-19 on agent:main:voice-probe: with
+# the format asked for only in the system note, 0 of 2 long replies had the "Full message:" line; with
+# this note in the turn itself, 2 of 2 did, with spoken overviews of 36 and 18 words.
+TURN_NOTE = ("[Spoken turn. If the answer is longer than about 35 words, start with an overview of at most "
+             "35 words that can be read aloud: the outcome first, then any question Adam must answer or anything "
+             "he must do. Then a line with only \"Full message:\" on it, then the whole answer.]\n\n")
+
+
 class BrainError(RuntimeError):
     pass
 
@@ -49,7 +57,7 @@ def build_request(text, token, session_key=SESSION_KEY):
     body = {
         "model": "openclaw/main",
         "stream": True,
-        "messages": [{"role": "system", "content": VOICE_NOTE}, {"role": "user", "content": text}],
+        "messages": [{"role": "system", "content": VOICE_NOTE}, {"role": "user", "content": TURN_NOTE + text}],
     }
     return headers, json.dumps(body).encode()
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from jorah_voice.brain import BrainError, JorahBrain, build_request, read_gateway_token, sse_text
+from jorah_voice.brain import TURN_NOTE, BrainError, JorahBrain, build_request, read_gateway_token, sse_text
 
 
 def chunk(text):
@@ -24,7 +24,9 @@ class Request(unittest.TestCase):
         self.assertEqual(headers["Authorization"], "Bearer t0ken")
         self.assertTrue(sent["stream"])
         self.assertEqual(sent["model"], "openclaw/main")
-        self.assertEqual(sent["messages"][-1], {"role": "user", "content": "What's on today?"})
+        self.assertEqual(sent["messages"][-1], {"role": "user", "content": TURN_NOTE + "What's on today?"})
+        # The long-reply format rides in the turn itself: the system note alone was ignored (2026-11-19).
+        self.assertIn("Full message:", TURN_NOTE)
         self.assertEqual([m["role"] for m in sent["messages"]], ["system", "user"])
 
 
@@ -110,7 +112,7 @@ class Streaming(unittest.TestCase):
             self.assertEqual(list(brain.stream("Morning")), ["Morning, ", "Adam."])
             headers, body = gateway.requests[0]
             self.assertEqual(headers["Authorization"], "Bearer t0ken")
-            self.assertEqual(body["messages"][-1]["content"], "Morning")
+            self.assertEqual(body["messages"][-1]["content"], TURN_NOTE + "Morning")
         finally:
             gateway.close()
 

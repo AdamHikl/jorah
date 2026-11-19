@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "
 import { join } from "node:path";
 
 const MAX_SESSIONS = 2000;
+const MAX_WRITTEN = 5000;
 
 export class GuardState {
   constructor(dir, { now = () => Date.now() } = {}) {
@@ -17,7 +18,8 @@ export class GuardState {
     this.broken = null;
     this.unsaved = false;
     this.data = { sessions: {}, parents: {} };
-    this.seen = new Map(); // sessionKey -> Set(normalised URL)
+    this.seen = new Map(); // sessionKey -> Map(normalised URL -> "adam" | "outside")
+    this.written = new Map(); // sessionKey -> { tokens: Set, full: boolean }: what the model wrote after outside text
     this.words = new Map(); // sessionKey -> { text, at }
     this.acp = new Map(); // sessionKey -> [timestamps]
     this.current = new Map(); // sessionKey -> sessionId last seen in a hook
@@ -89,6 +91,7 @@ export class GuardState {
   reset(sessionKey) {
     if (!sessionKey) return;
     this.seen.delete(sessionKey);
+    this.written.delete(sessionKey);
     this.words.delete(sessionKey);
     this.acp.delete(sessionKey);
     if (this.data.sessions[sessionKey]) {
@@ -125,7 +128,7 @@ export class GuardState {
     if (!childKey || !parentKey) return;
     this.data.parents[childKey] = parentKey;
     const seen = this.seen.get(parentKey);
-    if (seen) this.seen.set(childKey, new Set(seen));
+    if (seen) this.seen.set(childKey, new Map(seen));
     this.persist();
   }
 
@@ -133,15 +136,48 @@ export class GuardState {
     return this.data.parents[childKey] ?? null;
   }
 
-  addSeen(sessionKey, urls) {
+  // source "adam": in Adam's own typed words; "outside": in an outside reader's result.
+  addSeen(sessionKey, urls, source = "outside") {
     if (!sessionKey || urls.length === 0) return;
-    const set = this.seen.get(sessionKey) ?? new Set();
-    for (const u of urls) if (set.size < 5000) set.add(u);
-    this.seen.set(sessionKey, set);
+    const map = this.seen.get(sessionKey) ?? new Map();
+    for (const u of urls) {
+      if (source === "adam") map.set(u, "adam");
+      else if (!map.has(u) && map.size < 5000) map.set(u, source);
+    }
+    this.seen.set(sessionKey, map);
   }
 
   hasSeen(sessionKey, url) {
     return this.seen.get(sessionKey)?.has(url) === true;
+  }
+
+  typedSeen(sessionKey, url) {
+    return this.seen.get(sessionKey)?.get(url) === "adam";
+  }
+
+  // Address-like words from the arguments of calls made after outside text. Past the cap the
+  // session stops gaining seen URLs from results (fail closed) rather than forgetting any.
+  addWritten(sessionKey, tokens) {
+    if (!sessionKey || tokens.length === 0) return;
+    const rec = this.written.get(sessionKey) ?? { tokens: new Set(), full: false };
+    for (const t of tokens) {
+      if (rec.tokens.has(t)) continue;
+      if (rec.tokens.size >= MAX_WRITTEN) { rec.full = true; break; }
+      rec.tokens.add(t);
+    }
+    this.written.set(sessionKey, rec);
+  }
+
+  // Did the model write this (any of its cores) in this session or a parent? "full" means unknown.
+  wrote(sessionKey, cores) {
+    let key = sessionKey;
+    for (let i = 0; key && i < 10; i++, key = this.data.parents[key]) {
+      const rec = this.written.get(key);
+      if (!rec) continue;
+      if (rec.full) return true;
+      for (const t of rec.tokens) if (cores.some((c) => t.includes(c))) return true;
+    }
+    return false;
   }
 
   anySeen(url) {

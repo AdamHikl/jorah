@@ -4,7 +4,7 @@
 // "this chat has read outside text".
 
 import { posix } from "node:path";
-import { forbidden, normalise, onSiteAllowlist, urlsIn } from "./urls.js";
+import { forbidden, linkHygiene, normalise, onSiteAllowlist, urlCores, urlsIn, writtenTokens } from "./urls.js";
 import { siteDecision } from "./sites.js";
 
 const CARD_MAX = 500;
@@ -181,16 +181,54 @@ export function urlParams(value) {
   return out;
 }
 
-export function checkUrls(value, state, view, sessionKey, matrix) {
+// A fetch never sends the fragment, so web_fetch compares without it; the browser and anything
+// else compare with it, because a page's own script can read it. Links Adam typed skip the
+// hygiene rule (he chose them); everything else in a chat with outside text must pass it.
+export function checkUrls(value, state, view, sessionKey, matrix, tool = "") {
   for (const raw of [...urlsIn(value), ...urlParams(value)]) {
     const bad = forbidden(raw);
     if (bad) return `${short(raw, 60)}: ${bad}`;
     if (!state.tainted) continue;
-    const n = normalise(raw);
-    if (n && (view.hasSeen(sessionKey, n) || onSiteAllowlist(n, matrix.siteAllowlist))) continue;
+    const n = normalise(raw, { keepHash: tool !== "web_fetch" });
+    if (!n) return `${short(raw, 60)}: not a valid URL`;
+    if (!view.typedSeen?.(sessionKey, n)) {
+      const dirty = linkHygiene(raw, { maxChars: matrix.urlMaxChars ?? 250, credentialParams: matrix.urlCredentialParams });
+      if (dirty) return `${short(raw, 60)}: ${dirty}, and this chat has read outside text`;
+    }
+    if (view.hasSeen(sessionKey, n) || onSiteAllowlist(n, matrix.siteAllowlist)) continue;
     return `${short(raw, 60)} wasn't in your message or an earlier result, and this chat has read outside text`;
   }
   return null;
+}
+
+// Which tools' results may add seen URLs (G-S2, narrowed 2026-11-19 after the laundering
+// finding): only outside readers named in the matrix's urlSources, through the search wrapper
+// too. read, write, memory, sessions, exec, cards and unknown tools never do, because the model
+// can put any text there. Even from an outside reader, a URL contained in the model's own words
+// (this call's arguments, or anything it wrote in this chat after outside text, see
+// state.wrote) is not seen: tools and pages echo what they are sent.
+export function seedTool(matrix, tool, params = {}) {
+  let name = tool;
+  if (tool === "tool_call") {
+    const raw = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : "";
+    name = raw.split(":").pop();
+  }
+  return (matrix?.urlSources ?? []).includes(name) ? name : null;
+}
+
+export function resultSeeds({ tool, params = {}, result, matrix, wrote = () => false }) {
+  if (!seedTool(matrix, tool, params)) return [];
+  const own = writtenTokens(params);
+  const out = [];
+  for (const raw of urlsIn(result)) {
+    const n = normalise(raw, { keepHash: true });
+    if (!n) continue;
+    const cores = [...urlCores(raw), ...urlCores(n)];
+    if (own.some((t) => cores.some((c) => t.includes(c)))) continue;
+    if (wrote(cores)) continue;
+    out.push(raw);
+  }
+  return out;
 }
 
 /**
@@ -245,7 +283,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     }
 
     case "url": {
-      const bad = checkUrls(params, state, view, key, matrix);
+      const bad = checkUrls(params, state, view, key, matrix, tool);
       if (bad) return { verdict: "block", reason: `Not opened: ${bad}.` };
       const evalish = /evaluate|wait.*fn|\bfn\b|expression/i.test(textOf(params.kind ?? params.request?.kind ?? "")) || "fn" in params || "expression" in params;
       if (evalish) return { verdict: "block", reason: "page JavaScript is off for Jorah's browser" };

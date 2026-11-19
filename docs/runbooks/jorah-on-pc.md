@@ -430,6 +430,18 @@ It prints no arguments, addresses or messages.
 - The jorah-github card doesn't say the chat has read outside text.
 - Recalled memory is trusted (plan 4.4).
 
+### URL laundering closed, 2026-11-19
+
+The research pass of 2026-11-19 found that any URL in any tool result counted as "seen", so a hijacked Jorah could make his own URL seen and open it: write a file and read it back (A), a search result that echoes its query (B: OpenClaw 2026.10.9's `web_search` result carries `query`, checked in its source on the PC), or `memory_search` (C). Checking the fix found two more: a site on the list that reflects the request (`https://wttr.in/<url>` prints the URL back, D), and the shared browser showing his own words in a later snapshot (E). One more: OpenClaw puts quoted messages and the chat window in front of Adam's typed text (under a `⟦openclaw:ctx⟧` header, or a `[Replying to: …]` line), and links there counted as Adam's.
+
+What changed in `plugins/jorah-guard` and `config/permission-matrix.json`:
+- **Seen only from outside readers:** `urlSources` in the matrix (`web_search`, `x_search`, `web_fetch`, `browser`, the tools OpenClaw itself marks as network-sourced), also through the `tool_call` wrapper. `read`, `write`, `edit`, memory, sessions, `exec`, `site_read`, mail, calendar and unknown tools never add seen links. Adding one needs Adam's yes.
+- **Never the model's own words:** a result URL contained in that call's arguments, or in anything the model wrote after the chat read outside text (this session or a parent), is not seen. Past 5,000 such words a chat stops gaining seen links (fails closed). A call the guard refused never adds any.
+- **Adam's words:** only the text he typed; OpenClaw's quoted and context blocks are cut first. The memory rule (save without asking) uses the same cut text.
+- **Fragments:** the browser and the Telegram link filter compare a link with its `#fragment`; `web_fetch` without (a fetch never sends it).
+- **Link hygiene** after outside text: refused if longer than 250 characters (`urlMaxChars`), if it carries a login, a credential-like parameter (`urlCredentialParams`: `token`, `api_key`, `key`, `sig`, …) or a key-shaped value (`ghp_`, `sk-`, a JWT). Links Adam typed are exempt. Example reason Jorah relays: "Not opened: https://… : longer than 250 characters, and this chat has read outside text."
+- Tests: `plugins/jorah-guard/test/launder.test.js` (18 tests: paths A to E block, Adam's links, search results, fetched pages, the site list, the reply filter and child sessions allow). The research simulation (`sim-launder.mjs`) shows A, B and C allowed on the old code and blocked on the new.
+
 ## The distro
 
 Ubuntu 24.04, and the WSL default. Commands still name it with `-d jorah`. The old `Ubuntu` and `docker-desktop` distros are separate, and Adam removes them when ready.

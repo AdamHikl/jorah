@@ -68,6 +68,13 @@
   "rulesFiles": ["AGENTS.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.md", "BOOTSTRAP.md", "TOOLS.md", "skills/"],
   "selfRepos": ["jorah"],
   "siteAllowlist": ["wttr.in", "en.wikipedia.org", "sk.wikipedia.org", "github.com/AdamHikl", "docs.openclaw.ai"],
+  "urlSources": ["web_search", "x_search", "web_fetch", "browser"],
+  "urlSourcesAbout": "Tools whose results may add seen URLs: outside readers only, the tools OpenClaw 2026.10.9 itself marks resultContentSource network (canvas, crabbox and decision_evaluate are not Jorah's). Even from these, a URL contained in the model's own arguments, or in anything it wrote after outside text, is not seen (lib/policy.js resultSeeds). Not here on purpose: read, write, edit, memory and sessions tools, exec, site_read (its reader is a model that takes Jorah's question), mail and calendar (a GitHub notification can carry text Jorah wrote). Adding one needs Adam's yes.",
+  "urlMaxChars": 250,
+  "urlCredentialParams": ["token", "access_token", "refresh_token", "id_token", "auth", "auth_token", "authorization",
+    "apikey", "api_key", "api-key", "key", "secret", "client_secret", "password", "passwd", "pwd", "pass", "session",
+    "sessionid", "session_id", "sid", "sig", "signature", "credential", "credentials", "jwt", "bearer", "code_verifier",
+    "x-amz-credential", "x-amz-signature", "x-amz-security-token", "x-goog-credential", "x-goog-signature"],
   "searchQueryMaxChars": 200,
   "acpSpawnsPerHourWithoutConfirm": 3
 }

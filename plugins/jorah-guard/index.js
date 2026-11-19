@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, speaker, typedByOwner } from "./lib/policy.js";
-import { findUrls, normalise, onSiteAllowlist, strings, urlsIn } from "./lib/urls.js";
+import { decide, resultSeeds, sessionState, speaker, typedByOwner } from "./lib/policy.js";
+import { findUrls, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
 const PRIORITY = 1000;
@@ -61,6 +61,7 @@ export default {
     const view = {
       taintOf: (k) => state.taintOf(k),
       hasSeen: (k, u) => state.hasSeen(k, u),
+      typedSeen: (k, u) => state.typedSeen(k, u),
       wordsOf: (k) => state.wordsOf(k),
       readRepos: (k) => state.readRepos(k),
       countAcp: (k) => state.countAcp(k),
@@ -89,6 +90,15 @@ export default {
       if (triggers.size > 500) triggers.delete(triggers.keys().next().value);
     };
 
+    // Calls the guard blocked: their result (if the Gateway reports one) holds the refusal, which
+    // quotes the URL, so it never adds seen URLs.
+    const blockedCalls = new Set();
+    const noteBlocked = (id) => {
+      if (typeof id !== "string") return;
+      blockedCalls.add(id);
+      if (blockedCalls.size > 500) blockedCalls.delete(blockedCalls.values().next().value);
+    };
+
     api.on("before_tool_call", (event, rawCtx) => {
       const tool = event?.toolName;
       remember(rawCtx);
@@ -97,10 +107,15 @@ export default {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
         const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null };
+        const taintedBefore = sessionState(view, ctx ?? {}, settings).tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
+        // What the model writes after outside text may come back in a later result (a page that
+        // echoes a search, the shared browser): remember it so it is never taken as seen.
+        if (taintedBefore && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
+        if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings);
         const from = who.voice ? "voice" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
@@ -123,13 +138,19 @@ export default {
       }
     }, { priority: PRIORITY });
 
-    // Collect URLs from results (G-S2) and link spawned children to their parent session.
+    // Collect URLs from outside readers' results (G-S2, policy.resultSeeds) and link spawned
+    // children to their parent session.
     api.on("after_tool_call", (event, ctx) => {
       try {
         const key = ctx?.sessionKey;
         state.enter(key, ctx?.sessionId);
-        const urls = urlsIn(event?.result).map(normalise).filter(Boolean);
-        state.addSeen(key, urls);
+        const callId = event?.toolCallId ?? ctx?.toolCallId;
+        const refused = event?.error != null || (typeof callId === "string" && blockedCalls.has(callId));
+        if (!matrix) matrix = loadMatrix(matrixFile);
+        if (!refused && matrix) {
+          const urls = resultSeeds({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, matrix, wrote: (cores) => state.wrote(key, cores) });
+          state.addSeen(key, urls.flatMap(seenForms));
+        }
         const child = event?.result?.details?.childSessionKey;
         if (event?.toolName === "sessions_spawn" && typeof child === "string") state.linkChild(child, key);
       } catch (e) {
@@ -149,9 +170,11 @@ export default {
         // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;
         if (!typedByOwner(r)) { state.setWords(key, ""); return undefined; }
-        const prompt = typeof event?.prompt === "string" ? event.prompt : strings(event?.prompt).join("\n");
+        // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
+        // Jorah's own earlier words.
+        const prompt = ownTypedText(typeof event?.prompt === "string" ? event.prompt : strings(event?.prompt).join("\n"));
         state.setWords(key, prompt);
-        state.addSeen(key, findUrls(prompt).map(normalise).filter(Boolean));
+        state.addSeen(key, findUrls(prompt).flatMap(seenForms), "adam");
       } catch (e) {
         api.logger.warn(`jorah-guard: before_agent_run: ${e?.message}`);
       }
@@ -178,7 +201,7 @@ export default {
         if (!tainted || typeof event?.content !== "string") return undefined;
         let changed = false;
         const content = event.content.replace(/\bhttps?:[^\s"'<>`\\]+/gi, (raw) => {
-          const n = normalise(raw.replace(/[),.;:!?\]}>]+$/, ""));
+          const n = normalise(raw.replace(/[),.;:!?\]}>]+$/, ""), { keepHash: true });
           const ok = n && ((key ? state.hasSeen(key, n) : state.anySeen(n)) || onSiteAllowlist(n, matrix?.siteAllowlist ?? []));
           if (ok) return raw;
           changed = true;

@@ -1,0 +1,25 @@
+# Once a day, as the watchdog's user and with its bot (services/jorah-watchdog/watchdog.py daily):
+# OpenClaw's own security advisories against the installed version, then the drift report.
+# Wants= pulls in jorah-drift.service and After= waits for it to finish first.
+[Unit]
+Description=Jorah: daily advisory watch and drift report
+Wants=network-online.target jorah-drift.service
+After=network-online.target jorah-drift.service
+
+[Service]
+Type=oneshot
+User=jorah-watchdog
+Group=jorah-watchdog
+StateDirectory=jorah-watchdog
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-watchdog/watchdog.py daily
+TimeoutStartSec=5min
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service

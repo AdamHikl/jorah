@@ -743,6 +743,56 @@ OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under C
 - **Checks instead of the wait:** the notes above; npm provenance (SLSA v1) and registry signatures on all three packages; tarball integrity `sha512-OMJvs7fS…V7IeQ==` (from the release page) compared with the registry; the canary on `jorah-dev` first.
 - **How:** `--min-release-age=0` on those install commands only. `/opt/node/etc/npmrc` keeps `min-release-age=7`.
 
+## Advisory watch, drift check and install policy, 2026-11-19
+
+**Why:** GHSA-pw3x-g8v8-fvj2, published 2026-11-19, affects the live 2026.10.9. It was on OpenClaw's own advisory list but not in GitHub's global database, so `npm audit` said nothing. The research (`docs/plan/research/openclaw-security-landscape.md`, recommendations 4, 5 and 10) asked for three small pieces. Adam: "yes do all fixes in opus 5.5 high subsessions".
+
+**(a) Advisory watch** (`services/jorah-watchdog/advisories.py`, `watchdog.py daily`):
+- Every night at 03:40 (`jorah-daily-watch.timer`, between the 02:20 and 08:20 restarts), as `jorah-watchdog`, with the watchdog's bot.
+- Reads `api.github.com/repos/openclaw/openclaw/security-advisories`: published only, most recently updated first, 100 a page. It stops at the first advisory it has already seen with the same update time. The first run reads all of them (about 723, 8 requests); later runs need about one. Sorting by update rather than publication also catches corrected ranges.
+- Keeps every advisory's ranges for `openclaw` and `@openclaw/*`, and checks them all against the installed versions each night, so an upgrade into an old range is caught too.
+- **Installed versions:** `openclaw`, from `/opt/node/lib/node_modules/openclaw/package.json`, the file `openclaw --version` prints from. The installer checks that the two agree. Also every `@openclaw/*` package bundled inside it or installed next to it. Plugins installed under Jorah's state folder can't be seen by this user. With the install policy below, none can be installed without Adam.
+- **Messages:** one per advisory that affects what runs: id, severity, summary, fixed versions, link. If more than 5 match at once, one message lists them, because that many probably means a misread.
+  - A range it can't read counts as "may apply".
+  - When the source is unreadable for a day (GitHub down, rate limit, unreadable version), it says "unknown" once, and says so again when it can read the list. It never reports that as "no advisories".
+- **Network:** uid 999 falls under `meta skuid != 1000 accept` in `deploy/jorah-firewall.nft`. The live set is the same. As `jorah-watchdog`, a read of the list got 200 [measured 2026-11-19].
+
+**(c) Drift check** (`services/jorah-watchdog/drift.py`, `jorah-drift.service`):
+- Runs as root, because the rules files are in jorah's private home, but with no network (`PrivateNetwork=yes`) and only the read capability. `jorah-daily-watch.service` pulls it in and waits for it.
+- **The manifest** (`/var/lib/jorah-drift/manifest.json`) gives, per file, the SHA-256 of its content in git and the commit it came from. It covers every file in `/opt/jorah` from git, plus `AGENTS.md`, `SOUL.md` and `IDENTITY.md` in the live workspaces of `main`, `deep` and `background`.
+- **Report** (`report.json`, 0644, paths and hashes only): files changed since deployed, missing files, and files in `/opt/jorah` that no deploy recorded.
+- **Messages:** the watchdog sends a report once per distinct finding, then once when everything matches again. No report for a day counts as "unknown".
+- **Secrets:** it never opens a file that isn't in the manifest, and the manifest only takes paths from git. Secret names (`*.token`, `*.key`, `openclaw.json`, `.env` …) are refused even then. In live workspaces only the three rules files are allowed, never `USER.md`, `MEMORY.md` or `memory/`.
+- **Keeping the manifest current:** build sessions deploy with `scripts/pc/deploy_reviewed.py`, which replaces the hand-typed `git archive | ssh … tar`:
+  - `deploy_reviewed.py deploy <paths>`: deploys `HEAD` (it must be on `origin/main`), runs `sync`, and records every deployed file.
+  - `deploy_reviewed.py record-live workspace/AGENTS.md=/home/jorah/workspace/AGENTS.md`: after copying a rules file into a live workspace (with a backup, as before).
+  - `deploy_reviewed.py forget <paths>`: for files deleted from main.
+  - The hashes come from git on the Mac. The PC refuses to record a file whose content differs, and then records nothing.
+- **Baseline preview** [measured 2026-11-19, read-only]: 574 files hashed.
+  - 569 match a version on main: 557 the newest, 12 an older deploy (for example `/opt/jorah/workspace/AGENTS.md`; the live copy is the newest).
+  - None matches no commit.
+  - Not in git: `.commit-site-readers`, `.deployed-commit`, `config/pc/max-lane.patch.json5.pre-2026-11-16`, `scripts/pc/._setup-permissions.sh`. They would be reported nightly until removed.
+
+**(b) Install policy** (`scripts/pc/install-policy.py`, `config/pc/install-policy.patch.json5`, `scripts/pc/setup-install-policy.sh`):
+- **Contract** (2026.10.9 docs: `tools/skills-config.md` "Operator Install Policy", `help/troubleshooting.md`, `gateway/security/tool-permissions.md`, `gateway/configuration/hot-reload.md`):
+  - OpenClaw runs the command, without a shell, after staging and before an install or update continues. It sends one JSON request (`protocolVersion: 1`) and expects `allow`, `warn` or `block`.
+  - A block, crash, bad JSON or timeout stops the install. Neither `--force` nor `--acknowledge-install-policy-warning` gets past a block.
+  - The command must be a root-owned regular file, not a symlink, in a safe folder.
+  - Hot-reloaded, so no restart.
+- **What it covers:** ClawHub, uploaded, Git and local skills; skill dependency installers; plugin installs and updates from the CLI, the Gateway, the Control UI and the agent's own plugin-install tool.
+  - It does **not** cover `skill_workshop`. Learned skills are files the tool writes into `<state>/agents/<id>/agent/workshop-skills`, not installs. The docs say so (`tools/skills.md`: "Skill Workshop does not install into either location"). In the 2026.10.9 code, the workshop tool never calls the policy, unlike the plugin-install tool next to it [measured: `dist/openclaw-tools-*.mjs`].
+  - So the workshop isn't blocked. The guard's cards and the drift check are what watch it.
+  - OpenClaw's own upgrade isn't an install either: bundled plugins come with the npm package.
+- **Policy:**
+  - Allow only requests matching an entry in `/etc/jorah/install-allowlist.json`. The file must be root-owned and writable by nobody else; otherwise everything is blocked.
+  - An entry names `targetType`, `targetName` and optionally `sourceKind`, `mode`, `requestedSpecifier`, `sourcePath`, plus a `note`.
+  - The list is empty, so everything is blocked.
+  - The command is `/usr/local/lib/jorah/install-policy` (root 755).
+- **What it changes for build sessions:** a **new** plugin linked with `plugins install --link /opt/jorah/plugins/<x>`, as the `install-*.sh` scripts do, is blocked until Adam adds an entry, for example `{"targetType": "plugin", "targetName": "jorah-foo", "sourceKind": "local-path", "note": "Adam's yes, <date>"}`. Plugins already linked keep loading: new code in `/opt/jorah/plugins` is a deploy and a restart, not an install.
+- `openclaw/clawscan` is not used: it runs scanners in Docker, and a block-by-default list doesn't need them.
+
+**Undo:** `install-daily-watch.sh --undo` (units; state and manifest stay), `setup-install-policy.sh --undo` (sets `enabled: false`; or restore `openclaw.json.pre-install-policy`).
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

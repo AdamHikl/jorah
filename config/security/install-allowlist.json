@@ -1,0 +1,4 @@
+{
+  "_comment": "Installed as /etc/jorah/install-allowlist.json (root:root 644). Adam edits it as root. Empty: every skill or plugin install is blocked. Example entry: {\"targetType\": \"plugin\", \"targetName\": \"jorah-foo\", \"sourceKind\": \"local-path\", \"note\": \"Adam's yes, <date>\"}",
+  "allow": []
+}

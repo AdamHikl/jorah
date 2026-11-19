@@ -1,0 +1,25 @@
+# Nightly drift check (services/jorah-watchdog/drift.py): hashes the files recorded in
+# /var/lib/jorah-drift/manifest.json, lists files in /opt/jorah no deploy recorded, and writes
+# /var/lib/jorah-drift/report.json for jorah-daily-watch.service to send. Root, because the agents'
+# rules files sit in jorah's private home; no network and no capability but reading.
+# Started by jorah-daily-watch.service (Wants=), not by its own timer.
+[Unit]
+Description=Jorah: drift check of reviewed files against their last deploy from main
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-watchdog/drift.py check
+StateDirectory=jorah-drift
+StateDirectoryMode=0755
+UMask=0022
+TimeoutStartSec=5min
+PrivateNetwork=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service

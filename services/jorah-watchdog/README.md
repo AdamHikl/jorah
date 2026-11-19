@@ -17,6 +17,18 @@ What it does, every 5 minutes (`deploy/jorah-watchdog.timer`, as the system user
 - **Retries:** a message that fails to send is retried at the next check.
 - **Restarts:** the 6-hourly restart (`jorah-gateway-recycle`) takes under a minute, so it never alerts.
 
+**Nightly, 03:40** (`deploy/jorah-daily-watch.timer`, `watchdog.py daily`; installed by
+`scripts/pc/install-daily-watch.sh`):
+
+| Check | Tells Adam | Unknown after |
+|---|---|---|
+| Advisory watch (`advisories.py`, as `jorah-watchdog`) | each OpenClaw advisory, from the repository's own list, whose `openclaw` or `@openclaw/*` range covers what is installed: id, severity, summary, fixed versions, link. Once per advisory | a day without a good read of the list or the installed version |
+| Drift check (`drift.py`, root, no network, `jorah-drift.service`) | reviewed files changed, missing, or new in `/opt/jorah`, against the manifest of the last deploy from main. Once per distinct finding, and when it clears | a day without a fresh report |
+
+"Unknown" is said once, never as "no advisories" or "no drift". The manifest is kept by
+`scripts/pc/deploy_reviewed.py`, which every build session uses to deploy (see the runbook, "Advisory
+watch, drift check and install policy").
+
 **Setup** (`scripts/pc/install-watchdog.sh`, then Adam):
 1. In Telegram, @BotFather → `/newbot`, any name, for example "Jorah watchdog". Keep the token to paste.
 2. In a Terminal attached to no agent: `scripts/pc/store-watchdog-token.sh` (see its header). It prints the bot's name, never the token.
@@ -26,7 +38,8 @@ What it does, every 5 minutes (`deploy/jorah-watchdog.timer`, as the system user
 **Where things are:**
 - the token: `/etc/jorah-watchdog/telegram.token` (root:jorah-watchdog 640);
 - the chat id and the Gateway port: `/etc/jorah-watchdog/watchdog.conf`;
-- the state: `/var/lib/jorah-watchdog/state.json`, readable with `watchdog.py status`;
-- the log: `journalctl -u jorah-watchdog`.
+- the state: `/var/lib/jorah-watchdog/state.json` and `daily.json`, readable with `watchdog.py status`;
+- the manifest and the drift report: `/var/lib/jorah-drift/` (root-owned; `drift.py show`);
+- the log: `journalctl -u jorah-watchdog -u jorah-daily-watch -u jorah-drift`.
 
 The token never appears in a log or the state.

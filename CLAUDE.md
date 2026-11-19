@@ -35,6 +35,7 @@ If Adam says to stop at source, stop at source.
 - A finding from gitleaks: real secret means stop, rotate, remove, re-scan. A false positive goes in `.gitleaksignore` by fingerprint on Adam's yes, never a path allowlist.
 - Dependencies wait 7 days after release. A security patch may skip that once its notes are read, with a written exception.
 - Evidence goes in `docs/evidence/<issue>/`, with private content removed.
+- Deploy reviewed files to the PC with `scripts/pc/deploy_reviewed.py deploy <paths>` (and `record-live` after copying a rules file into a live workspace), so the nightly drift check knows them. A hand-typed `git archive | ssh` deploy shows up as drift.
 
 ## Finish every session with
 

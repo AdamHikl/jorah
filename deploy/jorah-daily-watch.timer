@@ -1,0 +1,13 @@
+# Every night at 03:40, between the 02:20 and 08:20 Gateway restarts. Persistent= runs a missed
+# night when the PC comes back.
+[Unit]
+Description=Jorah: daily advisory watch and drift check
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+Persistent=true
+RandomizedDelaySec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

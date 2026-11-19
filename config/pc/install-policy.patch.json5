@@ -1,0 +1,23 @@
+// Install policy (docs/runbooks/jorah-on-pc.md, "Install policy"; research recommendation 5).
+// OpenClaw runs the command on every skill and plugin install or update and stops the install unless
+// it answers allow. scripts/pc/install-policy.py, installed root-owned, allows only entries in
+// /etc/jorah/install-allowlist.json, which is empty: every install is blocked until Adam adds one.
+// No `targets`: OpenClaw's docs say leaving it out covers every target, so new kinds don't fail open.
+// Hot-reloaded: no Gateway restart (gateway/configuration/hot-reload.md).
+// Applied by scripts/pc/setup-install-policy.sh, which also has --dry-run, --scratch-test and --undo.
+{
+  security: {
+    installPolicy: {
+      enabled: true,
+      exec: {
+        source: "exec",
+        command: "/usr/local/lib/jorah/install-policy",
+        args: [],
+        timeoutMs: 10000,
+        noOutputTimeoutMs: 10000,
+        maxOutputBytes: 65536,
+        trustedDirs: ["/usr/local/lib/jorah"],
+      },
+    },
+  },
+}

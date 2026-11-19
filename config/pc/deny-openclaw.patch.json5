@@ -1,0 +1,14 @@
+// GHSA-pw3x-g8v8-fvj2 (2026-11-19): the built-in `openclaw` tool hands config and plugin changes
+// to OpenClaw's setup agent. In a Full Access run those apply with no approval, and they can turn
+// on host commands even when exec and file writes are denied. Jorah's `tools.exec.mode: "full"`
+// makes its runs Full Access, so this stays after the upgrade to 2026.10.33 too: the fix only adds
+// approval for restricted runs. Jorah's config is changed by commit and Adam's yes, never by
+// Jorah. The guard also lists `openclaw` as blocked (config/permission-matrix.json).
+// Global denies can't be granted back per agent. Name, not group: `group:openclaw` would also
+// remove message, automations and other tools Jorah uses.
+// Measured on live before this: main was offered the tool in 2 of 143 claude-cli sessions
+// (2026-11-17 on jorah-dev, 2026-11-19 on live) and never called it (docs/runbooks/jorah-on-pc.md).
+// Undo: the same patch without "openclaw".
+{
+  tools: { deny: ["nodes", "computer", "gateway", "openclaw"] },
+}

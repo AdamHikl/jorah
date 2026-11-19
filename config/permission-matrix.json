@@ -26,7 +26,7 @@
   "github": ["github_push_branch", "github_open_pr"],
   "message": ["message"],
   "sandboxShell": ["exec", "process"],
-  "blocked": ["sessions_send", "gateway", "nodes", "computer"],
+  "blocked": ["sessions_send", "gateway", "nodes", "computer", "openclaw"],
   "proactiveSend": ["proactive_notify", "proactive_feedback"],
   "localWrite": ["loop_done", "loop_drop", "project_answer", "project_task_result", "project_run_now", "project_resume",
     "project_start", "supply_save"],

@@ -709,6 +709,40 @@ Adam's steps, the design and the full record are in `docs/runbooks/toolbox.md`.
 
 **Not tested live:** a real outage alert. Unit tests cover the timing, the reminders, a failed send and the gaps. **Undo:** `install-watchdog.sh --undo`.
 
+## OpenClaw upgrade for GHSA-pw3x-g8v8-fvj2, from 2026-11-19
+
+**The advisory:** "OpenClaw delegation could skip approval for restricted agents", High, CVSS 8.8, published 2026-11-19. Affects `>= 2026.9.2, < 2026.10.33` and `>= 2026.11.1, < 2026.11.4`, so live 2026.10.9 is affected. The built-in `openclaw` tool hands config and plugin changes to OpenClaw's setup agent, and a restricted agent could use it to turn on host commands without approval.
+
+**What the fix doesn't cover** [docs-only: 2026.11.4 notes, bundled `cli/openclaw.md` and `gateway/permission-modes.md`]: a Full Access run still applies delegated changes with no approval, "even when direct execution or editing tools are denied". Jorah sets `tools.exec.mode: "full"`, so its runs count as Full Access. The upgrade alone doesn't close this path for Jorah; the deny below does, and it stays.
+
+**Checked on live, read-only** [measured 2026-11-19 17:35–17:45]:
+- `tools.deny` is `nodes`, `computer`, `gateway`; main denies only the three media tools. The `openclaw` tool isn't denied.
+- **Offered:** of 143 claude-cli request shapes in `~/.claude-jorah/projects`, 2 offered `mcp__openclaw__openclaw`: `jorah-dev` on 2026-11-17 19:21 and live `agent:main:main` on 2026-11-19 15:44 UTC. Both were the first turn of a new claude-cli session with a larger tool set (91 tools, also `secrets`, `plugins`, `terminal`, `conversations_send`). The other 141 had 61 or fewer, without it. `gateway` was absent from every set, so the global deny works on claude-cli.
+- **Never called:** 0 `tool_use` blocks for it in 150 transcripts, 0 rows for it in the guard's log (107 rows since 2026-11-13, including inner `tool_call` names), and no setup-agent or delegated-change line in the Gateway log since 2026-11-06. Every config change the Gateway detected since 2026-11-08 matches a recorded install.
+- **The guard** would block it as "isn't in Jorah's permission list yet": it sees the claude-cli tools (the 15:45 turn's calls are in its log) and unwraps `tool_call`.
+
+**Interim hardening** (Adam's yes 2026-11-19, "Yes, all three"): `config/pc/deny-openclaw.patch.json5` adds `openclaw` to the global `tools.deny` (dry run on live: 1 update validated; a made-up name validates too, so the effect is checked on `jorah-dev` and in the next request shapes), and `config/permission-matrix.json` names it in `blocked` (tests in `plugins/jorah-guard/test/advisory.test.js`). The patch hot-reloads; the guard reads the matrix at Gateway start, so that line takes effect at the next restart.
+
+**Target: 2026.10.33** (`extended-stable`, 2026-11-18). It is 2026.11.4 plus 37 commits [verified: GitHub compare API]. From 2026.10.9 that is about 5,600 commits either way, so it isn't a small step on the same line. The only alternatives are 2026.11.4, without the 37 maintenance fixes, and 2026.11.5, on a different and larger base. Gateway only: no Mac or iOS app release. Must move with it: `@openclaw/acpx` and `@openclaw/duckduckgo-plugin` 2026.10.33 (their `pluginApi` floor is now `>=2026.11.4`). acpx 2026.10.33 depends on `@agentclientprotocol/claude-agent-acp` 0.95.0 (2026-10-23); Jorah's own pinned adapter in `/opt/jorah-tools` (0.76.0) is separate and stays.
+
+**Release notes read** (2026.10.10, 11.1, 11.2, 11.3, 11.4, 10.33), for what touches Jorah:
+- **The fix:** delegated persistent changes need approval when authority is restricted or unverified; a revoked `autoApproveChanges` is rechecked. Full Access is unchanged (above).
+- **Plugin hooks:** a plugin may no longer change a trusted-approved tool call's arguments (no Jorah plugin does). MCP tool-policy hooks now get the trusted CLI requester, so claude-cli turns may log as `adam-typed` instead of `none`. Telegram `message_sending` hooks now get the session key, so the guard's link stripping uses the real chat instead of "unknown counts as tainted". Synchronous plugin SDK calls are deprecated until 2026-12-31.
+- **claude-cli:** global exec limits now apply when an agent has no override; sandboxed cron sessions can't select a host CLI that can't keep their isolation; warm CLI turns drop their MCP grants after reuse; first-turn stalls and cancelled-login locks fixed. **No note retires claude-cli live sessions or their MCP leases**, so the 6-hourly restart stays; measure the leak after the upgrade.
+- **Cron:** jobs keep their account and allowed tools; older jobs without a stored account get one from `doctor --fix`; skipped and interrupted runs fixed.
+- **Telegram:** button taps reach the agent as data; approval cards land in the right topic; more replies recover after restarts.
+- **Talk and voice:** Talk follows ordinary tool approvals; relay and first-reply fixes.
+- **Web fetch:** cleaner extraction; network results through Tool Search keep their untrusted label.
+- **Updates:** fixes recovery from migrations off 2026.10.7–2026.10.9; Gateway readiness now waits for the last startup work.
+
+### Exception to the 7-day rule (Adam's yes 2026-11-19, "Yes, all three")
+
+OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under CLAUDE.md, a security patch may skip the 7-day wait once its notes are read, with a written exception. This is that exception:
+- **Covers:** `openclaw@2026.10.33`, `@openclaw/acpx@2026.10.33`, `@openclaw/duckduckgo-plugin@2026.10.33`, and `@openclaw/ai@2026.10.33`, which they pin. Any other package in the installed trees published after 2026-11-12 is listed from the canary install and named here before the live install.
+- **Why:** a High advisory (CVSS 8.8) on a surface Jorah's main is offered. Plan 09 5.4 sets 48 hours for a critical or high advisory on an enabled surface.
+- **Checks instead of the wait:** the notes above; npm provenance (SLSA v1) and registry signatures on all three packages; tarball integrity `sha512-OMJvs7fS…V7IeQ==` (from the release page) compared with the registry; the canary on `jorah-dev` first.
+- **How:** `--min-release-age=0` on those install commands only. `/opt/node/etc/npmrc` keeps `min-release-age=7`.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

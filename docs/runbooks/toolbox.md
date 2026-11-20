@@ -4,8 +4,9 @@ Adam asked on 2026-11-17 that Jorah be able to use Fusion 360, a Cura slicer for
 tool, coding environments and web research, and preferably install and learn new tools himself.
 He approved this plan the same day. The decision is recorded in `docs/adr/0004-toolbox-installs-and-licences.md`.
 
-**State, 2026-11-18:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
-for main. See "Install record". Open: the end-to-end check (step 5) and Adam's slicer test.
+**State, 2026-11-20:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
+for main. See "Install record". Since 2026-11-20, GitHub release assets are looked up in code (see
+"GitHub lookup"). Open: the end-to-end check (step 5) and Adam's slicer test.
 
 Checked off the PC [measured 2026-11-18, in fresh `ubuntu:24.04` containers on the Mac; amd64
 under emulation for KiCad]:
@@ -379,6 +380,40 @@ lookups. A test right after a busy build session can hit the limit; Jorah then s
 If that keeps happening, a follow-up could sign the lookups with the jorah-github App's
 installation token (5,000 an hour). That is a build-session decision, because the token is a
 secret.
+
+**Deployed 2026-11-20, on Adam's yes typed in the build session ("Yes deploy it")**, with the
+coordinating session's go for the live Gateway:
+
+1. **Backup:** `/root/opt-jorah-pre-gh-lookup-2026-11-20.tgz` (77 entries): the four paths below
+   and the live `AGENTS.md`. Before it, all 65 files still matched `main` at `17e2da3`.
+2. **The non-Gateway part, 14:27 [measured]:**
+   - `scripts/pc/deploy_reviewed.py deploy packages/contracts/toolbox services/jorah-projects
+     docs/contracts/jorah-tool-v1.md` from `22ad9a1`: 50 files deployed and recorded;
+   - nothing group- or world-writable;
+   - as jorah, the deployed runner loads the contract, with `apply_github` and `check_request`.
+3. **The Gateway part, 14:35 [measured]:**
+   - `deploy_reviewed.py deploy plugins/jorah-projects`: 16 files recorded;
+   - the live `AGENTS.md` copied, after a check that it was still `main` at `17e2da3`: SHA-256
+     `7ba0dd0a…` equals `main`'s, `jorah:jorah 644`, backup `AGENTS.md.pre-gh-lookup`, recorded
+     with `record-live`;
+   - `/readyz` ready, then `systemctl start jorah-gateway-recycle.service`. The Gateway started at
+     14:35:35 ("ready after 25 s", `NRestarts` 0);
+   - `/readyz` at 14:36:29: `ready` true, `coreReady` true, `failing` [];
+   - the plugin list shows `jorah-projects` enabled, with no consent warning (the tool names didn't
+     change);
+   - the log shows "http server listening (16 plugins: ... jorah-projects ...)", no line from
+     `jorah-projects`, and the same warnings as at the 14:20 start.
+
+**Found while deploying, not caused by it:** the workspace `AGENTS.md` is 29,626 characters, and
+OpenClaw injects at most 20,000 per file. For `AGENTS.md` it keeps the first 9,000, a digest of
+short rule lines and the last 3,000. Of the toolbox section, Jorah gets steps 3 to 5 and the
+"Never" line. Step 2's opening ("you need only the version and the asset's URL ... leave `sha256`,
+`released` and `download_mb` out") falls outside, unless he reads the file. `toolbox_propose`'s
+own description says the same, so the lookup doesn't depend on it. Most of the Projects section is
+cut the same way. Fixing that is its own task: slim `AGENTS.md`, or raise
+`agents.defaults.bootstrapMaxChars` (live config, on Adam's yes).
+
+**Open:** Adam's Telegram test (step 5), and the slicer test.
 
 ## Undo
 

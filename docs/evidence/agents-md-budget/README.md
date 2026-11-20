@@ -53,3 +53,20 @@ canary install (`/home/jorah/.jorah-canary/2026.10.33`) the bootstrap chunk reso
 `bootstrapMaxChars: number().int().positive().optional()`, the docs name
 `agents.entries.*.bootstrapMaxChars`, and the exported resolver returns 40,000 for `main` from
 `{ agents: { entries: { main: { bootstrapMaxChars: 40000 } } } }`.
+
+## Deployed 2026-11-20 [measured]
+
+With the coordinating session's go for the live Gateway, from the main checkout at `2811987`:
+
+- 18:20 `deploy_reviewed.py deploy config/pc/bootstrap-limit.patch.json5`: 1 file deployed and
+  recorded. `/readyz` ready; dry run "1 update(s) validated"; applied 18:21:12 by hot reload;
+  `config get agents.entries.main.bootstrapMaxChars` = 40000; `/readyz` ready, failing [].
+- Live `AGENTS.md` was still `main`'s `7ba0dd0a…`; backup `AGENTS.md.pre-distill` (29,637 bytes);
+  new file `1feb4247…`, 25,410 bytes, `jorah:jorah 644`; recorded with `record-live`.
+- 18:21:32 `systemctl start jorah-gateway-recycle.service`: active 18:21:38, `NRestarts` 0;
+  `/readyz` ready, failing [].
+- Gateway log: 10 AGENTS.md truncation warnings today before the restart (last 18:14:37), 0 after
+  it, including the `agent:main:voice-warmup` turn that ran after the restart. One "WAL checkpoint
+  TRUNCATE remained busy" line at shutdown, as at the 08:20 and 14:20 recycles.
+
+Open: Adam's Telegram check (signed-in acceptance).

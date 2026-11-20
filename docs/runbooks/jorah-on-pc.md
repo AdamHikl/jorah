@@ -901,6 +901,7 @@ jorah `openclaw --profile jorah config patch --file /opt/jorah/config/pc/bootstr
 --dry-run` and without `--dry-run`; copy `workspace/AGENTS.md` to the live workspace (backup
 `AGENTS.md.pre-distill`) and `record-live` it; `/readyz` ready, then
 `systemctl start jorah-gateway-recycle.service` so new sessions get the whole file.
+**Deployed 2026-11-20 18:21** (restart 18:21:32, `/readyz` ready, 0 truncation warnings after it, 10 before; evidence file). Open: Adam's Telegram check.
 **Check:** the Gateway log since the restart has no "bootstrap file AGENTS.md is ... truncating"
 line. After the OpenClaw 2026.10.33 upgrade, check that line again.
 **Undo:** `openclaw --profile jorah config unset agents.entries.main.bootstrapMaxChars`, and copy

@@ -742,7 +742,19 @@ OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under C
 - **Why:** a High advisory (CVSS 8.8) on a surface Jorah's main is offered. Plan 09 5.4 sets 48 hours for a critical or high advisory on an enabled surface.
 - **Checks instead of the wait:** the notes above; npm provenance (SLSA v1) and registry signatures on all three packages; tarball integrity `sha512-OMJvs7fS…V7IeQ==` (from the release page) compared with the registry; the canary on `jorah-dev` first.
 - **How:** `--min-release-age=7 --min-release-age-exclude=openclaw --min-release-age-exclude=@openclaw/ai` on the install command, so only the named packages skip the wait. `/opt/node/etc/npmrc` keeps `min-release-age=7`. A first canary install with `--min-release-age=0` pulled 10 transitive packages under 7 days old and was redone this way.
-- **Still to decide (Adam):** `openclaw doctor --fix` updates the official plugins through OpenClaw's own installer. That installer always sets the npm release age to 0, so it ignores the 7-day rule. On the canary it brought in eight packages under 7 days old in the acpx tree: bare-buffer 3.7.3, bare-url 2.5.8, express-rate-limit 8.7.5, hono 4.13.19, jose 6.2.18, object-inspect 1.14.0, router 2.3.0 and standardwebhooks 1.3.0. Either add them to this exception or wait until about 2026-11-26. The deny below already closes the advisory's path in the meantime.
+- **Not covered: the eight fresh plugin dependencies (Adam's decision 2026-11-20, "Yes to all questions", relayed by the coordinating session).** `openclaw doctor --fix` updates the official plugins through OpenClaw's own installer. That installer always sets the npm release age to 0, so it ignores the 7-day rule. On the canary it brought in eight packages under 7 days old in the acpx tree: bare-buffer 3.7.3, bare-url 2.5.8, express-rate-limit 8.7.5, hono 4.13.19, jose 6.2.18, object-inspect 1.14.0, router 2.3.0 and standardwebhooks 1.3.0. This exception is **not** extended to them. Live is **not** upgraded until they are 7 days old: the last, express-rate-limit 8.7.5 (published 2026-11-18T23:02Z), reaches that at 2026-11-26 00:02 CET. The live deny below closes the advisory's path until then. No timer or schedule was created for this; the upgrade starts when Adam or a build session picks it up.
+
+### Before the live upgrade, on or after 2026-11-26
+
+All of these must be done first. The live upgrade then still needs its own preview, Adam's yes, and the coordinator's go.
+1. **Guard fix:** `jorah-guard` unwraps 10.33's `dispatch_action` (`{id, args}`, including a namespaced id) the same way it unwraps `tool_call`, with tests. guard-urls builds it, and it lands on `main`.
+2. **Canary again on `jorah-dev`:**
+   - with the fixed guard;
+   - list every package in the installed trees, including the ones `doctor --fix` pulls in, that is under 7 days old on that day;
+   - each one is either named in this exception on Adam's yes, or waited out;
+   - rerun the checks from the canary record below, plus the guard blocking a planted unseen URL and an allowed tool call going through `dispatch_action`.
+3. **Restore `jorah-dev`** from its backups when the canary is done.
+4. **Before the live config change**, wait until `/readyz` reports ready. See the incident below.
 
 ### Canary on `jorah-dev` (2026-11-19)
 

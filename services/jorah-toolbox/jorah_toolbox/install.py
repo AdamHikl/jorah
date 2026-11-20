@@ -234,9 +234,12 @@ class Installer:
         clash = sorted(set(m["commands"]) & set(taken))
         if clash:
             raise Refused(f"command {clash[0]} is already {taken[clash[0]]}'s")
-        need = int(m["installed_mb"] * 1.25 * 1048576) + self.s.min_free_bytes
-        if shutil.disk_usage(self.s.opt).free < need:
-            raise Refused(f"not enough free disk for {m['installed_mb']} MB plus the 20 GB reserve")
+        # Both sizes are limits (jorah-tool-v1 "Sizes"). Without a download size (a non-GitHub host
+        # that states none), the download is capped at UNSTATED_DOWNLOAD_MB and the unpacked limit is
+        # set from the bytes that came.
+        download_mb = m.get("download_mb") or self.tc.UNSTATED_DOWNLOAD_MB
+        installed_mb = m.get("installed_mb")
+        self._room(installed_mb * 1.25 if installed_mb else download_mb * 1.1 + 5, installed_mb or f"a download of up to {download_mb}")
 
         # The source's own record, where the installer can read one.
         release = fetch.github_release(m["url"], self.open_url, self.s.github_api)
@@ -262,9 +265,13 @@ class Installer:
             part.unlink()
         staging = Path(tempfile.mkdtemp(prefix=f"{pid}-", dir=Path(self.s.opt) / ".staging"))
         try:
-            max_bytes = int(m["download_mb"] * 1.1 * 1048576) + 5 * 1048576
+            max_bytes = self.tc.download_cap(download_mb)
             sha, size = fetch.download(m["url"], part, max_bytes, self.open_url)
             checks["downloadBytes"] = size
+            if installed_mb is None:
+                installed_mb = self.tc.installed_ceiling(m["format"], m["url"], max(1, -(-size // 1048576)))
+                checks["installedLimitMb"] = installed_mb
+                self._room(installed_mb * 1.25, installed_mb)
             if sha != m["sha256"]:
                 raise Refused(f"the download's SHA-256 is {sha[:16]}…, not the request's {m['sha256'][:16]}…")
             checks["sha256"] = "matches"
@@ -280,12 +287,14 @@ class Installer:
                 unpack.place_file(part, tool, next(iter(m["commands"].values())))
             total = unpack.harden(tool)
             checks["installedBytes"] = total
-            if total > m["installed_mb"] * 1.25 * 1048576 + 50 * 1048576:
-                raise Refused(f"unpacked it is {total // 1048576} MB, well over the request's {m['installed_mb']} MB")
+            if total > installed_mb * 1.25 * 1048576 + 50 * 1048576:
+                raise Refused(f"unpacked it is {total // 1048576} MB, well over the {installed_mb} MB limit")
             for cmd, rel in m["commands"].items():
                 real = unpack.inside(tool, rel)
                 if real is None:
-                    raise Refused(f"command {cmd}: {rel} isn't a file inside the tool")
+                    found = unpack.executables(tool)
+                    raise Refused(f"command {cmd}: {rel} isn't a file inside the tool"
+                                  + (f" (strip {m.get('strip', 0)}); executables in it: {', '.join(found)}" if found else ""))
                 if not os.stat(real).st_mode & 0o111:
                     os.chmod(real, 0o755)
             self._place(m, pid, tool, registry, checks)
@@ -295,6 +304,11 @@ class Installer:
                 part.unlink()
         result["status"] = "installed"
         return result
+
+    def _room(self, mb, what):
+        """Refuse unless `mb` megabytes fit on /opt beside the reserve."""
+        if shutil.disk_usage(self.s.opt).free < int(mb * 1048576) + self.s.min_free_bytes:
+            raise Refused(f"not enough free disk for {what} MB plus the 20 GB reserve")
 
     def _place(self, m, pid, tool, registry, checks):
         tools = Path(self.s.opt) / "tools" / m["name"]

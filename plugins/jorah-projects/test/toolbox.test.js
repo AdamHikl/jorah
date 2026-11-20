@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { register } from "../index.js";
-import { applyGithub, canonical, cardFields, checkManifest, checkRequest, digest, githubAsset, MISSING_HINT, olderRelease, proposalId } from "../lib/toolbox.js";
+import { applyGithub, canonical, cardFields, checkManifest, checkRequest, digest, fillSizes, githubAsset, installedCeiling, MISSING_HINT, olderRelease, proposalId, sizeText } from "../lib/toolbox.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = join(here, "..", "..", "..", "packages", "contracts", "toolbox", "examples");
@@ -208,13 +208,16 @@ test("contract: GitHub's record fills in hash, date and size alike in both langu
   const { request: r, release } = githubCase({});
   const out = applyGithub(r, release);
   assert.deepEqual(out.problems, []);
-  assert.deepEqual(Object.fromEntries(Object.keys(GH.filled).map((k) => [k, out.manifest[k]])), GH.filled);
   assert.deepEqual(out.record, GH.record);
-  assert.equal(digest(out.manifest), GH.digest, "the resolved request's digest must match Python's");
+  const sized = fillSizes(out.manifest);
+  assert.deepEqual(sized.filled, ["installed_mb"]);
+  assert.deepEqual(Object.fromEntries(Object.keys(GH.filled).map((k) => [k, sized.manifest[k]])), GH.filled);
+  assert.equal(digest(sized.manifest), GH.digest, "the resolved request's digest must match Python's");
+  assert.equal(cardFields(sized.manifest, "tb-x").size, GH.card_size);
   for (const c of GH.cases) {
     const { request: q, release: rel, today } = githubCase(c);
     const res = applyGithub(q, rel);
-    const problems = res.problems.length ? res.problems : checkManifest(res.manifest, today);
+    const problems = res.problems.length ? res.problems : checkManifest(fillSizes(res.manifest).manifest, today);
     if (c.problem === null) assert.deepEqual(problems, [], c.about);
     else assert.ok(problems.some((x) => x.includes(c.problem)), `${c.about}: ${JSON.stringify(problems)}`);
   }
@@ -232,13 +235,15 @@ test("toolbox_propose: a GitHub release asset gets GitHub's hash, date and size,
   assert.equal(r.id, `tb-${GH.digest.slice(0, 10)}`, "the id covers the values GitHub filled in");
   assert.equal(r.card.sha256, GH.filled.sha256.slice(0, 16));
   assert.equal(r.card.released, "2026-11-12");
-  assert.equal(r.card.size, "17 MB download, 55 MB installed");
+  assert.equal(r.card.size, GH.card_size);
+  assert.equal(r.card.size, "17 MB download, up to 102 MB installed");
+  assert.match(r.sizes, /a limit set from the download size, not a measurement/);
   assert.equal(r.github.immutable, true);
   assert.match(r.next, /GitHub marks immutable/);
   const saved = JSON.parse(readFileSync(join(fx.var, "proposals", `${r.id}.json`), "utf8"));
   assert.equal(saved.digest, GH.digest);
   assert.equal(saved.manifest.sha256, GH.filled.sha256);
-  assert.deepEqual({ ...saved.github, checkedAt: undefined }, { ...GH.record, checkedAt: undefined });
+  assert.deepEqual({ ...saved.github, checkedAt: undefined }, { ...GH.record, filled: [...GH.record.filled, "installed_mb"], checkedAt: undefined });
   assert.equal(saved.github.checkedAt, GH_NOW.toISOString());
 
   // Proposed again within 10 minutes: no second lookup. Then installed from the card as before.
@@ -314,4 +319,37 @@ test("toolbox_propose: a release too new is refused, naming the newest one old e
   assert.match(none.reason, /no published release/);
   assert.equal(none.older_release.tag, "0.13.8");
   assert.equal(gh.calls.filter((c) => c.url.endsWith("per_page=10")).length, 1, "the list is asked once in 10 minutes");
+});
+
+test("contract: size limits and the card's size line agree with Python", () => {
+  for (const c of EXPECTED.sizes.cases) {
+    const m = { kind: "archive", format: c.format, url: c.url };
+    if (c.download_mb !== null) {
+      m.download_mb = c.download_mb;
+      assert.equal(installedCeiling(c.format, c.url, c.download_mb), c.installed_mb, c.url);
+      assert.deepEqual(fillSizes(m), { manifest: { ...m, installed_mb: c.installed_mb }, filled: ["installed_mb"] });
+    } else {
+      assert.deepEqual(fillSizes(m), { manifest: m, filled: [] });
+    }
+    assert.equal(sizeText(m), c.card, c.url);
+  }
+  const uv = example("good", "uv.json");
+  assert.deepEqual(fillSizes(uv).filled, [], "Jorah's own installed_mb stays");
+  assert.ok(checkManifest({ ...uv, installed_mb: 20 }, EXPECTED.today).includes("installed_mb: less than the 21 MB download; leave installed_mb out and a limit is set from the download size"));
+});
+
+test("toolbox_propose: another host with no sizes is proposed without any lookup, sizes measured at install", async () => {
+  const fx = fixture();
+  const gh = fakeGithub({});
+  const call = load(fx, { fetch: gh });
+  const zig = example("good", "zig.json");
+  const r = await call("toolbox_propose", { manifest: zig });
+  assert.equal(r.status, "proposed", JSON.stringify(r));
+  assert.equal(gh.calls.length, 0, "nothing is fetched from a host Jorah chose before Adam's card");
+  assert.equal(r.id, proposalId(zig), "nothing filled in: the id is the request's own");
+  assert.equal(r.card.size, "up to 1024 MB download (measured at install), installed up to 16x it, min 64 MB");
+  assert.match(r.sizes, /the installer sets the unpacked limit from the download it measures/);
+  assert.equal(r.github, undefined);
+  const withDownload = await call("toolbox_propose", { manifest: { ...zig, download_mb: 55 } });
+  assert.equal(withDownload.card.size, "55 MB download, up to 880 MB installed");
 });

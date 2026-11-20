@@ -6,7 +6,8 @@ He approved this plan the same day. The decision is recorded in `docs/adr/0004-t
 
 **State, 2026-11-20:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
 for main. See "Install record". Since 2026-11-20, GitHub release assets are looked up in code (see
-"GitHub lookup"). Open: the end-to-end check (step 5) and Adam's slicer test.
+"GitHub lookup"), and sizes are limits set in code, not Jorah's estimates (see "Sizes in code").
+Open: deploying "Sizes in code", the end-to-end check (step 5) and Adam's slicer test.
 
 Checked off the PC [measured 2026-11-18, in fresh `ubuntu:24.04` containers on the Mac; amd64
 under emulation for KiCad]:
@@ -42,7 +43,8 @@ Not checked: anything on the PC, inside Claude Code's sandbox, or through the Ga
 Jorah: toolbox_propose, or a run writes ~/work/.toolbox/requests/<name>.json
    |   (contract jorah-tool-v1, docs/contracts/jorah-tool-v1.md; checked by the plugin or the runner)
    |   GitHub release asset: the plugin or the runner asks api.github.com for the release and fills
-   |   in sha256, released and download_mb from GitHub's answer (Jorah gives version + URL only)
+   |   in sha256, released and download_mb from GitHub's answer (Jorah gives version + URL only);
+   |   installed_mb is set as a limit from the download size (fill_sizes); no other host is asked
    v
 /var/lib/jorah-toolbox/proposals/<id>.json           toolbox_list shows it waiting for a card
    |
@@ -206,13 +208,14 @@ Expected:
    URL. He doesn't look for a checksum page and doesn't ask you to paste anything. If his first
    pick is under 7 days old, `toolbox_propose` refuses it and names the newest release old enough;
    he proposes that one. On 2026-11-19 that is **0.13.8** (0.13.9 came out on 2026-11-17).
-2. He says its version, the licence (Apache-2.0 OR MIT), about 17 MB, that it runs offline, and
-   that the hash and date are GitHub's own record of the release, which GitHub marks immutable.
+2. He says its version, the licence (Apache-2.0 OR MIT), 17 MB download and up to 102 MB
+   installed, that it runs offline, and that the hash and date are GitHub's own record of the
+   release, which GitHub marks immutable. He doesn't ask you for a size or offer to measure one.
    Then a card titled "Jorah wants to install a tool (runs offline, read-only to him)" with:
    - `source: https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz`;
    - `sha256: 5acfd9177cfecf0b` (the first 16 digits of GitHub's digest);
    - `released: 2026-11-12`;
-   - `size: 17 MB download, <his figure> MB installed`;
+   - `size: 17 MB download, up to 102 MB installed`;
    - id, name `uv`, version `0.13.8`, licence.
 3. Tap Allow. Within a minute, `toolbox_list` (ask "what's in your toolbox?") shows uv installed.
 4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
@@ -220,6 +223,20 @@ Expected:
 
 If anything fails, `toolbox_list` says why. Copy that line to the build session. If Jorah says
 GitHub's hourly limit is used up, ask again after the time he gives.
+
+**5b. A tool from another host**, in the same chat:
+
+> Jorah, add Zig 0.17.1 from ziglang.org to your toolbox. Show me the card.
+
+Expected: he takes the SHA-256 and the release date from ziglang.org's own download page, gives no
+sizes, and proposes it without asking you for anything. The card shows
+`source: https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz`,
+`sha256: 3581863e3cbcfd0f`, `released: 2026-11-02` and
+`size: up to 1024 MB download (measured at install), installed up to 16x it, min 64 MB`. If he
+gives `download_mb` because the page states it (55), the size reads
+`55 MB download, up to 880 MB installed`. Tap Allow only if you want Zig. Otherwise say no; the
+proposal stays inert. After an Allow, the result's `installedLimitMb` is the ceiling set from the
+bytes that came.
 
 **6. Ubuntu packages** (only when Jorah asks for one, for example Java for an autorouter). After
 the card, Jorah shows the command. From the Mac:
@@ -254,7 +271,8 @@ What should happen:
    Linux AppImage), the release is at least 7 days old, and the hash and date come from GitHub's
    record of it, as for uv. Jorah doesn't hunt for a checksum file; slicers often publish none. If
    GitHub holds no digest for that release (an old one), Jorah says so and needs the publisher's
-   own checksum; pick a newer release instead if there is one. Tap Allow.
+   own checksum; pick a newer release instead if there is one. The size reads
+   `<n> MB download, up to <6n> MB installed` for an AppImage: a limit, not his estimate. Tap Allow.
 3. If the slicer's smoke test shows a missing system library, Jorah proposes the Ubuntu package (a
    second card) and shows the root command for step 6.
 4. Within about an hour Jorah reports from `toolbox_list` and his notes:
@@ -416,6 +434,39 @@ Done 2026-11-20 with both: `docs/runbooks/jorah-on-pc.md`, "AGENTS.md whole in J
 
 **Open:** Adam's Telegram test (step 5), and the slicer test.
 
+## Sizes in code, 2026-11-20
+
+Adam's uv test after the GitHub lookup stopped at the card: `installed_mb` was required for every
+archive, uv's pages don't state it, and Jorah rightly wouldn't estimate it. Adam: "yes, fix it,
+also fix it for other things".
+
+Every field Jorah supplies, and where it comes from now:
+
+| Field | Now | Why |
+|---|---|---|
+| `installed_mb` | **code**: a ceiling, download size x a factor by format (contract "Sizes"), min 64 MB; the card says "up to" | The installer uses it only as a limit (disk check, unpack cap). The factor is from 14 real releases: 4x would have refused helix, Node and Zig, whose xz tarballs grow 6.5x to 12.8x |
+| `download_mb`, GitHub asset | **code**: GitHub's asset size (since 2026-11-19) | |
+| `download_mb`, other hosts | **installer**: optional; measured at download, capped at 1024 MB, card says "measured at install" | Asking the host at proposal time would send a request to a host Jorah chose before Adam's card, outside the guard's URL checks. The installer downloads after the card anyway |
+| `commands` paths and `strip` | **still Jorah's**, but a wrong path now fails with the archive's executables listed (sanitized, at most 8) | Publishers rarely document the layout. Listing it would mean downloading before the card; the refusal costs one new card |
+| `sha256`, other hosts | **publisher only**, unchanged | The hash is the trust anchor; nothing is weakened |
+| `released`, other hosts | **publisher only**, unchanged | The 7-day rule rests on it, and no host but GitHub gives a date code can read before the card |
+| `licence`, `licence_source` | **publisher only**, unchanged | GitHub's detected licence is a heuristic, and the card's licence is what Adam accepts |
+| `format` | Jorah's, from the file name | The file name states it; a wrong one fails at unpack, before anything is placed |
+| `smoke`, `smoke_expect`, `purpose`, `title`, `homepage`, `release_page`, `name`, `version` | Jorah's | His own words or the release page's; nothing to guess |
+| apt `download_mb`, `installed_mb` | optional, unchanged | apt shows them at the root command |
+
+Also fixed: main's `AGENTS.md` (step 3) and `toolbox_propose`'s description pointed Jorah at
+`/opt/jorah/docs/contracts/jorah-tool-v1.md`. Main can't read it: `tools.fs.workspaceOnly` is
+true and his sandbox mounts only `/home/jorah/workspace` (checked read-only on the PC,
+2026-11-20). The description now lists every field. Project runs bind `/` read-only, so the
+runner's pointers to the file stay.
+
+Deploy (not yet done): `packages/contracts/toolbox`, `services/jorah-toolbox`,
+`services/jorah-projects` and `docs/contracts` (no Gateway), then `plugins/jorah-projects` and the
+live `AGENTS.md` (Gateway recycle). The plugin, runner and installer need the new `toolcheck.py`
+together. A proposal written before the deploy and approved after it is refused ("the card's
+fields don't match ... size"): Jorah proposes it again.
+
 ## Undo
 
 - **Toolbox:**
@@ -440,8 +491,12 @@ Done 2026-11-20 with both: `docs/runbooks/jorah-on-pc.md`, "AGENTS.md whole in J
   HH:MM UTC": the PC's address used its 60 unauthenticated lookups for the hour. Ask again after
   that time. "GitHub's API didn't answer": the network or the firewall (see "GitHub lookup" below).
 - `GitHub has no published release ...`: the tag in the URL is wrong, or the release is a draft.
-- `command X: Y isn't a file inside the tool`: the path in `commands` is wrong. The installer
-  removed what it had unpacked.
+- `command X: Y isn't a file inside the tool (strip N); executables in it: ...`: the path in
+  `commands` or `strip` is wrong. The installer removed what it had unpacked; Jorah proposes again
+  with one of the paths it names (a new card).
+- `unpacked it is N MB, well over the M MB limit`: the tool grows more than its format's factor
+  (see the contract's "Sizes"). Jorah proposes again with `installed_mb` set to N, which the new
+  card shows.
 - The smoke test failed with a missing `lib*.so`: the tool needs an Ubuntu package (step 6).
 - Notes don't get committed: `~/work/.toolbox` must stay a plain git repo on `main` with no extra
   git config. The runner's record names the problem.

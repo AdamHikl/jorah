@@ -13,6 +13,11 @@ GitHub release assets: a request whose `url` is one may leave out `sha256`, `rel
 `download_mb`. Whoever turns the request into a proposal (the plugin, the runner) asks GitHub's API
 for the release (`github_asset`), and `apply_github` fills them in from GitHub's answer, or refuses
 the request when Jorah's own values differ. No network here: the callers fetch.
+
+Sizes are limits the installer enforces, not claims. Any archive may leave out `installed_mb`:
+`fill_sizes` sets it to a ceiling from the download size and the archive's compression
+(`unpack_factor`). A non-GitHub archive may leave out `download_mb` too: the installer then caps the
+download at UNSTATED_DOWNLOAD_MB and sets the unpacked ceiling from the bytes it got.
 """
 
 import hashlib
@@ -31,6 +36,8 @@ MAX_INSTALLED_MB = 16384
 MAX_URL = 150  # the card shows the source in full: guard lines are cut at 160 characters
 MAX_LICENCE = 60
 MAX_BYTES = 64 * 1024  # a request or proposal file over this is refused unread
+UNSTATED_DOWNLOAD_MB = 1024  # the download cap when a non-GitHub request gives no download_mb
+SIZE_FLOOR_MB = 64  # the smallest unpacked ceiling filled in for a compressed archive
 
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_~-]{0,29}$")
@@ -52,7 +59,7 @@ COMMON = {
     "licence": True, "licence_source": True, "released": True, "release_page": True, "sandbox": True, "smoke": True,
     "for_project": False, "smoke_expect": False,
 }
-ARCHIVE = {"url": True, "sha256": True, "format": True, "download_mb": True, "installed_mb": True, "commands": True,
+ARCHIVE = {"url": True, "sha256": True, "format": True, "download_mb": False, "installed_mb": False, "commands": True,
            "strip": False, "env": False}
 APT = {"packages": True, "download_mb": False, "installed_mb": False}
 
@@ -172,9 +179,11 @@ def check(m, today=None, *, filled_later=()):
             problems.append("sha256: 64 lower-case hex digits, from the publisher's checksum")
         if m["format"] not in FORMATS:
             problems.append(f"format: must be one of {', '.join(FORMATS)}")
-        if "download_mb" in m:
-            _number(problems, m, "download_mb", MAX_DOWNLOAD_MB)
-        _number(problems, m, "installed_mb", MAX_INSTALLED_MB)
+        given = [_number(problems, m, key, high) for key, high in (("download_mb", MAX_DOWNLOAD_MB), ("installed_mb", MAX_INSTALLED_MB))
+                 if key in m]
+        if len(given) == 2 and None not in given and given[1] < given[0]:
+            problems.append(f"installed_mb: less than the {given[0]} MB download; leave installed_mb out and a limit "
+                            "is set from the download size")
         strip = m.get("strip", 0)
         if not isinstance(strip, int) or isinstance(strip, bool) or not 0 <= strip <= 3:
             problems.append("strip: a whole number from 0 to 3")
@@ -343,9 +352,42 @@ def apply_github(m, release):
             record["filled"].append("download_mb")
         elif isinstance(given, int) and not isinstance(given, bool) and (size > download_cap(given) or abs(given - size / MIB) > max(3, size / MIB / 4)):
             problems.append(f"download_mb: GitHub says {name[:80]} is {size} bytes; use {need}, or leave download_mb out")
-    elif "download_mb" not in m:
-        problems.append(f"download_mb: GitHub gives no size for {name[:80]}: give download_mb")
     return out, record, problems
+
+
+# ---- sizes -------------------------------------------------------------------------------------
+# How many times its download an archive may grow when unpacked. Measured 2026-11-20 on 14 real
+# Linux releases (docs/contracts/jorah-tool-v1.md, "Sizes"): zip at most 2.3x, AppImage 3.2x,
+# gzip tar 3.5x, xz tar 12.8x (helix: its grammars compress well). Each factor leaves room above
+# the largest seen; the installer also allows 25% and 50 MB over the ceiling.
+
+def unpack_factor(fmt, url):
+    if fmt == "file":
+        return 1
+    if fmt == "zip":
+        return 4
+    if fmt == "appimage":
+        return 6
+    path = url.split("#")[0].split("?")[0].lower() if isinstance(url, str) else ""
+    return 6 if path.endswith((".tar.gz", ".tgz")) else 16
+
+
+def installed_ceiling(fmt, url, download_mb):
+    """The unpacked ceiling, in whole MB, for an archive of `download_mb`."""
+    factor = unpack_factor(fmt, url)
+    mb = download_mb * factor
+    return min(MAX_INSTALLED_MB, mb if factor == 1 else max(SIZE_FLOOR_MB, mb))
+
+
+def fill_sizes(m):
+    """(manifest, filled): for an archive with a download size and no `installed_mb`, a copy with
+    `installed_mb` set to `installed_ceiling`. Run after `apply_github`, before `check`."""
+    if not isinstance(m, dict) or m.get("kind") != "archive" or "installed_mb" in m:
+        return m, []
+    download_mb = m.get("download_mb")
+    if not isinstance(download_mb, int) or isinstance(download_mb, bool) or not 1 <= download_mb <= MAX_DOWNLOAD_MB:
+        return m, []
+    return {**m, "installed_mb": installed_ceiling(m.get("format"), m.get("url"), download_mb)}, ["installed_mb"]
 
 
 TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_~-]{0,59}$")
@@ -403,10 +445,22 @@ def source_text(m):
 
 
 def size_text(m):
-    if m.get("download_mb") is None and m.get("installed_mb") is None:
-        return "not given (apt shows it before installing)"
-    fmt = lambda v: "?" if v is None else f"{v:g}"  # noqa: E731
-    return f"{fmt(m.get('download_mb'))} MB download, {fmt(m.get('installed_mb'))} MB installed"
+    """The card's size line. For an archive both numbers are limits the installer enforces."""
+    download, installed = m.get("download_mb"), m.get("installed_mb")
+    if m.get("kind") != "archive":
+        if download is None and installed is None:
+            return "not given (apt shows it before installing)"
+        fmt = lambda v: "?" if v is None else f"{v:g}"  # noqa: E731
+        return f"{fmt(download)} MB download, {fmt(installed)} MB installed"
+    if download is None:
+        first = f"up to {UNSTATED_DOWNLOAD_MB} MB download (measured at install)"
+        if installed is not None:
+            return f"{first}, up to {installed} MB installed"
+        factor = unpack_factor(m.get("format"), m.get("url"))
+        return f"{first}, installed " + (f"up to {factor}x it, min {SIZE_FLOOR_MB} MB" if factor > 1 else "the same")
+    if installed is None:
+        installed = installed_ceiling(m.get("format"), m.get("url"), download)
+    return f"{download} MB download, up to {installed} MB installed"
 
 
 def card_fields(m, proposal):

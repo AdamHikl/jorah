@@ -19,6 +19,9 @@
 // only they write the installer's queue. For a GitHub release asset, toolbox_propose asks GitHub's
 // API for the release itself (api.github.com only, a fixed path built from the URL) and takes the
 // hash, the date and the size from GitHub's answer, so Jorah never has to find a checksum page.
+// The unpacked size is a ceiling set from the download size (fillSizes), never Jorah's estimate. No
+// other host is contacted before Adam's card: a request to a host Jorah chose would skip the guard's
+// URL checks, so a non-GitHub download's size is measured by the installer instead.
 // Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
 
 import { randomBytes } from "node:crypto";
@@ -30,7 +33,7 @@ import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
 import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUESTION, MAX_WORDS } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
-import { applyGithub, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
+import { applyGithub, fillSizes, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
   readProposal, readToolbox, writeFresh } from "./lib/toolbox.js";
 import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
@@ -708,14 +711,14 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
     const found = olderRelease(got.release, where, today());
     if (!found) return { older_release: `none: no full release in GitHub's latest 10 is ${MIN_AGE_DAYS} days old` };
     return { older_release: { ...found, next: found.url
-      ? "Propose it again with this version and url, and the version in release_page and smoke_expect; leave sha256, released and download_mb out."
+      ? "Propose it again with this version and url, and the version in release_page and smoke_expect; leave sha256, released, download_mb and installed_mb out."
       : "That release has no asset named like yours: find its asset for x86_64 Linux on its release page." } };
   };
 
   api.registerTool({
     name: "toolbox_propose",
     label: "Propose a tool for the toolbox",
-    description: "Propose one tool for Jorah's toolbox, as a request in contract jorah-tool-v1 (/opt/jorah/docs/contracts/jorah-tool-v1.md): name, version released at least 7 days ago, the download URL (or Ubuntu packages), licence and where it's stated, installed size, the commands it adds, a smoke-test command, purpose (what you will do with it; the learning run's task) and sandbox {network: []} (tools run offline). For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256, the release date and the download size. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
+    description: "Propose one tool for Jorah's toolbox. manifest, contract jorah-tool-v1: contract \"jorah-tool-v1\"; name (lower-case, dashes); title; version (released at least 7 days ago); kind \"archive\" or \"apt\"; purpose (what you will do with it, a sentence Adam can read; the learning run's task); homepage; release_page; licence (SPDX if there is one) and licence_source (the publisher's page stating it); released (YYYY-MM-DD); sandbox {\"network\": []} (tools run offline); smoke (a command line as a list, starting with one of its commands, e.g. [\"uv\", \"--version\"]); optional smoke_expect (text its output contains) and for_project. An archive also has url (https, the x86_64 Linux file), sha256 (the publisher's checksum), format (tar, zip, appimage or file), commands ({command: path inside the archive}), optional strip (leading folders to drop, 0-3) and env. An apt request has packages (Ubuntu package names) instead. Never estimate sizes: leave installed_mb out and a limit is set from the download size. For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) also leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256 and release date; give download_mb only if the publisher states it, otherwise the installer measures it (up to 1024 MB). A refusal names each field to fix. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
     parameters: { type: "object", additionalProperties: false, required: ["manifest"], properties: { manifest: { type: "object", description: "The jorah-tool-v1 request" } } },
     async execute(id, p) {
       if (frozen(s.guardStateDir)) return refuse("Jorah is frozen (/jorah-freeze), so no tool is proposed until Adam clears it");
@@ -736,8 +739,14 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         if (r.problems.length) return refuse("GitHub's record of the release doesn't fit the request", { problems: r.problems, ...(await older(where, r.problems)) });
         m = r.manifest;
         github = { ...r.record, checkedAt: got.at };
-        problems = checkManifest(m, today());
-        if (problems.length) return refuse("with GitHub's values filled in, the request doesn't pass jorah-tool-v1", { problems, ...(await older(where, problems)) });
+      }
+      const sized = fillSizes(m);
+      m = sized.manifest;
+      if (github) github.filled.push(...sized.filled);
+      problems = checkManifest(m, today());
+      if (problems.length) {
+        return refuse(`with ${github ? "GitHub's values and " : ""}the size limit filled in, the request doesn't pass jorah-tool-v1`,
+          { problems, ...(where ? await older(where, problems) : {}) });
       }
       const pid = proposalId(m);
       const fields = cardFields(m, pid);
@@ -749,12 +758,17 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       } catch (e) {
         return unavailable(`the proposal couldn't be written: ${firstLine(e)}`);
       }
+      const limits = m.kind === "archive" ? {
+        sizes: `${sized.filled.length ? "installed_mb is a limit set from the download size, not a measurement"
+          : "installed_mb" in m ? "installed_mb is the one you gave, enforced as a limit"
+            : "the installer sets the unpacked limit from the download it measures"}. Both sizes are limits the installer enforces: tell Adam the size as the card says it.`,
+      } : {};
       const fromGithub = github ? {
         github: { filled_in: github.filled, published_at: github.publishedAt, asset_bytes: github.assetBytes, digest: github.digest ? "GitHub's own" : "none on GitHub: the hash is the one you gave",
           immutable: github.immutable },
       } : {};
       return reply({
-        status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub,
+        status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub, ...limits,
         next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} When he says yes, call toolbox_install with exactly these card fields.`,
       });
     },

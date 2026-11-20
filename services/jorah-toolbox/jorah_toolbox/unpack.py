@@ -12,6 +12,7 @@ write bits for others are cleared, and the size is counted.
 """
 
 import os
+import re
 import shutil
 import stat
 import struct
@@ -23,6 +24,9 @@ from pathlib import Path, PurePosixPath
 
 class UnpackError(RuntimeError):
     pass
+
+
+RELPART = re.compile(r"^[A-Za-z0-9_+@-][A-Za-z0-9._+@-]{0,99}$")  # jorah-tool-v1's path parts
 
 
 def _stripped(name, strip):
@@ -144,6 +148,25 @@ def harden(root):
                 os.chmod(path, 0o755)
     os.chmod(root, 0o755)
     return total
+
+
+def executables(root, limit=8):
+    """Up to `limit` executable files under `root`, as plain relative paths (names that couldn't go in
+    a request's commands are left out), shallowest first: what a refusal names so the request can
+    be fixed without guessing the archive's layout."""
+    root = Path(root)
+    found = []
+    for here, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(here, name)
+            info = os.lstat(path)
+            rel = os.path.relpath(path, root)
+            if stat.S_ISREG(info.st_mode) and info.st_mode & 0o111 and len(rel) <= 120 and \
+                    all(RELPART.match(p) and p not in (".", "..") for p in rel.split(os.sep)):
+                found.append(rel)
+    found.sort(key=lambda r: (r.count(os.sep), r))
+    return found[:limit]
 
 
 def inside(root, rel):

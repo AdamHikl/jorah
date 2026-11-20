@@ -1,5 +1,5 @@
 {
-  "_about": "Each bad example and a piece of the problem it must be refused for, checked by the Python and the JavaScript tests with today = 2026-11-17. Good examples are illustrative apart from uv.json, whose hash and date are GitHub's for uv 0.9.18; the all-zero hashes aren't real. `digests`: the SHA-256 of each good example's canonical JSON, which both languages must compute alike. `github`: a request for a GitHub release asset without sha256, released and download_mb, GitHub's answer for that release (trimmed from GET https://api.github.com/repos/astral-sh/uv/releases/tags/0.13.8, 2026-11-19), what apply_github must fill in, and cases: changes to the request, the release or the asset, and a piece of the problem expected (null: none).",
+  "_about": "Each bad example and a piece of the problem it must be refused for, checked by the Python and the JavaScript tests with today = 2026-11-17. Good examples are illustrative apart from uv.json, whose hash and date are GitHub's for uv 0.9.18, and zig.json, whose hash, date and URL are ziglang.org's for 0.17.1 (a non-GitHub host, with no sizes given); the all-zero hashes aren't real. `digests`: the SHA-256 of each good example's canonical JSON, which both languages must compute alike. `github`: a request for a GitHub release asset without sha256, released, download_mb and installed_mb, GitHub's answer for that release (trimmed from GET https://api.github.com/repos/astral-sh/uv/releases/tags/0.13.8, 2026-11-19), what apply_github must fill in, and cases: changes to the request, the release or the asset, and a piece of the problem expected (null: none).",
   "today": "2026-11-17",
   "bad": {
     "address-not-host.json": "url: must name a public host",
@@ -22,7 +22,8 @@
   "digests": {
     "java.json": "cf0bd671769efbf9a774d7d81dcf981be9f8d290cb49aac6e612bf96a4e30d2d",
     "orca-slicer.json": "257f5445b79d0885b42bb2e5433438a5a6a1a152806dad91908f74d118e74650",
-    "uv.json": "e247d2ecef24fc0d71990e277c64ca4ac5ca7becb4f880093b22aeb678849632"
+    "uv.json": "e247d2ecef24fc0d71990e277c64ca4ac5ca7becb4f880093b22aeb678849632",
+    "zig.json": "58f2dcd62dfb5d2a3997eb66298090910409ffcfc1ace165c955c6aa92ab26ff"
   },
   "github": {
     "request": "uv-0.13.8-request.json",
@@ -32,7 +33,8 @@
     "filled": {
       "sha256": "5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91",
       "released": "2026-11-12",
-      "download_mb": 17
+      "download_mb": 17,
+      "installed_mb": 102
     },
     "record": {
       "tag": "0.13.8",
@@ -47,7 +49,7 @@
         "download_mb"
       ]
     },
-    "digest": "1746559f96719ba412017958be031010a2f5c63b65676b739182873810106f77",
+    "digest": "f8f91b2a9ed44060f2f9c4777362884b4fa2c460786f596d3b9676c50231fda4",
     "cases": [
       {
         "about": "Jorah's date differs from GitHub's",
@@ -128,6 +130,20 @@
         "about": "too new by GitHub's date",
         "today": "2026-11-17",
         "problem": "released: 2026-11-12 is less than 7 days ago"
+      },
+      {
+        "about": "an installed size Jorah gives below the download",
+        "request": {
+          "installed_mb": 10
+        },
+        "problem": "installed_mb: less than the 17 MB download"
+      },
+      {
+        "about": "an installed size Jorah gives above it is kept as his limit",
+        "request": {
+          "installed_mb": 55
+        },
+        "problem": null
       }
     ],
     "older": {
@@ -228,6 +244,75 @@
           "url": "https://github.com/SoftFever/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_V2.3.1.AppImage"
         }
       }
-    }
+    },
+    "card_size": "17 MB download, up to 102 MB installed"
+  },
+  "sizes": {
+    "_about": "installed_ceiling (installed_mb filled in for a download of download_mb, by format and the URL's compression) and size_text (the card's size line), alike in both languages. download_mb null: a non-GitHub request without a download size, measured by the installer.",
+    "cases": [
+      {
+        "format": "tar",
+        "url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "download_mb": 17,
+        "installed_mb": 102,
+        "card": "17 MB download, up to 102 MB installed"
+      },
+      {
+        "format": "tar",
+        "url": "https://example.org/a.TGZ",
+        "download_mb": 2,
+        "installed_mb": 64,
+        "card": "2 MB download, up to 64 MB installed"
+      },
+      {
+        "format": "tar",
+        "url": "https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz",
+        "download_mb": 55,
+        "installed_mb": 880,
+        "card": "55 MB download, up to 880 MB installed"
+      },
+      {
+        "format": "tar",
+        "url": "https://example.org/big.tar.zst?x=1",
+        "download_mb": 2000,
+        "installed_mb": 16384,
+        "card": "2000 MB download, up to 16384 MB installed"
+      },
+      {
+        "format": "zip",
+        "url": "https://example.org/deno.zip",
+        "download_mb": 40,
+        "installed_mb": 160,
+        "card": "40 MB download, up to 160 MB installed"
+      },
+      {
+        "format": "appimage",
+        "url": "https://example.org/orca.AppImage",
+        "download_mb": 110,
+        "installed_mb": 660,
+        "card": "110 MB download, up to 660 MB installed"
+      },
+      {
+        "format": "file",
+        "url": "https://example.org/tool",
+        "download_mb": 3,
+        "installed_mb": 3,
+        "card": "3 MB download, up to 3 MB installed"
+      },
+      {
+        "format": "tar",
+        "url": "https://example.org/a.tar.xz",
+        "download_mb": null,
+        "installed_mb": null,
+        "card": "up to 1024 MB download (measured at install), installed up to 16x it, min 64 MB"
+      },
+      {
+        "format": "file",
+        "url": "https://example.org/tool",
+        "download_mb": null,
+        "installed_mb": null,
+        "card": "up to 1024 MB download (measured at install), installed the same"
+      }
+    ]
   }
 }

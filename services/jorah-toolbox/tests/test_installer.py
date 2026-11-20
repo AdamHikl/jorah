@@ -238,6 +238,36 @@ class Archives(World):
         [result] = self.installer().run_queue()
         self.assertIn("command uvw", result["error"])
         self.assertFalse((self.opt / "bin/uv").exists())
+        self.assertIn("executables in it: uv, uvx", result["error"], "what's there, so the request can be fixed")
+
+    def test_a_wrong_strip_names_the_paths_that_are_there(self):
+        self.m["strip"] = 0
+        self.approve()
+        [result] = self.installer().run_queue()
+        self.assertIn("command uv: uv isn't a file inside the tool (strip 0); executables in it: uv-x86_64/uv, uv-x86_64/uvx",
+                      result["error"])
+
+    def test_another_host_without_sizes_is_measured_at_install(self):
+        url = "https://downloads.example.org/uv-0.9.18.tar.gz"
+        self.m["url"] = url
+        del self.m["download_mb"], self.m["installed_mb"]
+        self.net.pages[url] = self.tar
+        self.approve()
+        [result] = self.installer().run_queue()
+        self.assertEqual(result["status"], "installed", result["error"])
+        self.assertEqual(result["checks"]["downloadBytes"], len(self.tar))
+        self.assertEqual(result["checks"]["installedLimitMb"], 64, "the floor, for a tiny gzip tarball")
+
+    def test_without_a_stated_size_the_disk_must_hold_the_capped_download(self):
+        url = "https://downloads.example.org/uv-0.9.18.tar.gz"
+        self.m["url"] = url
+        del self.m["download_mb"], self.m["installed_mb"]
+        self.net.pages[url] = self.tar
+        self.settings.min_free_bytes = 1 << 62
+        self.approve()
+        [result] = self.installer().run_queue()
+        self.assertIn("not enough free disk for a download of up to 1024 MB", result["error"])
+        self.assertEqual(self.net.asked, [], "the disk is checked before anything is fetched")
 
     def test_a_command_another_tool_has_is_refused(self):
         (self.opt / "installed.json").write_text(json.dumps({"v": 1, "tools": {"astral": {"commands": ["uvx"], "version": "1"}}}))

@@ -1,6 +1,7 @@
 """Contract jorah-tool-v1: the checker takes the good examples and refuses each bad one for its reason."""
 
 import json
+import math
 import sys
 import unittest
 from datetime import date
@@ -77,7 +78,7 @@ class Rules(unittest.TestCase):
         f = toolcheck.card_fields(self.m, "tb-0123456789")
         self.assertEqual(f["source"], self.m["url"])
         self.assertEqual(f["sha256"], "c2def3db178ade63")
-        self.assertEqual(f["size"], "21 MB download, 55 MB installed")
+        self.assertEqual(f["size"], "21 MB download, up to 55 MB installed")
         apt = toolcheck.card_fields(load("good", "java.json"), "tb-x")
         self.assertEqual(apt["source"], "Ubuntu archive: openjdk-21-jre-headless")
 
@@ -88,10 +89,6 @@ class Rules(unittest.TestCase):
         with self.assertRaises(ValueError):
             toolcheck.load_file(handle.name)
         Path(handle.name).unlink()
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 GH = EXPECTED["github"]
@@ -135,10 +132,13 @@ class GitHubLookup(unittest.TestCase):
         request, release, today = github_case({})
         m, record, problems = toolcheck.apply_github(request, release)
         self.assertEqual(problems, [])
-        self.assertEqual({k: m[k] for k in GH["filled"]}, GH["filled"])
         self.assertEqual(record, GH["record"])
+        m, filled = toolcheck.fill_sizes(m)
+        self.assertEqual(filled, ["installed_mb"])
+        self.assertEqual({k: m[k] for k in GH["filled"]}, GH["filled"])
         self.assertEqual(toolcheck.check(m, today), [])
         self.assertEqual(toolcheck.digest(m), GH["digest"])
+        self.assertEqual(toolcheck.card_fields(m, "tb-x")["size"], GH["card_size"])
         self.assertNotIn("sha256", request, "the request itself is left alone")
 
     def test_every_case(self):
@@ -146,7 +146,7 @@ class GitHubLookup(unittest.TestCase):
             with self.subTest(case["about"]):
                 request, release, today = github_case(case)
                 m, _record, problems = toolcheck.apply_github(request, release)
-                problems = problems or toolcheck.check(m, today)
+                problems = problems or toolcheck.check(toolcheck.fill_sizes(m)[0], today)
                 if case["problem"] is None:
                     self.assertEqual(problems, [])
                 else:
@@ -160,3 +160,44 @@ class GitHubLookup(unittest.TestCase):
         self.assertEqual(toolcheck.older_release(v["list"], toolcheck.github_asset(v["url"]), today), v["expect"])
         self.assertIsNone(toolcheck.older_release(older["list"][:2], toolcheck.github_asset(older["url"]), today))
         self.assertEqual(toolcheck.github_asset(older["url"])["list"], "/repos/astral-sh/uv/releases?per_page=10")
+
+
+class Sizes(unittest.TestCase):
+    def test_ceilings_and_card_lines_match_the_examples(self):
+        for case in EXPECTED["sizes"]["cases"]:
+            with self.subTest(case["url"]):
+                m = {"kind": "archive", "format": case["format"], "url": case["url"]}
+                if case["download_mb"] is not None:
+                    m["download_mb"] = case["download_mb"]
+                    self.assertEqual(toolcheck.installed_ceiling(case["format"], case["url"], case["download_mb"]), case["installed_mb"])
+                    filled, keys = toolcheck.fill_sizes(m)
+                    self.assertEqual((filled["installed_mb"], keys), (case["installed_mb"], ["installed_mb"]))
+                else:
+                    self.assertEqual(toolcheck.fill_sizes(m), (m, []))
+                self.assertEqual(toolcheck.size_text(m), case["card"])
+                self.assertLessEqual(len(case["card"]), 80, "the card's size field holds 80 characters")
+
+    def test_the_ceiling_covers_every_archive_measured(self):
+        # docs/contracts/jorah-tool-v1.md "Sizes": download and unpacked MB measured 2026-11-20.
+        measured = [("tar", "uv.tar.gz", 16.1, 36.5), ("tar", "go.tar.gz", 67.4, 233.0), ("tar", "gh.tar.gz", 14.4, 39.7),
+                    ("tar", "helix.tar.xz", 15.9, 202.3), ("tar", "node.tar.xz", 32.5, 214.1), ("tar", "zig.tar.xz", 54.8, 357.1),
+                    ("zip", "deno.zip", 40.0, 91.6), ("zip", "godot.zip", 74.3, 139.6), ("appimage", "nvim.appimage", 10.9, 34.6),
+                    ("appimage", "orca.AppImage", 109.1, 270.1)]
+        for fmt, url, download, unpacked in measured:
+            with self.subTest(url):
+                ceiling = toolcheck.installed_ceiling(fmt, "https://example.org/" + url, math.ceil(download))
+                self.assertGreater(ceiling, unpacked * 1.2, "a fifth to spare below the ceiling itself")
+
+    def test_a_request_may_leave_sizes_out_and_keeps_its_own_limit(self):
+        zig = load("good", "zig.json")
+        self.assertEqual(toolcheck.check(zig, TODAY), [])
+        self.assertEqual(toolcheck.fill_sizes(zig), (zig, []), "no download size: the installer measures it")
+        uv = load("good", "uv.json")
+        self.assertEqual(toolcheck.fill_sizes(uv), (uv, []), "Jorah's own installed_mb stays")
+        self.assertIn("installed_mb: less than the 21 MB download; leave installed_mb out and a limit is set from the download size",
+                      toolcheck.check(dict(uv, installed_mb=20), TODAY))
+        self.assertEqual(toolcheck.check(dict(uv, installed_mb=21), TODAY), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -19,6 +19,10 @@ export const MIN_AGE_DAYS = 7;
 export const MAX_URL = 150;
 export const MAX_LICENCE = 60;
 const MAX_BYTES = 64 * 1024;
+export const UNSTATED_DOWNLOAD_MB = 1024;
+export const SIZE_FLOOR_MB = 64;
+const MAX_DOWNLOAD_MB = 4096;
+const MAX_INSTALLED_MB = 16384;
 const KINDS = ["archive", "apt"];
 const FORMATS = ["tar", "zip", "appimage", "file"];
 
@@ -38,7 +42,7 @@ const FORBIDDEN_ENV = new Set(["PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "IFS"
 
 const COMMON = { contract: true, name: true, title: true, version: true, kind: true, purpose: true, homepage: true, licence: true,
   licence_source: true, released: true, release_page: true, sandbox: true, smoke: true, for_project: false, smoke_expect: false };
-const ARCHIVE = { url: true, sha256: true, format: true, download_mb: true, installed_mb: true, commands: true, strip: false, env: false };
+const ARCHIVE = { url: true, sha256: true, format: true, download_mb: false, installed_mb: false, commands: true, strip: false, env: false };
 const APT = { packages: true, download_mb: false, installed_mb: false };
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -79,7 +83,11 @@ function https(problems, key, v, high) {
 
 function whole(problems, m, key, high) {
   const v = m[key];
-  if (!Number.isInteger(v) || v < 1 || v > high) problems.push(`${key}: must be a whole number of megabytes from 1 to ${high}`);
+  if (!Number.isInteger(v) || v < 1 || v > high) {
+    problems.push(`${key}: must be a whole number of megabytes from 1 to ${high}`);
+    return null;
+  }
+  return v;
 }
 
 const relpath = (v) => typeof v === "string" && v.length >= 1 && v.length <= 200 && v.split("/").every((p) => RELPART.test(p) && p !== "." && p !== "..");
@@ -131,8 +139,11 @@ export function checkManifest(m, today, filledLater = []) {
     https(problems, "url", m.url, MAX_URL);
     if ("sha256" in m && (typeof m.sha256 !== "string" || !SHA256.test(m.sha256))) problems.push("sha256: 64 lower-case hex digits, from the publisher's checksum");
     if (!FORMATS.includes(m.format)) problems.push(`format: must be one of ${FORMATS.join(", ")}`);
-    if ("download_mb" in m) whole(problems, m, "download_mb", 4096);
-    whole(problems, m, "installed_mb", 16384);
+    const given = [["download_mb", MAX_DOWNLOAD_MB], ["installed_mb", MAX_INSTALLED_MB]].filter(([key]) => key in m)
+      .map(([key, high]) => whole(problems, m, key, high));
+    if (given.length === 2 && !given.includes(null) && given[1] < given[0]) {
+      problems.push(`installed_mb: less than the ${given[0]} MB download; leave installed_mb out and a limit is set from the download size`);
+    }
     const strip = m.strip ?? 0;
     if (!Number.isInteger(strip) || strip < 0 || strip > 3) problems.push("strip: a whole number from 0 to 3");
     else if (strip && !["tar", "zip"].includes(m.format)) problems.push("strip: only for tar and zip");
@@ -282,10 +293,34 @@ export function applyGithub(m, release) {
     } else if (Number.isInteger(given) && (size > downloadCap(given) || Math.abs(given - size / MIB) > Math.max(3, size / MIB / 4))) {
       problems.push(`download_mb: GitHub says ${name.slice(0, 80)} is ${size} bytes; use ${need}, or leave download_mb out`);
     }
-  } else if (!("download_mb" in m)) {
-    problems.push(`download_mb: GitHub gives no size for ${name.slice(0, 80)}: give download_mb`);
   }
   return { manifest: out, record, problems };
+}
+
+// ---- sizes (toolcheck.py's unpack_factor, installed_ceiling, fill_sizes) -----------------------
+// Unpacked growth measured 2026-11-20 on 14 Linux releases: zip 2.3x, AppImage 3.2x, gzip tar
+// 3.5x, xz tar 12.8x at most. The installer also allows 25% and 50 MB over the ceiling.
+
+export function unpackFactor(fmt, url) {
+  if (fmt === "file") return 1;
+  if (fmt === "zip") return 4;
+  if (fmt === "appimage") return 6;
+  const path = typeof url === "string" ? url.split("#")[0].split("?")[0].toLowerCase() : "";
+  return path.endsWith(".tar.gz") || path.endsWith(".tgz") ? 6 : 16;
+}
+
+export function installedCeiling(fmt, url, downloadMb) {
+  const factor = unpackFactor(fmt, url);
+  const mb = downloadMb * factor;
+  return Math.min(MAX_INSTALLED_MB, factor === 1 ? mb : Math.max(SIZE_FLOOR_MB, mb));
+}
+
+/** {manifest, filled}: an archive with a download size and no installed_mb gets installedCeiling. */
+export function fillSizes(m) {
+  if (!isObj(m) || m.kind !== "archive" || "installed_mb" in m) return { manifest: m, filled: [] };
+  const d = m.download_mb;
+  if (!Number.isInteger(d) || d < 1 || d > MAX_DOWNLOAD_MB) return { manifest: m, filled: [] };
+  return { manifest: { ...m, installed_mb: installedCeiling(m.format, m.url, d) }, filled: ["installed_mb"] };
 }
 
 const TAG = /^[A-Za-z0-9][A-Za-z0-9.+_~-]{0,59}$/;
@@ -326,8 +361,20 @@ export const proposalId = (m) => `tb-${digest(m).slice(0, 10)}`;
 export const sourceText = (m) => (m.kind === "archive" ? m.url : `Ubuntu archive: ${(m.packages ?? []).join(" ")}`);
 
 export function sizeText(m) {
-  if (m.download_mb === undefined && m.installed_mb === undefined) return "not given (apt shows it before installing)";
-  return `${m.download_mb ?? "?"} MB download, ${m.installed_mb ?? "?"} MB installed`;
+  const download = m.download_mb ?? null;
+  let installed = m.installed_mb ?? null;
+  if (m.kind !== "archive") {
+    if (download === null && installed === null) return "not given (apt shows it before installing)";
+    return `${download ?? "?"} MB download, ${installed ?? "?"} MB installed`;
+  }
+  if (download === null) {
+    const first = `up to ${UNSTATED_DOWNLOAD_MB} MB download (measured at install)`;
+    if (installed !== null) return `${first}, up to ${installed} MB installed`;
+    const factor = unpackFactor(m.format, m.url);
+    return `${first}, installed ${factor > 1 ? `up to ${factor}x it, min ${SIZE_FLOOR_MB} MB` : "the same"}`;
+  }
+  if (installed === null) installed = installedCeiling(m.format, m.url, download);
+  return `${download} MB download, up to ${installed} MB installed`;
 }
 
 /** What toolbox_install takes and the card shows: the same fields as toolcheck.card_fields. */

@@ -1,0 +1,29 @@
+{
+  "contract": "jorah-tool-v1",
+  "name": "zig",
+  "title": "Zig, the compiler and C/C++ cross-compiler",
+  "version": "0.17.1",
+  "kind": "archive",
+  "purpose": "Cross-compile small C tools for the robot's Linux board from project runs, without a separate toolchain per target.",
+  "for_project": null,
+  "homepage": "https://ziglang.org/",
+  "licence": "MIT",
+  "licence_source": "https://codeberg.org/ziglang/zig/src/branch/master/LICENSE",
+  "released": "2026-11-02",
+  "release_page": "https://ziglang.org/download/#release-0.17.1",
+  "url": "https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz",
+  "sha256": "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a",
+  "format": "tar",
+  "strip": 1,
+  "commands": {
+    "zig": "zig"
+  },
+  "sandbox": {
+    "network": []
+  },
+  "smoke": [
+    "zig",
+    "version"
+  ],
+  "smoke_expect": "0.17.1"
+}

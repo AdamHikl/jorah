@@ -146,8 +146,10 @@ A local repo with no remote: the project runner commits every change after a run
 - `notes/<tool>.md`: what the tool is for, commands that worked, profiles and settings, pitfalls.
 - `examples/<tool>/`: small working examples (each file under 5 MB).
 - `requests/<tool>.json`: a request for a new tool (contract jorah-tool-v1,
-  /opt/jorah/docs/contracts/jorah-tool-v1.md). For a GitHub release asset, leave sha256, released and
-  download_mb out: the runner reads them from GitHub. The runner takes it after the run; Adam approves it on a card.
+  /opt/jorah/docs/contracts/jorah-tool-v1.md). Leave installed_mb out: a limit is set from the download
+  size. For a GitHub release asset, also leave sha256, released and download_mb out: the runner reads
+  them from GitHub. Elsewhere give download_mb only if the publisher states it; the installer measures
+  it otherwise. The runner takes it after the run; Adam approves it on a card.
   Refused requests move to `requests/bad/` with the reason in a `.why.txt` beside them.
 """
 
@@ -301,10 +303,17 @@ def collect_requests(settings, source, today, get=github_get):
                     wait = str(error)
                 else:
                     manifest, github, problems = tc.apply_github(manifest, release)
-                    problems = problems or tc.check(manifest, today)
                     if problems:
                         raise ValueError("; ".join(problems[:5]))
                     github = {**github, "checkedAt": _now()}
+            if not wait:
+                # The unpacked size is a limit set from the download size, never the run's estimate.
+                manifest, filled = tc.fill_sizes(manifest)
+                if github:
+                    github["filled"] = github["filled"] + filled
+                problems = tc.check(manifest, today)
+                if problems:
+                    raise ValueError("; ".join(problems[:5]))
         except (OSError, ValueError) as error:
             why = str(error)[:600]
         if wait and not why:
@@ -439,7 +448,8 @@ def brief_text(settings):
         "exact commands that worked, settings, pitfalls; commit in ~/work/.toolbox):\n" + have + "\n"
         "  To ask for a new tool, write ~/work/.toolbox/requests/<name>.json following "
         "/opt/jorah/docs/contracts/jorah-tool-v1.md; for a GitHub release asset give the version and its download URL and leave "
-        "sha256, released and download_mb out: the runner reads them from GitHub's API. The runner proposes it and Adam approves it on a card. "
+        "sha256, released and download_mb out: the runner reads them from GitHub's API. Never estimate installed_mb: leave it out and a "
+        "limit is set from the download size. The runner proposes it and Adam approves it on a card. "
         "A request refused by the checks is in requests/bad/ with the reason. Packages from npm or PyPI need no request: "
         "install them into the project (uv, or pip 26.1 or newer, or npm), which take only releases at least 7 days old."
     )

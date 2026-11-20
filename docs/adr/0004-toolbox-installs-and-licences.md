@@ -43,6 +43,10 @@ the proposal's hash again. A proposal edited after Adam saw it has a different i
   that had read the web the guard rightly kept him from opening a URL he had built.
 - Older releases without a digest on GitHub, and other hosts, still need the publisher's own
   checksum from Jorah.
+- Sizes are limits set in code, never Jorah's estimates (since 2026-11-20). The unpacked size is
+  the download size times a factor by format, measured on real releases. For hosts other than
+  GitHub, the download size is optional and measured by the installer: nothing contacts a host
+  Jorah chose before Adam's card, because that request would bypass the guard's URL checks.
 - The installer refuses a file whose SHA-256 differs.
 - For a GitHub release asset, it reads the release's publication date and GitHub's own digest of
   the asset from GitHub's API, and refuses a release under 7 days old, a draft or pre-release, or
@@ -95,6 +99,10 @@ build-session install (`scripts/pc/install-kicad.sh`), pinned in `deploy/kicad/v
   make it ask about any public repo; that tells GitHub nothing private, and the answer only becomes
   an inert proposal. The limit is 60 requests an hour from the PC's address; past it, proposing
   waits, it never falls back to Jorah's word.
+- A size ceiling is looser than a measured size: a 17 MB gzip tarball gets a 102 MB ceiling, and
+  the installer refuses it only past about 177 MB (25% and 50 MB of slack); an xz tarball gets 16
+  times its download. The disk reserve (20 GB)
+  is what protects the PC; the ceiling stops a tool far larger than its kind.
 - The 7-day rule protects only against releases pulled within a week. A slow-burn compromise isn't
   caught.
 - A tool's own runtime can't reach the network in a run, so a tool that needs downloads while it

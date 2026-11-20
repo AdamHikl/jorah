@@ -109,11 +109,26 @@ class ToolboxTest(unittest.TestCase):
         self.assertEqual(proposal["card"]["sha256"], expected["filled"]["sha256"][:16])
         self.assertEqual(proposal["card"]["released"], "2026-11-12")
         self.assertEqual(proposal["github"]["immutable"], True)
-        self.assertEqual(proposal["github"]["filled"], ["released", "sha256", "download_mb"])
+        self.assertEqual(proposal["github"]["filled"], ["released", "sha256", "download_mb", "installed_mb"])
+        self.assertEqual(proposal["card"]["size"], expected["card_size"])
         [bad] = out["refused"]
         self.assertIn("sha256: GitHub's digest for uv-x86_64-unknown-linux-gnu.tar.gz is 5acfd9177cfecf0b", bad["why"])
         self.assertTrue((notes / "bad/uv-wrong.json.why.txt").is_file())
         self.assertEqual(w.github_api.calls, [api, api])
+
+    def test_a_request_from_another_host_needs_no_sizes_and_no_lookup(self):
+        w = self.w
+        zig = json.loads((REPO_ROOT / "packages/contracts/toolbox/examples/good/zig.json").read_text())
+        notes = toolbox.work_dir(w.settings) / "requests"
+        toolbox.ensure_repo(w.settings, w.home)
+        (notes / "zig.json").write_text(json.dumps(zig))
+        (notes / "zig-sized.json").write_text(json.dumps(dict(zig, name="zig-sized", download_mb=55)))
+        out = toolbox.collect_requests(w.settings, {"project": "robot", "run": "r"}, w.clock().date(), w.github_api)
+        self.assertEqual(out["refused"], [])
+        self.assertEqual(w.github_api.calls, [])
+        cards = {p["name"]: json.loads((self.var / "proposals" / f"{p['id']}.json").read_text())["card"] for p in out["proposed"]}
+        self.assertEqual(cards["zig"]["size"], "up to 1024 MB download (measured at install), installed up to 16x it, min 64 MB")
+        self.assertEqual(cards["zig-sized"]["size"], "55 MB download, up to 880 MB installed")
 
     def test_a_github_request_waits_while_github_cant_be_asked(self):
         w = self.w

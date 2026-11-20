@@ -85,10 +85,24 @@ class Comparator(unittest.TestCase):
         self.assertFalse(advisories.in_range("2026.1.30", "2026.1.29"))
         self.assertTrue(advisories.in_range("2026.5.0", "> 2026.4.9"))
 
+    def test_npm_space_and_or_ranges(self):
+        # Forms seen in OpenClaw's own advisory list on 2026-11-20.
+        self.assertFalse(advisories.in_range("2026.10.9", ">=2026.1.14-1 <2026.2.12"))
+        self.assertTrue(advisories.in_range("2026.2.1", ">=2026.1.14-1 <2026.2.12"))
+        self.assertFalse(advisories.in_range("2026.10.9", ">= 2026.1.21 <= 2026.2.17"))
+        self.assertTrue(advisories.in_range("2026.2.17", ">= 2026.1.21 <= 2026.2.17"))
+        self.assertFalse(advisories.in_range("2026.10.9", "<=2026.2.19-2 || =2026.2.19"))
+        self.assertTrue(advisories.in_range("2026.2.19", "<=2026.2.19-2 || =2026.2.19"))
+        self.assertTrue(advisories.in_range("2026.1.1", "<=2026.2.19-2 || =2026.2.19"))
+        self.assertFalse(advisories.in_range("2026.10.9", "<= 2026.2.21 || =2026.2.21-1 || =2026.2.21-2"))
+        self.assertTrue(advisories.in_range("2026.10.9", ">= 2026.9.2 || < 1.0"))
+
     def test_unreadable_is_unknown_not_false(self):
         self.assertIsNone(advisories.in_range("2026.10.9", None))
         self.assertIsNone(advisories.in_range("2026.10.9", ""))
-        self.assertIsNone(advisories.in_range("2026.10.9", ">= 2026.9.2 || < 1.0"))
+        self.assertIsNone(advisories.in_range("2026.10.9", ">= 2026.9.2 ||"))
+        self.assertIsNone(advisories.in_range("2026.10.9", ">= 2026.9.2 - 2026.10.1"))
+        self.assertIsNone(advisories.in_range("2026.10.9", "^2026.9.0"))
         self.assertIsNone(advisories.in_range("2026.10.9", "~> latest"))
         self.assertIsNone(advisories.in_range("not-a-version", "< 2026.8.1"))
 

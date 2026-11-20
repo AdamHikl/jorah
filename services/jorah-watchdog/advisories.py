@@ -39,7 +39,7 @@ NODE_MODULES = Path("/opt/node/lib/node_modules")
 # --- versions and ranges ---------------------------------------------------------------------------
 
 _VERSION = re.compile(r"^v?(\d+(?:\.\d+)*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
-_CONSTRAINT = re.compile(r"^(>=|<=|>|<|=|==)?\s*(\S+)$")
+_CONSTRAINT = re.compile(r"\s*(>=|<=|==|>|<|=)?\s*([0-9A-Za-z.+-]+)\s*,?\s*")
 
 
 def parse_version(text):
@@ -61,33 +61,44 @@ def parse_version(text):
 
 
 def parse_range(text):
-    """[(op, key)] for a range like '>= 2026.9.2, < 2026.10.33', or None when it can't be read."""
+    """[[(op, key)]] for a range, or None when it can't be read.
+
+    OpenClaw's advisories write ranges in several ways: '>= 2026.9.2, < 2026.10.33' (comma),
+    '>=2026.1.14-1 <2026.2.12' (npm, space) and '<=2026.2.19-2 || =2026.2.19' (npm, or). The outer
+    list holds the '||' alternatives; the constraints inside one all have to hold.
+    """
     if text is None or not str(text).strip():
         return None
-    out = []
-    for piece in str(text).split(","):
-        match = _CONSTRAINT.match(piece.strip())
-        if not match:
+    alternatives = []
+    for alt in str(text).split("||"):
+        alt = alt.strip()
+        if not alt:
             return None
-        key = parse_version(match.group(2))
-        if key is None:
-            return None
-        out.append((match.group(1) or "=", key))
-    return out
+        out, pos = [], 0
+        while pos < len(alt):
+            match = _CONSTRAINT.match(alt, pos)
+            if not match or match.end() == pos:
+                return None
+            key = parse_version(match.group(2))
+            if key is None:
+                return None
+            out.append((match.group(1) or "=", key))
+            pos = match.end()
+        alternatives.append(out)
+    return alternatives
 
 
 def in_range(version, range_text):
     """True or False, or None when either side can't be read (which the caller treats as unknown)."""
     key = parse_version(version)
-    constraints = parse_range(range_text)
-    if key is None or constraints is None:
+    alternatives = parse_range(range_text)
+    if key is None or alternatives is None:
         return None
-    for op, bound in constraints:
-        ok = {"<": key < bound, "<=": key <= bound, ">": key > bound, ">=": key >= bound,
-              "=": key == bound, "==": key == bound}[op]
-        if not ok:
-            return False
-    return True
+    for constraints in alternatives:
+        if all({"<": key < bound, "<=": key <= bound, ">": key > bound, ">=": key >= bound,
+                "=": key == bound, "==": key == bound}[op] for op, bound in constraints):
+            return True
+    return False
 
 
 # --- what is installed -----------------------------------------------------------------------------

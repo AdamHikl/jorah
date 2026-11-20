@@ -741,7 +741,53 @@ OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under C
 - **Covers:** `openclaw@2026.10.33`, `@openclaw/acpx@2026.10.33`, `@openclaw/duckduckgo-plugin@2026.10.33`, and `@openclaw/ai@2026.10.33`, which they pin. Any other package in the installed trees published after 2026-11-12 is listed from the canary install and named here before the live install.
 - **Why:** a High advisory (CVSS 8.8) on a surface Jorah's main is offered. Plan 09 5.4 sets 48 hours for a critical or high advisory on an enabled surface.
 - **Checks instead of the wait:** the notes above; npm provenance (SLSA v1) and registry signatures on all three packages; tarball integrity `sha512-OMJvs7fS…V7IeQ==` (from the release page) compared with the registry; the canary on `jorah-dev` first.
-- **How:** `--min-release-age=0` on those install commands only. `/opt/node/etc/npmrc` keeps `min-release-age=7`.
+- **How:** `--min-release-age=7 --min-release-age-exclude=openclaw --min-release-age-exclude=@openclaw/ai` on the install command, so only the named packages skip the wait. `/opt/node/etc/npmrc` keeps `min-release-age=7`. A first canary install with `--min-release-age=0` pulled 10 transitive packages under 7 days old and was redone this way.
+- **Still to decide (Adam):** `openclaw doctor --fix` updates the official plugins through OpenClaw's own installer. That installer always sets the npm release age to 0, so it ignores the 7-day rule. On the canary it brought in eight packages under 7 days old in the acpx tree: bare-buffer 3.7.3, bare-url 2.5.8, express-rate-limit 8.7.5, hono 4.13.19, jose 6.2.18, object-inspect 1.14.0, router 2.3.0 and standardwebhooks 1.3.0. Either add them to this exception or wait until about 2026-11-26. The deny below already closes the advisory's path in the meantime.
+
+### Canary on `jorah-dev` (2026-11-19)
+
+- **Install:** OpenClaw 2026.10.33 in a scratch prefix, run against `jorah-dev`'s profile. The patch is `~/scratch-dev/canary/canary.patch.json5`: it denies `openclaw`, turns cron off, and loads `jorah-projects` and `jorah-errands` with scratch state.
+- **Backups:**
+  - `~/backups/jorah-dev-pre-1033-20261119T1805.tar.gz` (mode 600);
+  - `~/.openclaw-jorah-dev/openclaw.json.pre-canary-1033`.
+- **Needed:** 10.33 won't start on 10.9 state ("agent database ... uses schema version 25"). `doctor --fix` migrates the databases.
+  - It also changes config: `meta.lastTouchedVersion`, explicit `enabled` flags for anthropic and browser, removing the stale `jorah-github-standin` entry, disabling four skills, and stamping `wizard.*`.
+  - It also updates the official plugins (above).
+- **Passed:**
+  - ready in 13 s;
+  - config valid;
+  - 12 plugins loaded, including acpx and duckduckgo 2026.10.33, `jorah-guard` ("matrix loaded; state ok"), `jorah-projects` and `jorah-errands`;
+  - audit 0 critical. Of its 4 warnings, 2 are shared with live 10.9: `insecure_or_dangerous_flags`, `exec.security_full_configured`. 2 are new: `trusted_proxies_missing`, `installs_unpinned_npm_specs`. Live's other 2 (`trust_model.multi_user_heuristic`, `plugins.tools_reachable_permissive_policy`) don't appear;
+  - a Haiku agent turn answered.
+- **Blocks the live upgrade:** 10.33 renames the Tool Search wrapper from `tool_call` to `dispatch_action` (params `{id, args}`). The guard unwraps only `tool_call`, so it blocks `dispatch_action` as unknown, which would block every wrapped tool call. The guard needs to unwrap `dispatch_action` the same way. That goes to the guard's owner. After that, retest on the canary, including the planted unseen URL.
+- **State after:** the canary unit `jorah-canary-1033` is stopped. `jorah-dev`'s state is still migrated to 10.33. Restore it from the backups above when the canary is done.
+
+### Live deny applied (2026-11-20, under the 2026-11-19 yes)
+
+- **Change:**
+  - 07:00:34: the patch file was deployed to `/opt/jorah/config/pc/`. Its SHA-256 `ff347cb7…` matches `main`.
+  - The config was backed up to `~/.openclaw-jorah/openclaw.json.pre-deny-openclaw-20261120` (mode 600).
+  - Dry run: 1 update validated. It applied at 07:00:52.
+  - The log shows `07:00:59 [reload] config hot reload applied (tools.deny)`. The Gateway did not restart: PID 966, started 06:59:24.
+- **Incident: main was degraded for about 12 minutes.**
+  - The PC had just woken from sleep. Startup found stale database leases ("owner-pid-dead") and ran a full integrity check on all three agents.
+  - background recovered at 07:00:49 and deep at 07:00:55. Main was still preparing.
+  - 0.3 s after the hot reload, the log shows: "agent database remains degraded agentId=main reason=\"Agent main startup preparation was superseded\"".
+  - `/readyz` then reported `ready:false`, failing `agent-database:main`, and chat calls returned UNAVAILABLE. It didn't recover on its own.
+  - The cause was applying the patch after the `[gateway] ready` log line but before `/readyz` was ready. **Rule: before a live config change, check that `/readyz` reports `"ready":true`, not the log line.**
+- **Fix (Adam's yes 2026-11-20, "Yes"):**
+  - 07:12:36: `systemctl start jorah-gateway-recycle.service` as root. Doctor was not run: this was supersession, not corruption, and doctor on 10.9 writes state.
+  - The recycle reported "idle, restarting", then "ready after 25 s", and exited 0.
+- **Checked at 07:13:42:**
+  - `/readyz` returns `ready:true`, `coreReady:true`, `failing:[]`.
+  - The new process is PID 2673, started 07:12:42.
+  - `tools.deny` is `["nodes","computer","gateway","openclaw"]`.
+  - Health is ok, and main's session store has 18 entries.
+  - `jorah-guard` reports "matrix loaded; state ok". No degraded line since.
+- **Not checked yet:**
+  - that new claude-cli request shapes no longer offer `mcp__openclaw__openclaw`;
+  - a Telegram turn;
+  - the matrix line, which reaches live with the guard's next deploy.
 
 ## Advisory watch, drift check and install policy, 2026-11-19
 

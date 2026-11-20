@@ -770,6 +770,23 @@ All of these must be done first. The live upgrade then still needs its own previ
 3. **Restore `jorah-dev`** from its backups when the canary is done.
 4. **Before the live config change**, wait until `/readyz` reports ready. See the incident below.
 
+### After the live upgrade, check
+
+Run each of these against the live Gateway from the start of the upgrade. A check that can't run counts as unknown, not passed.
+- **Readiness and plugins:**
+  - `/readyz` reports `ready:true` with nothing in `failing`;
+  - `openclaw --profile jorah health` is ok;
+  - every plugin loads, and `jorah-guard` logs "matrix loaded; state ok".
+- **Audit:** 0 critical. Compare the warnings with 10.9's four and the canary's four (in the canary record).
+- **`tools.deny`:** still includes `openclaw`.
+- **AGENTS.md limit:** `openclaw --profile jorah config get agents.entries.main.bootstrapMaxChars` still returns `40000`. That limit is set by `config/pc/bootstrap-limit.patch.json5`, commit `2811987`. `workspace/AGENTS.md` is 25,395 characters.
+- **No truncation:** the Gateway log since the upgrade started has no line "bootstrap file AGENTS.md … truncating in injected context".
+- **A Telegram test turn** works, and the guard blocks a planted unseen URL.
+- **Voice:** the `jorah-voice` warm-up runs.
+- **Quiet:** the watchdog stays quiet.
+- **Recycle:** `jorah-gateway-recycle.timer` still restarts the Gateway. Its `status --json` and `/readyz` fields are unchanged in 10.33.
+- **Request shapes:** new claude-cli request shapes don't offer `mcp__openclaw__openclaw`.
+
 ### Canary on `jorah-dev` (2026-11-19)
 
 - **Install:** OpenClaw 2026.10.33 in a scratch prefix, run against `jorah-dev`'s profile. The patch is `~/scratch-dev/canary/canary.patch.json5`: it denies `openclaw`, turns cron off, and loads `jorah-projects` and `jorah-errands` with scratch state.
@@ -800,7 +817,8 @@ All of these must be done first. The live upgrade then still needs its own previ
   - background recovered at 07:00:49 and deep at 07:00:55. Main was still preparing.
   - 0.3 s after the hot reload, the log shows: "agent database remains degraded agentId=main reason=\"Agent main startup preparation was superseded\"".
   - `/readyz` then reported `ready:false`, failing `agent-database:main`, and chat calls returned UNAVAILABLE. It didn't recover on its own.
-  - The cause was applying the patch after the `[gateway] ready` log line but before `/readyz` was ready. **Rule: before a live config change, check that `/readyz` reports `"ready":true`, not the log line.**
+  - The cause was applying the patch after the `[gateway] ready` log line but before `/readyz` was ready. **Rule: before a live config change, check that `/readyz` reports `"ready":true`, not the log line.** This matters most after a boot or a wake from sleep, because then the stale-lease integrity check runs.
+  - The same day, the PC rebooted unexpectedly at 18:07: Windows Kernel-Power 41, down from about 15:40 to 18:07 [reported by the coordinating session]. That time the stale-lease integrity check passed cleanly.
 - **Fix (Adam's yes 2026-11-20, "Yes"):**
   - 07:12:36: `systemctl start jorah-gateway-recycle.service` as root. Doctor was not run: this was supersession, not corruption, and doctor on 10.9 writes state.
   - The recycle reported "idle, restarting", then "ready after 25 s", and exited 0.

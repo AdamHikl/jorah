@@ -9,8 +9,9 @@ const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], detai
 const firstLine = (error) => String(error?.message ?? error).split("\n")[0];
 const LIST_MS = 20000;
 
-// Only an exact call to one of these tools. A call through the tool-search wrapper (tool_call) runs
-// this hook again on the inner tool with its real name, so the wrapper itself is left alone; a
+// Only an exact call to one of these tools. A call through the tool-search wrapper (tool_call in
+// OpenClaw 2026.10.9, dispatch_action from 2026.10.33) runs this hook again on the inner tool with
+// its real name, so the wrapper itself is left alone; a
 // search whose text mentions a tool name is not a call (2026-11-10: that produced an empty prompt).
 function targetTool(event) {
   return TOOLS.has(event?.toolName) ? { name: event.toolName, params: event.params ?? {} } : null;

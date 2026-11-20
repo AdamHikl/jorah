@@ -761,7 +761,7 @@ OpenClaw 2026.10.33 was released 2026-11-18, one day before this record. Under C
 ### Before the live upgrade, on or after 2026-11-26
 
 All of these must be done first. The live upgrade then still needs its own preview, Adam's yes, and the coordinator's go.
-1. **Guard fix:** `jorah-guard` unwraps 10.33's `dispatch_action` (`{id, args}`, including a namespaced id) the same way it unwraps `tool_call`, with tests. guard-urls builds it, and it lands on `main`.
+1. **Guard fix:** `jorah-guard` unwraps 10.33's `dispatch_action` (`{id, args}`, including a namespaced id) the same way it unwraps `tool_call`, with tests. guard-urls builds it, and it lands on `main`. **Done in source, 2026-11-20, not deployed** (it goes live with the upgrade's restart): `plugins/jorah-guard/lib/wrapper.js` reads both wrappers the way 10.33's `dist/tool-search` does (checked in the canary's install, `/home/jorah/.jorah-canary/2026.10.33`): selector `id`, `toolId` or `name`, arguments nested in `args` or `input`, as `args.<key>`, or flat, and a selector nested in `args` lifted up. 10.33 still runs the hook on the inner tool under its real name (its catalog tools are wrapped with `before_tool_call`). A wrapper call naming no tool, two different tools, or another wrapper, or with non-object arguments, is blocked; on 10.9 a `tool_call` naming no tool used to be let through to fail in OpenClaw. Seeding, the URL rule, site readers and the decision log go through the same function. Tests: `plugins/jorah-guard/test/wrapper.test.js`.
 2. **Canary again on `jorah-dev`:**
    - with the fixed guard;
    - list every package in the installed trees, including the ones `doctor --fix` pulls in, that is under 7 days old on that day;

@@ -156,6 +156,7 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   assert.match(pr.requireApproval.description, /draft pull request on AdamHikl\/proj/);
   // The wrapper and a search are not calls; the inner tool's own hook run asks for approval.
   assert.equal(await hook({ toolName: "tool_call", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
+  assert.equal(await hook({ toolName: "dispatch_action", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
   assert.equal(await hook({ toolName: "tool_search", params: { query: "github_push_branch" } }), undefined);
   assert.equal(await hook({ toolName: "web_search", params: { q: "x" } }), undefined);
   // Missing arguments: refused, never an empty prompt.

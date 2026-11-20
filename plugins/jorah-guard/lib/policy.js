@@ -6,6 +6,7 @@
 import { posix } from "node:path";
 import { forbidden, linkHygiene, normalise, onSiteAllowlist, urlCores, urlsIn, writtenTokens } from "./urls.js";
 import { siteDecision } from "./sites.js";
+import { isWrapper, unwrap } from "./wrapper.js";
 
 const CARD_MAX = 500;
 
@@ -209,9 +210,10 @@ export function checkUrls(value, state, view, sessionKey, matrix, tool = "") {
 // state.wrote) is not seen: tools and pages echo what they are sent.
 export function seedTool(matrix, tool, params = {}) {
   let name = tool;
-  if (tool === "tool_call") {
-    const raw = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : "";
-    name = raw.split(":").pop();
+  if (isWrapper(tool)) {
+    const w = unwrap(params);
+    if (w.malformed) return null;
+    name = w.inner;
   }
   return (matrix?.urlSources ?? []).includes(name) ? name : null;
 }
@@ -247,15 +249,15 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     return site;
   }
 
-  // The search wrapper: decide on the inner call now only to block early; the hook runs again on the
-  // inner tool with its real name (G-S2), where cards and taint are handled. Never a card here.
-  if (tool === "tool_call") {
-    // Inner ids may be namespaced ("openclaw:core:web_fetch", P5.4): the last part is the tool name.
-    const raw = typeof params.id === "string" ? params.id : typeof params.name === "string" ? params.name : null;
-    const inner = raw ? raw.split(":").pop() : null;
-    if (!inner) return { verdict: "allow", reason: "wrapper without a named tool" };
-    const d = decide({ tool: inner, params: params.args ?? params.arguments ?? {}, ctx, matrix, view, settings, run });
-    return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${inner}` };
+  // The search wrapper (tool_call in 10.9, dispatch_action in 10.33, lib/wrapper.js): decide on the
+  // inner call now only to block early; the hook runs again on the inner tool with its real name
+  // (G-S2), where cards and taint are handled. Never a card here. A wrapper call the guard can't
+  // read is blocked (until 2026-11-20 a tool_call naming no tool was let through to fail in OpenClaw).
+  if (isWrapper(tool)) {
+    const w = unwrap(params);
+    if (w.malformed) return { verdict: "block", reason: w.malformed };
+    const d = decide({ tool: w.inner, params: w.args, ctx, matrix, view, settings, run });
+    return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${w.inner}` };
   }
 
   const cls = classify(matrix, tool);

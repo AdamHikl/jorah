@@ -116,7 +116,7 @@ A separate plugin, `plugins/jorah-guard`, next to `jorah-github`. It does not re
 | `browser` typing (`type`, `fill`, `press`, `select`, `upload`) | Allow | Confirm with the text (P5.3 review: a form on a planted page can post data without any URL in the call) |
 | `sessions_send` | Only to `main`'s own children | Block |
 | `tool_search`, `tool_describe`, `sessions_yield`, `sessions_list`, `session_status` | Allow | Allow |
-| `tool_call` (the search wrapper) | Decided on the inner call, which the hook sees again under its real name (G-S2) | Same |
+| `tool_call` (the search wrapper; `dispatch_action` from OpenClaw 2026.10.33) | Decided on the inner call, which the hook sees again under its real name (G-S2). Arguments read as 10.33 reads them (`id`/`toolId`/`name`, nested `args`/`input`, `args.<key>`, or flat); a call naming no tool, two tools, or a wrapper is blocked (`lib/wrapper.js`, 2026-11-20) | Same |
 | `sessions_history`, `sessions_search` | Allow, taint | Allow, taint |
 | `personal_instructions` writes | As `USER.md` | As `USER.md` |
 | `apply_patch` | As the write rows for its target paths (`event.derivedPaths`, missing means block) | Same |

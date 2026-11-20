@@ -11,6 +11,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { strings } from "./urls.js";
+import { isWrapper, unwrap } from "./wrapper.js";
 
 export const READER_AGENT = "reader-site";
 export const KINDS = ["event", "grade", "notice", "task", "item"];
@@ -250,12 +251,12 @@ export function siteDecision({ tool, params = {}, agent, sessionKey, sites }) {
   }
   const name = siteOfSession(sessionKey);
   if (!name) return block("the site reader runs only through site_read");
-  // The tool-search wrapper: judge the inner call by the same rules; a wrapper with no named tool is refused.
-  if (tool === "tool_call") {
-    const raw = typeof p.id === "string" ? p.id : typeof p.name === "string" ? p.name : "";
-    const inner = raw.split(":").pop();
-    if (!inner || inner === "tool_call") return block("the site reader can only read pages");
-    return siteDecision({ tool: inner, params: p.args ?? p.arguments ?? {}, agent, sessionKey, sites });
+  // The tool-search wrapper (tool_call, or dispatch_action from 10.33): judge the inner call by the
+  // same rules; a wrapper the guard can't read is refused.
+  if (isWrapper(tool)) {
+    const w = unwrap(p);
+    if (w.malformed) return block("the site reader can only read pages");
+    return siteDecision({ tool: w.inner, params: w.args, agent, sessionKey, sites });
   }
   const site = sites?.get?.(name);
   if (!site) return block(`no site called ${name}`);

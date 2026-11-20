@@ -833,7 +833,7 @@ All of these must be done first. The live upgrade then still needs its own previ
 - **Baseline preview** [measured 2026-11-19, read-only]: 574 files hashed.
   - 569 match a version on main: 557 the newest, 12 an older deploy (for example `/opt/jorah/workspace/AGENTS.md`; the live copy is the newest).
   - None matches no commit.
-  - Not in git: `.commit-site-readers`, `.deployed-commit`, `config/pc/max-lane.patch.json5.pre-2026-11-16`, `scripts/pc/._setup-permissions.sh`. They would be reported nightly until removed.
+  - Not in git: `.commit-site-readers`, `.deployed-commit`, `config/pc/max-lane.patch.json5.pre-2026-11-16`, `scripts/pc/._setup-permissions.sh`. They would be reported nightly until removed. On 2026-11-20, Adam said yes to archiving them: they are now in `/root/opt-jorah-leftovers-2026-11-20.tgz` (root 600) and gone from `/opt/jorah`.
 
 **(b) Install policy** (`scripts/pc/install-policy.py`, `config/pc/install-policy.patch.json5`, `scripts/pc/setup-install-policy.sh`):
 - **Contract** (2026.10.9 docs: `tools/skills-config.md` "Operator Install Policy", `help/troubleshooting.md`, `gateway/security/tool-permissions.md`, `gateway/configuration/hot-reload.md`):
@@ -852,6 +852,17 @@ All of these must be done first. The live upgrade then still needs its own previ
   - The command is `/usr/local/lib/jorah/install-policy` (root 755).
 - **What it changes for build sessions:** a **new** plugin linked with `plugins install --link /opt/jorah/plugins/<x>`, as the `install-*.sh` scripts do, is blocked until Adam adds an entry, for example `{"targetType": "plugin", "targetName": "jorah-foo", "sourceKind": "local-path", "note": "Adam's yes, <date>"}`. Plugins already linked keep loading: new code in `/opt/jorah/plugins` is a deploy and a restart, not an install.
 - `openclaw/clawscan` is not used: it runs scanners in Docker, and a block-by-default list doesn't need them.
+
+**On the PC, 2026-11-20** (Adam's yes to steps 1–3, relayed verbatim by the coordinating session: "Yes to all questions"). Evidence: `docs/evidence/sec-hygiene-2026-11-20/`.
+- **Deployed** from main with `deploy_reviewed.py deploy`: 20 files from `9260a08`, then the range fix from `74d581c`. `/var/lib/jorah-drift` was created by hand (root 755), because the unit's `StateDirectory=` only creates it once the unit is installed, and `record` doesn't create it.
+- **Leftovers:** archived to `/root/opt-jorah-leftovers-2026-11-20.tgz` (root 600). The archive lists all four. They were then removed from `/opt/jorah`, followed by `sync`.
+- **Baseline** [measured]: "match a version on main: 588 (558 the newest, 30 an older one; main is 9260a08)"; 0 match no commit, 0 not in git, 0 refused. Written with `--write`. A drift check right after: "checked 588 files: 0 changed, 0 missing, 0 unrecorded".
+- **Range fix:** the first dry run matched 30 advisories. 29 of them used npm ranges (`>=2026.1.14-1 <2026.2.12`, `<=2026.2.19-2 || =2026.2.19`) that the comma-only parser couldn't read, so they counted as "may apply". After `74d581c`, all 719 ranges in the list parse, and only GHSA-pw3x-g8v8-fvj2 matches 2026.10.9 [measured].
+- **Daily watch:** installed and enabled; next run Sat 2026-11-21 03:40 CET (plus up to 5 min). `--run` sent one message: GHSA-pw3x-g8v8-fvj2 (high), "Fixed in: 2026.10.33, 2026.11.4". A dry run afterwards had 0 messages due ("1 told so far").
+- **Install policy files:** `/usr/local/lib/jorah/install-policy` (root 755) and `/etc/jorah/install-allowlist.json` (root 644, empty). A probe as jorah got `block`.
+  - Scratch test on the throwaway `policy-scratch` profile: "Install blocked by policy" for the linked plugin `jorah-errands` and for the local skill `policy-probe`. `doctor --deep` reached the command and was blocked. Result: "scratch test: both installs blocked". The scratch profile and probe folder are gone.
+- **Live config untouched:** `security.installPolicy.enabled` is still unset on the `jorah` profile.
+- **Step 4 waits** for the upgrade (planned about 2026-11-26): the live patch (`setup-install-policy.sh`, hot reload) would block the npm updates of `@openclaw/acpx` and `@openclaw/duckduckgo-plugin`. It needs a Gateway turn from the coordinating session.
 
 **Undo:** `install-daily-watch.sh --undo` (units; state and manifest stay), `setup-install-policy.sh --undo` (sets `enabled: false`; or restore `openclaw.json.pre-install-policy`).
 

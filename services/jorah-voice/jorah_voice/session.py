@@ -11,6 +11,9 @@ from .core import (FollowUp, IdleClock, LastFullMessage, OverviewSplit, Resample
                    classify, join_waiting, percentile, speakable_sentences)
 
 BLOCK_SECONDS = 0.1
+# After the far end has played the last audio, wait this much longer before listening again: the
+# network, the client's own buffer, and the room's echo of Jorah's voice.
+ECHO_TAIL_SECONDS = 0.3
 BYTES_PER_SAMPLE = 2
 FAILURE_LINE = "I can't reach my brain right now."
 EMPTY_LINE = "I didn't get an answer. Try me again."
@@ -54,6 +57,9 @@ class VoiceSession:
         self._clock = clock
         self._sleep = sleep
         self._lead = lead
+        # When the far end will have played all audio sent so far, on `clock`. One clock for the
+        # session, so the far end never runs more than `lead` ahead however the audio is split up.
+        self._plays_until = clock()
         self._turn_end = turn_end or TurnEnd(0.6, 0.6)
         # Speech segments of the turn in progress, held until a long enough pause ends the turn.
         self._held = []
@@ -143,6 +149,8 @@ class VoiceSession:
         self._idle.touch()
         if not quiet:
             await self._send_json({"type": "cut"})
+            # The client empties its player on "cut", so nothing is left playing.
+            self._plays_until = self._clock()
             await self._state("listening")
 
     async def watch(self):
@@ -400,8 +408,8 @@ class VoiceSession:
                                 marks["first_audio"] = round(self._clock() - heard_at, 2)
                         await self._state("speaking")
                     await self._send_paced(pcm)
-        # What's already sent is still playing at the far end.
-        await self._sleep(self._lead)
+        # What's already sent is still playing at the far end: listen again only once it's done.
+        await self._sleep(max(0.0, self._plays_until - self._clock()) + ECHO_TAIL_SECONDS)
 
     async def _sound(self, text):
         """Yield the audio for one piece of text: in pieces as it's made when the speaker can stream,
@@ -441,13 +449,20 @@ class VoiceSession:
             stop.set()
 
     async def _send_paced(self, pcm):
-        """Send at about playing speed, so a cut-off is heard straight away and the mic stays shut until he's done."""
+        """Send at about playing speed, at most `lead` ahead of the far end, so a cut-off is heard straight
+        away and the mic stays shut until he's done.
+
+        The play-out clock is the session's, not this call's. Until 2026-11-20 each call started its own,
+        so every streamed piece (about 0.64 s) let the far end run `lead` further ahead: seconds by the end
+        of a long reply, and the mic reopened while Jorah was still talking.
+        """
+        bytes_per_second = self._speaker.sample_rate * BYTES_PER_SAMPLE
         block = int(self._speaker.sample_rate * BLOCK_SECONDS) * BYTES_PER_SAMPLE
-        started = self._clock()
-        sent = 0.0
         for offset in range(0, len(pcm), block):
-            await self._send_audio(pcm[offset : offset + block])
-            sent += BLOCK_SECONDS
-            delay = started + sent - self._lead - self._clock()
+            piece = pcm[offset : offset + block]
+            # A gap with nothing to play (Jorah still thinking) leaves nothing queued.
+            self._plays_until = max(self._plays_until, self._clock()) + len(piece) / bytes_per_second
+            await self._send_audio(piece)
+            delay = self._plays_until - self._lead - self._clock()
             if delay > 0:
                 await self._sleep(delay)

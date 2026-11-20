@@ -715,3 +715,78 @@ class LongReplies(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(marks["spoken_words"], 18)
         self.assertGreater(marks["full_chars"], 100)
         self.assertNotIn("toolbox", lines[0])
+
+
+class PieceSpeaker(FakeSpeaker):
+    """Streams `pieces` pieces of `seconds` each, faster than real time, as Qwen3-TTS does."""
+
+    def __init__(self, pieces, seconds=0.64):
+        super().__init__()
+        self.pieces, self.seconds = pieces, seconds
+
+    def stream(self, text):
+        self.lines.append(text)
+        for _ in range(self.pieces):
+            yield b"\0\0" * int(self.sample_rate * self.seconds)
+
+
+class PlayOut(unittest.IsolatedAsyncioTestCase):
+    """The mic reopens only once the far end has played everything sent. 2026-11-20: with streamed
+    speech it reopened seconds early, and Jorah answered his own last words."""
+
+    def harness(self, pieces):
+        self.now = [0.0]
+        self.events = []
+
+        async def sleep(seconds):
+            self.now[0] += max(0.0, seconds)
+            await asyncio.sleep(0)
+
+        h = Harness(clock=lambda: self.now[0], sleep=sleep, brain=FakeBrain(["Done. "]))
+        h.speaker = h.session._speaker = PieceSpeaker(pieces)
+        send_json, send_audio = h.session._send_json, h.session._send_audio
+
+        async def timed_json(message):
+            self.events.append((self.now[0], message.get("state")))
+            await send_json(message)
+
+        async def timed_audio(data):
+            self.events.append((self.now[0], len(data) / 2 / h.speaker.sample_rate))
+            await send_audio(data)
+
+        h.session._send_json, h.session._send_audio = timed_json, timed_audio
+        return h
+
+    def played_and_listening(self):
+        audio = [(t, s) for t, s in self.events if isinstance(s, float)]
+        listening = max(t for t, s in self.events if s == "listening")
+        return audio[0][0], sum(s for _, s in audio), listening
+
+    async def test_back_to_back_pieces_keep_the_mic_shut_until_all_is_played(self):
+        for pieces in (3, 15):
+            h = self.harness(pieces)
+            await h.say()
+            await h.settle()
+            first, total, listening = self.played_and_listening()
+            self.assertGreaterEqual(listening - first, total, pieces)
+            self.assertLessEqual(listening - first, total + 0.6, pieces)
+
+    async def test_the_far_end_is_never_more_than_the_lead_ahead(self):
+        h = self.harness(15)
+        await h.say()
+        await h.settle()
+        sent = 0.0
+        first = None
+        for t, s in self.events:
+            if isinstance(s, float):
+                first = t if first is None else first
+                ahead = first + sent - t  # audio queued at the far end before this block
+                self.assertLessEqual(ahead, h.session._lead + 1e-6)
+                sent += s
+
+    async def test_a_cut_empties_the_far_end_so_nothing_is_owed(self):
+        h = self.harness(1)
+        h.session._plays_until = 1e9
+        h.session._turn = asyncio.create_task(asyncio.sleep(10))
+        await h.session.interrupt()
+        self.assertLessEqual(h.session._plays_until, self.now[0])

@@ -81,6 +81,14 @@ Adam: "switch it to the max plan now", so a business-and-engineering project loo
 
 **Fix:** `deploy/openclaw-gateway.service` runs `podman info` (60 s cap) as `ExecStartPre`, so the refresh is done before the Gateway starts. A failure there doesn't block the Gateway, and the sandbox still fails closed. `scripts/pc/install-gateway-unit.sh` installs it (`--dry-run`, `--undo`), backup `openclaw-gateway.service.pre-podman-warmup`, no restart. Verified with `systemd-analyze verify` on the PC. **Installed 2026-11-14 15:28 on Adam's yes** [measured]: `/opt/jorah` files match `8b7dfe6` by SHA-256, dry run then install, `systemctl show` lists the `ExecStartPre`, Gateway still active, not restarted. Not tested across a reboot: after the next boot, expect no Telegram warning and `Heartbeat (main)` `ok` in `cron list`. Undo: the script's `--undo`.
 
+## Jorah answering his own voice, 2026-11-20
+
+**Found** (Adam, and the HUD session from the PC journal, 18:14:30 to 18:15:43): four turns in 36 s, each starting 2 to 5 s after the previous reply, because Jorah heard the end of his own reply.
+
+**Cause** (source, reproduced in a unit test with a fake clock): since streamed speech went live on 2026-11-14, `_send_paced` restarted its pacing clock for every piece of audio Qwen3-TTS sends, about 0.64 s each. So the client's buffer grew by `lead` (0.2 s) per piece. That's about 1.9 s by the end of a 10 s reply, and `jorah-voice` said "listening" and took mic audio while that was still playing. `mac-ear` and the iPhone's Talk were hit too.
+
+**Fix** (`session.py`): one play-out clock for the session. The far end is never more than 0.2 s ahead, and the mic reopens 0.3 s after the last audio has played (`ECHO_TAIL_SECONDS`). A "cut" resets the clock, because the client empties its player. The HUD separately sends silence until its own player has finished, plus 0.5 s (HUD session).
+
 ## Long replies by voice, 2026-11-19
 
 **Why** [measured]: on 2026-11-19 at 16:46 a voice turn after a tool chain read a multi-bullet report aloud for about 36 s until the turn was cut. `VOICE_NOTE` already asked for one to three sentences, but after tool turns Jorah ignored it.

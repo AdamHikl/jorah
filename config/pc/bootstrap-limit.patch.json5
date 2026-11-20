@@ -1,0 +1,20 @@
+// Jorah's whole AGENTS.md in his context, on Adam's yes of 2026-11-20 ("yes raise it"). OpenClaw
+// 2026.10.9 injects at most 20,000 chars of each workspace bootstrap file
+// (agents.defaults.bootstrapMaxChars). Main's AGENTS.md had grown to 29,626 chars, so it was cut to
+// a head, a digest of short rule lines and a tail: 19,183 chars reached Jorah, and the rules for
+// projects (founder answers), coding (branches, unprotected repos), shopping (health data) and
+// the toolbox were lost (measured with OpenClaw's own code, docs/evidence/agents-md-budget/).
+// Main only: deep and background keep the 20,000 default. The cost is the extra rules text on
+// every main turn, voice and heartbeats included; main runs on Adam's Max login, so it counts
+// against his plan limits, not the API bill. scripts/pc/tests/test_bootstrap_budget.py fails
+// when AGENTS.md passes 90% of this limit, so it can't be cut again unnoticed.
+// Undo: openclaw --profile jorah config unset agents.entries.main.bootstrapMaxChars
+{
+  agents: {
+    entries: {
+      main: {
+        bootstrapMaxChars: 40000,
+      },
+    },
+  },
+}

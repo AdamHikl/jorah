@@ -412,6 +412,7 @@ short rule lines and the last 3,000. Of the toolbox section, Jorah gets steps 3 
 own description says the same, so the lookup doesn't depend on it. Most of the Projects section is
 cut the same way. Fixing that is its own task: slim `AGENTS.md`, or raise
 `agents.defaults.bootstrapMaxChars` (live config, on Adam's yes).
+Done 2026-11-20 with both: `docs/runbooks/jorah-on-pc.md`, "AGENTS.md whole in Jorah's context".
 
 **Open:** Adam's Telegram test (step 5), and the slicer test.
 

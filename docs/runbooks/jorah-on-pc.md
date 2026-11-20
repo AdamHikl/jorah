@@ -880,6 +880,32 @@ All of these must be done first. The live upgrade then still needs its own previ
 
 **Undo:** `install-daily-watch.sh --undo` (units; state and manifest stay), `setup-install-policy.sh --undo` (sets `enabled: false`; or restore `openclaw.json.pre-install-policy`).
 
+## AGENTS.md whole in Jorah's context, 2026-11-20
+
+OpenClaw injects at most `bootstrapMaxChars` (default 20,000) of each workspace bootstrap file and
+cuts the rest. Main's `AGENTS.md` had reached 29,626 chars, so Jorah got 19,183 of it and lost the
+rules from Learning "Undo" to the toolbox's step 2, founder answers and health-data rules included
+(`docs/evidence/agents-md-budget/`). On Adam's yes of 2026-11-20 ("yes raise it, but can we also
+distill it"):
+
+- `workspace/AGENTS.md` is distilled to 25,395 chars, with no rule dropped (an independent review
+  compared it line by line);
+- `config/pc/bootstrap-limit.patch.json5` sets `agents.entries.main.bootstrapMaxChars` to 40,000,
+  for main only (about 1,600 more tokens a turn, on the Max plan);
+- `just check` runs `scripts/pc/tests/test_bootstrap_budget.py`, which fails when any bootstrap
+  file of the three workspaces passes 90% of its limit. Raise the limit, or shorten the file,
+  on Adam's yes.
+
+**Deploy:** `scripts/pc/deploy_reviewed.py deploy config/pc/bootstrap-limit.patch.json5`, then as
+jorah `openclaw --profile jorah config patch --file /opt/jorah/config/pc/bootstrap-limit.patch.json5
+--dry-run` and without `--dry-run`; copy `workspace/AGENTS.md` to the live workspace (backup
+`AGENTS.md.pre-distill`) and `record-live` it; `/readyz` ready, then
+`systemctl start jorah-gateway-recycle.service` so new sessions get the whole file.
+**Check:** the Gateway log since the restart has no "bootstrap file AGENTS.md is ... truncating"
+line. After the OpenClaw 2026.10.33 upgrade, check that line again.
+**Undo:** `openclaw --profile jorah config unset agents.entries.main.bootstrapMaxChars`, and copy
+`AGENTS.md.pre-distill` back (then `record-live` the old file from its commit).
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

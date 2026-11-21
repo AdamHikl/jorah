@@ -23,7 +23,7 @@ So this ADR replaces one line of ADR 0005, "The HUD shows only what the Gateway 
 | Task "Jorah Core Temp" | Starts `C:\Program Files\Core Temp\Core Temp.exe` (1.18.1, already installed by Adam) the same way | Windows reports no CPU temperature on this board (no ACPI thermal zones). Core Temp reads it with its own driver and shares it in memory, which the reader opens read-only. Both tasks run in session 0, so the reader can see Core Temp's shared memory |
 | Serve route | `https://rocket.tail1574a5.ts.net:43231` to `http://127.0.0.1:43230`, tailnet only | HTTPS with the tailnet's certificate, like the Gateway and voice routes. 43230 and 43231 are clear of the distro's ports (`docs/runbooks/jorah-on-pc.md`, rule from 2026-11-08) |
 
-Measured on 2026-11-21 with a 60-second run on a spare port: 0.9 s of CPU per minute while polled every 2 s (0.05% of the PC), 178 MB of memory, about 75 ms per answer, 3 s for the first answer after a pause.
+Measured on 2026-11-21 with a 60-second run on a spare port: 0.9 s of CPU per minute while polled every 2 s (0.05% of the PC), about 75 ms per answer, 3 s for the first answer after a pause. Memory: 178 MB in that run, 282 MB for the installed task once the disk-temperature reader had loaded; Core Temp adds 18 MB.
 
 ## What the HUD does
 

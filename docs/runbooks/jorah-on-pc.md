@@ -87,7 +87,9 @@ The HUD's COMMAND view has a PC panel: CPU and its temperature, RAM, GPU with te
 
 **Dry run, 2026-11-21** [measured, from a temp folder, removed after]: one reading had every value but the CPU temperature (Core Temp not running); a 60-second run on a spare port answered 29 of 29 requests with the GPU present, used 0.05% of the PC's CPU and 178 MB.
 
-**Install, update, check, undo:** `scripts/pc/install-pcstats.sh --dry-run`, `--install`, `--status`, `--undo` (from a checkout of `main`, setup key). Status: **not installed yet**.
+**Install, update, check, undo:** `scripts/pc/install-pcstats.sh --dry-run`, `--install`, `--status`, `--undo` (from a checkout of `main`, setup key).
+
+**Installed 2026-11-21 18:04 on Adam's yes** [measured]: `pcstats.ps1` at `8b5ca64`, SHA-256 matched git; tasks "Jorah PC Stats" and "Jorah Core Temp" running (adamh, S4U, highest, boot and every 5 minutes with no end, no time limit); folder writable by SYSTEM and Administrators only; Serve `:43231` tailnet only. From the Mac, a reading with nothing unknown: CPU 47 °C from Core Temp (hottest of 20 cores, Core Temp in session 0 with nobody signed in), GPU 49 °C, C: 47 °C, D: 35 °C. The reader uses 282 MB, Core Temp 18 MB. Not yet seen: the panel in Adam's HUD, and both tasks across a reboot.
 
 ## Approval cards in the Mac HUD, 2026-11-21
 

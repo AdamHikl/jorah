@@ -147,6 +147,7 @@ struct CoreView: View {
 
     var body: some View {
         VStack(spacing: 6) {
+            ApprovalsPanel()
             TimelineView(.periodic(from: .now, by: 0.5)) { _ in
                 let state = model.orbState
                 VStack(spacing: 6) {

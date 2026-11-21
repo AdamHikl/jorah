@@ -22,7 +22,7 @@ This is a waived gate in the sense of the roadmap: it is written here, it belong
 | Never fork OpenClaw's Mac app (`07` 5.1) | The HUD is a new, small app with its own Gateway client |
 | The HUD is an operator client, never a node | Hard gate 2: no node besides the iPhone before M3 |
 | Voice never approves (gate 9) | Unchanged |
-| The HUD does not ask for `operator.approvals` | Answering approvals makes it a new approval surface. That needs its own decision and tests (SEC-T20, T32, T37 style) first |
+| ~~The HUD does not ask for `operator.approvals`~~ Replaced by ADR 0007 (2026-11-21): the HUD may ask for it, by Adam's choice and approval | Answering approvals makes it a new approval surface. ADR 0007 is that decision and lists its tests |
 | The HUD does not ask for `operator.admin` or `operator.pairing` | Least privilege |
 | Adam enters the Gateway token, approves the pairing and grants macOS permissions | `CLAUDE.md`, "Adam's yes" |
 | Nothing private connects before M3's gate | Unchanged. The HUD shows only what the Gateway already sends an operator |

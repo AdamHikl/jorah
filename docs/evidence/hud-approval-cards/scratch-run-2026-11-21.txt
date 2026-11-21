@@ -1,0 +1,27 @@
+scratch Gateway up on ws://127.0.0.1:43187
+first pairing (shared token, read+write): {"ok":false,"code":"PAIRING_REQUIRED","requestId":"bc71d5c0-7cc4-40df-8546-c14639f6e571"}
+pending request: {'role': 'operator', 'scopes': ['operator.read', 'operator.write'], 'requestedScopes': None, 'isRepair': False}
+approved on the scratch Gateway: first pairing
+after approval (shared token): {"ok":true,"scopes":["operator.read","operator.write"],"gotDeviceToken":true}
+connect with device token, read+write: {"ok":true,"scopes":["operator.read","operator.write"]}
+T1 plugin.approval.list without operator.approvals: {"ok":false,"code":"MISSING_SCOPE","message":"missing scope: operator.approvals"}
+T2a device token reconnect asking for +operator.approvals: {"ok":false,"code":"AUTH_SCOPE_MISMATCH"}
+T2b device.scopes.requestUpgrade over the live connection: {"ok":true,"payload":{"requestId":"dbe8c264-d752-4d25-a825-69231440211a"}}
+T2b nothing widened while pending: list: {"ok":false,"code":"MISSING_SCOPE","message":"missing scope: operator.approvals"}
+T2b pending request as Adam would see it: {"displayName":"HUD scratch probe","role":"operator","scopes":["operator.approvals","operator.read","operator.write"],"isRepair":true}
+approved on the scratch Gateway: upgrade to operator.approvals
+T2b waitUpgrade result (token redacted): {"ok":true,"keys":["status","requestId","deviceToken","scopes"],"status":"approved","scopes":["operator.approvals","operator.read","operator.write"]}
+T2b reconnect with +approvals after approval: {"ok":true,"scopes":["operator.read","operator.write","operator.approvals"]}
+T3 answering connection linked (+approvals, plugin-approvals cap): {"ok":true,"scopes":["operator.read","operator.write","operator.approvals"]}
+cards asked (decision null at once would mean no route): {"B":["plugin:b86ac8b2-7338-414c-8e43-3873e140cffa",null],"E":["plugin:dab7b919-8282-4fdf-9e89-7262497b0a94",null]}
+T5 list rows as the HUD gets them: {"ok":true,"count":2,"rowKeys":["approvalKind","createdAtMs","expiresAtMs","id","request"],"requestKeys":["agentId","allowedDecisions","description","detail","pluginId","runId","scope","sessionKey","severity","title","toolCallId","toolName","turnSourceAccountId","turnSourceChannel","turnSourceThreadId","turnSourceTo"]}
+T5 card B as listed (description as the Gateway sanitised it): {"title":"Card B","description":"Scratch card for ADR 0007 [link](https://example.invalid) \\u{202E}evil","allowedDecisions":["allow-once","deny"],"expiresInS":120}
+T3 allow-always on card B: {"ok":false,"code":"INVALID_REQUEST","message":"allow-always is unavailable for this plugin approval"}
+T3 allow-once on card B: {"ok":true,"payload":{"ok":true}}
+T4 a second answer (deny) on card B: {"ok":false,"code":"INVALID_REQUEST","message":"approval already resolved"}
+T4 the CLI over the shared token (least-privilege scopes) tries card E: "unknown or expired approval id"
+T4 another connection (the asker) denies card E first: {"ok":true,"payload":{"ok":true}}
+T4 then the HUD answers card E: {"ok":false,"code":"INVALID_REQUEST","message":"approval already resolved"}
+T4 B and E gone from the HUD's list: {"B":true,"E":true}
+T4 approval events the HUD connection received: [{"event":"plugin.approval.requested","id":"plugin:b86ac8b2-7338-414c-8e43-3873e140cffa","keys":["approvalKind","createdAtMs","expiresAtMs","id","request"]},{"event":"plugin.approval.requested","id":"plugin:dab7b919-8282-4fdf-9e89-7262497b0a94","keys":["approvalKind","createdAtMs","expiresAtMs","id","request"]},{"event":"plugin.approval.resolved","id":"plugin:b86ac8b2-7338-414c-8e43-3873e140cffa","decision":"allow-once","keys":["decision","id","request","resolvedBy","ts"]},{"event":"plugin.approval.resolved","id":"plugin:dab7b919-8282-4fdf-9e89-7262497b0a94","decision":"deny","keys":["decision","id","request","resolvedBy","ts"]}]
+scratch Gateway stopped

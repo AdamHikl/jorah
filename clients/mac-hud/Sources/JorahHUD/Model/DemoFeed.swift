@@ -1,4 +1,5 @@
 import Foundation
+import HUDCore
 
 /// Made-up frames for `JORAH_HUD_DEMO=1`, pushed through the same handlers as real Gateway frames,
 /// so the layout can be checked without a connection. The HUD labels every panel
@@ -50,6 +51,26 @@ enum DemoFeed {
             ChatLine(id: "d-u1", role: .user, text: "Demo message: what changed in the repo today?", at: Date().addingTimeInterval(-60)),
         ]
         model.historyAsOf = Date()
+        // A made-up approval card, to see its layout. Its buttons stay off in the demo.
+        let cardRow: [String: Any] = [
+            "id": "plugin:demo-0001",
+            "createdAtMs": now - 20_000,
+            "expiresAtMs": now + 280_000,
+            "request": [
+                "title": "Demo: install a tool",
+                "description": "Demo card. Install demo-tool 1.2.3 into the toolbox (12 MB). Made up to show the layout.",
+                "severity": "warning",
+                "allowedDecisions": ["allow-once", "deny"],
+                "pluginId": "jorah-guard",
+                "toolName": "toolbox_install",
+                "agentId": "main",
+            ] as [String: Any],
+        ]
+        if let card = ApprovalParsing.card(fromRow: cardRow) {
+            model.approvals = [card]
+            model.approvalsAsOf = Date()
+            model.approvalFirstShown[card.id] = Date()
+        }
         // Made up, to see the full-message card's layout.
         model.fullReply = """
         I couldn't finish the demo card, so nothing is proposed.

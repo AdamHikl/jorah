@@ -7,8 +7,9 @@ import Foundation
 /// keeps the device token the Gateway issues after Adam approves the pairing, then
 /// carries requests, responses and events.
 ///
-/// What it never does: store the shared Gateway token, ask for approval, pairing or admin
-/// scopes, or register as a node.
+/// What it never does: store the shared Gateway token, ask for pairing or admin scopes, or
+/// register as a node. It asks for `operator.approvals` only when Adam picks "answer approval
+/// cards" (ADR 0007), and the Gateway grants it only after Adam approves that on the PC.
 @MainActor
 final class GatewayClient {
     enum Phase: Equatable {
@@ -33,7 +34,10 @@ final class GatewayClient {
     static let platform = "macos"
     static let deviceFamily = "Mac"
     static let role = "operator"
-    static let caps = ["tool-events", "chat-only-assistant-text"]
+    /// `plugin-approvals` tells the Gateway this client shows and answers plugin cards. It grants
+    /// nothing: the Gateway also needs `operator.approvals` before it sends a card here. Without it,
+    /// a card whose only route is this HUD is closed at once as "no approval route" (scratch test).
+    static let caps = ["tool-events", "chat-only-assistant-text", "plugin-approvals"]
     static let tokenAccount = "device-token"
     static let scopesDefaultsKey = "hud.grantedScopes"
 
@@ -63,13 +67,13 @@ final class GatewayClient {
     static var hasStoredDeviceToken: Bool { Keychain.read(tokenAccount) != nil }
 
     static var storedScopes: [String] {
-        UserDefaults.standard.stringArray(forKey: scopesDefaultsKey) ?? []
+        HUDProfile.defaults.stringArray(forKey: scopesDefaultsKey) ?? []
     }
 
     /// Forgets the pairing on this Mac. The Gateway's record is removed on the PC with `openclaw devices`.
     static func forgetPairing() {
         Keychain.delete(tokenAccount)
-        UserDefaults.standard.removeObject(forKey: scopesDefaultsKey)
+        HUDProfile.defaults.removeObject(forKey: scopesDefaultsKey)
     }
 
     /// Starts or restarts the connection. Pass `sharedToken` only for a first pairing or a scope change.
@@ -92,6 +96,21 @@ final class GatewayClient {
         phase = .idle
     }
 
+    /// Keeps the device token the Gateway returned after Adam approved a scope upgrade
+    /// (`device.scopes.waitUpgrade`), then reconnects with the new scopes. A reconnect that merely
+    /// asks for broader scopes with the old token is refused (AUTH_SCOPE_MISMATCH, scratch test).
+    @discardableResult
+    func adoptUpgradedToken(_ deviceToken: String, scopes: [String]) -> Bool {
+        guard url != nil, !scopes.isEmpty, let data = deviceToken.data(using: .utf8),
+              Keychain.write(Self.tokenAccount, data)
+        else { return false }
+        HUDProfile.defaults.set(scopes, forKey: Self.scopesDefaultsKey)
+        requestedScopes = scopes
+        reconnectAttempt = 0
+        open()
+        return true
+    }
+
     /// Tries again after Adam approved the pairing on the PC.
     func retry() {
         guard url != nil else { return }
@@ -99,7 +118,7 @@ final class GatewayClient {
         open()
     }
 
-    func request(_ method: String, _ params: JSONValue = .object([:])) async throws -> JSONValue {
+    func request(_ method: String, _ params: JSONValue = .object([:]), timeout: Duration = .seconds(30)) async throws -> JSONValue {
         guard phase == .connected, let task else {
             throw RequestError(code: "NOT_CONNECTED", message: "not connected", details: .null)
         }
@@ -117,7 +136,7 @@ final class GatewayClient {
                 Task { @MainActor in self?.resolve(id, .failure(error)) }
             }
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(30))
+                try? await Task.sleep(for: timeout)
                 self?.resolve(id, .failure(RequestError(code: "TIMEOUT", message: "\(method) timed out", details: .null)))
             }
         }
@@ -314,9 +333,12 @@ final class GatewayClient {
             if let deviceToken = auth["deviceToken"].string, let data = deviceToken.data(using: .utf8) {
                 // Keep the device token, then drop the shared token from memory.
                 if Keychain.write(Self.tokenAccount, data) {
-                    UserDefaults.standard.set(granted, forKey: Self.scopesDefaultsKey)
+                    HUDProfile.defaults.set(granted, forKey: Self.scopesDefaultsKey)
                     sharedToken = nil
                 }
+            } else if !granted.isEmpty, Self.hasStoredDeviceToken {
+                // What the Gateway granted is the truth, after an upgrade or a narrowing on the PC.
+                HUDProfile.defaults.set(granted, forKey: Self.scopesDefaultsKey)
             }
             reconnectAttempt = 0
             phase = .connected

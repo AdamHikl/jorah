@@ -4,7 +4,7 @@ import Security
 /// Generic-password items under the service `jorah-hud`. The device key and the
 /// device token live here and nowhere else. The shared Gateway token is never stored.
 enum Keychain {
-    static let service = "jorah-hud"
+    static let service = HUDProfile.keychainService
 
     /// Reads an item. `service` defaults to the HUD's own; the voice token lives under `jorah-voice`,
     /// where `mac-ear`'s runbook step put it, and is only ever read.

@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import HUDCore
 import Observation
 
 struct ChatLine: Identifiable, Equatable {
@@ -94,16 +96,16 @@ enum OrbState: String {
 @Observable
 final class HUDModel {
     // Settings
-    var gatewayURLText: String = UserDefaults.standard.string(forKey: "hud.gatewayURL") ?? "wss://rocket.tail1574a5.ts.net" {
-        didSet { UserDefaults.standard.set(gatewayURLText, forKey: "hud.gatewayURL") }
+    var gatewayURLText: String = HUDProfile.defaults.string(forKey: "hud.gatewayURL") ?? "wss://rocket.tail1574a5.ts.net" {
+        didSet { HUDProfile.defaults.set(gatewayURLText, forKey: "hud.gatewayURL") }
     }
-    var commandMode: Bool = UserDefaults.standard.object(forKey: "hud.commandMode") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(commandMode, forKey: "hud.commandMode") }
+    var commandMode: Bool = HUDProfile.defaults.object(forKey: "hud.commandMode") as? Bool ?? true {
+        didSet { HUDProfile.defaults.set(commandMode, forKey: "hud.commandMode") }
     }
 
-    var voiceURLText: String = UserDefaults.standard.string(forKey: "hud.voiceURL") ?? "wss://rocket.tail1574a5.ts.net:43211" {
+    var voiceURLText: String = HUDProfile.defaults.string(forKey: "hud.voiceURL") ?? "wss://rocket.tail1574a5.ts.net:43211" {
         didSet {
-            UserDefaults.standard.set(voiceURLText, forKey: "hud.voiceURL")
+            HUDProfile.defaults.set(voiceURLText, forKey: "hud.voiceURL")
             voice.configure(url: URL(string: voiceURLText))
         }
     }
@@ -126,8 +128,8 @@ final class HUDModel {
     var powerBusy = false
     var powerLog: [String] = []
     /// When this Mac paused Jorah on the PC. The PC is the truth: this only remembers what was done here.
-    var pausedAt: Date? = UserDefaults.standard.object(forKey: "hud.pausedAt") as? Date {
-        didSet { UserDefaults.standard.set(pausedAt, forKey: "hud.pausedAt") }
+    var pausedAt: Date? = HUDProfile.defaults.object(forKey: "hud.pausedAt") as? Date {
+        didSet { HUDProfile.defaults.set(pausedAt, forKey: "hud.pausedAt") }
     }
     let power = PowerControl()
 
@@ -188,12 +190,33 @@ final class HUDModel {
     var pluginErrors: Int?
     var heartbeatSeconds: Int?
 
+    // Approval cards (ADR 0007). Nil `approvalsAsOf` means unknown: not linked, no scope, or the
+    // list failed. The HUD never shows "no cards" unless the Gateway just said so.
+    var approvals: [ApprovalCard] = []
+    var approvalsAsOf: Date?
+    var approvalsError: String?
+    /// When each card first appeared on this screen. Buttons wait `ApprovalRules.holdSeconds`.
+    var approvalFirstShown: [String: Date] = [:]
+    var approvalBusy: Set<String> = []
+    var approvalCardErrors: [String: String] = [:]
+    /// One line about the last answer sent from here, shown under the cards.
+    var approvalNote: String?
+    /// "Ask for card access": the pending upgrade's request id while it waits for Adam on the PC.
+    var cardAccessRequestId: String?
+    var cardAccessError: String?
+    private var cardAccessWait: Task<Void, Never>?
+    private var approvalsRefresh: Task<Void, Never>?
+    private var approvalsPoll: Task<Void, Never>?
+
     let client = GatewayClient()
     private var cronRefresh: Task<Void, Never>?
     private var sessionsRefresh: Task<Void, Never>?
     private var historyRefresh: Task<Void, Never>?
 
     var canWrite: Bool { grantedScopes.contains("operator.write") || grantedScopes.contains("operator.admin") }
+    var canAnswerApprovals: Bool {
+        grantedScopes.contains("operator.approvals") || grantedScopes.contains("operator.admin")
+    }
 
     var orbState: OrbState {
         // An open voice session speaks for itself, whatever the Gateway link is doing.
@@ -311,15 +334,68 @@ final class HUDModel {
     }
 
     /// First pairing, or a scope change. `sharedToken` is typed by Adam and is not stored.
-    func pair(sharedToken: String, allowTyping: Bool) {
+    func pair(sharedToken: String, allowTyping: Bool, allowCards: Bool) {
         guard let url = URL(string: gatewayURLText), url.scheme == "wss" || url.scheme == "ws" else {
             phase = .failed("The Gateway address must start with wss://")
             return
         }
         var scopes = ["operator.read"]
         if allowTyping { scopes.append("operator.write") }
+        if allowCards { scopes.append("operator.approvals") }
         GatewayClient.forgetPairing()
         client.start(url: url, sharedToken: sharedToken, scopes: scopes)
+    }
+
+    /// Asks the Gateway, over the live link, to add `operator.approvals` to this paired HUD
+    /// (`device.scopes.requestUpgrade`). Nothing widens until Adam runs
+    /// `openclaw --profile jorah devices approve <id>` on the PC; then `device.scopes.waitUpgrade`
+    /// hands this connection a new device token, which the HUD keeps and reconnects with.
+    func requestCardAccess() {
+        guard !isDemo, phase == .connected, !canAnswerApprovals, cardAccessWait == nil else { return }
+        var scopes = grantedScopes
+        if !scopes.contains("operator.approvals") { scopes.append("operator.approvals") }
+        cardAccessError = nil
+        cardAccessWait = Task { [weak self] in
+            guard let self else { return }
+            defer { self.cardAccessWait = nil }
+            do {
+                let filed = try await self.client.request("device.scopes.requestUpgrade", .object([
+                    "scopes": .array(scopes.map { .string($0) }),
+                ]))
+                guard let requestId = filed["requestId"].string else {
+                    self.cardAccessError = "The Gateway did not return a request id."
+                    return
+                }
+                self.cardAccessRequestId = PlainText.clean(requestId, limit: 80)
+                // Wait as long as Adam needs; a timeout of this call only means "ask again".
+                while !Task.isCancelled {
+                    let result: JSONValue
+                    do {
+                        result = try await self.client.request("device.scopes.waitUpgrade", .object([
+                            "requestId": .string(requestId),
+                        ]), timeout: .seconds(300))
+                    } catch let error as GatewayClient.RequestError where error.code == "TIMEOUT" {
+                        continue
+                    }
+                    let status = result["status"].string ?? "unknown"
+                    let granted = (result["scopes"].array ?? []).compactMap(\.string)
+                    if status == "approved", let token = result["deviceToken"].string,
+                       granted.contains("operator.approvals") {
+                        self.cardAccessRequestId = nil
+                        if !self.client.adoptUpgradedToken(token, scopes: granted) {
+                            self.cardAccessError = "Approved, but the new device token could not be kept in the Keychain."
+                        }
+                    } else {
+                        self.cardAccessRequestId = nil
+                        self.cardAccessError = "Card access was not granted (\(PlainText.clean(status, limit: 40)))."
+                    }
+                    return
+                }
+            } catch {
+                self.cardAccessRequestId = nil
+                self.cardAccessError = "Card access request failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     func forgetPairing() {
@@ -339,6 +415,8 @@ final class HUDModel {
         case .idle, .connecting, .failed:
             // Live facts are no longer current. Keep the transcript, drop "running" claims.
             activeRuns.removeAll()
+            // Cards fail closed: without a link they are unknown, and none can be answered.
+            clearApprovals()
             for index in activity.indices where activity[index].state == .running {
                 activity[index].state = .failed
                 activity[index].endedAt = Date()
@@ -354,6 +432,7 @@ final class HUDModel {
         currentSessionKey = nil; mainSessionId = nil; sessionError = nil
         models = []; modelsAsOf = nil; currentModel = nil; currentModelSource = nil; defaultModel = nil
         subagents = []; subagentsAsOf = nil
+        clearApprovals()
     }
 
     func applyHello(_ hello: JSONValue) {
@@ -380,9 +459,109 @@ final class HUDModel {
             _ = try? await client.request("sessions.messages.subscribe", .object(["key": .string(key)]))
             await loadHistory()
         }
+        await refreshApprovals()
+        startApprovalsPoll()
         await loadModels()
         await refreshSubagents()
         await refreshCron()
+    }
+
+    // MARK: - Approval cards
+
+    private func clearApprovals() {
+        // A link change ends a pending card-access wait; its request stays on the PC until it expires.
+        cardAccessWait?.cancel(); cardAccessWait = nil; cardAccessRequestId = nil
+        approvalsPoll?.cancel(); approvalsPoll = nil
+        approvalsRefresh?.cancel(); approvalsRefresh = nil
+        approvals = []; approvalsAsOf = nil; approvalsError = nil
+        approvalFirstShown = [:]; approvalBusy = []; approvalCardErrors = [:]
+    }
+
+    /// Lists pending plugin approvals this HUD may answer. The list is the truth; events only
+    /// make it arrive sooner. A failed list shows as unknown, never as "none".
+    func refreshApprovals() async {
+        guard !isDemo, phase == .connected else { return }
+        guard canAnswerApprovals else {
+            approvals = []; approvalsAsOf = nil; approvalsError = nil
+            return
+        }
+        do {
+            let result = try await client.request("plugin.approval.list", .object([:]))
+            guard let cards = ApprovalParsing.cards(fromList: result.any) else {
+                throw GatewayClient.RequestError(code: "SHAPE", message: "the Gateway's answer was not a list", details: .null)
+            }
+            let now = Date()
+            let fresh = cards.filter { !$0.isExpired(at: now) }
+            let arrived = fresh.filter { approvalFirstShown[$0.id] == nil }
+            for card in fresh where approvalFirstShown[card.id] == nil { approvalFirstShown[card.id] = now }
+            let live = Set(fresh.map(\.id))
+            approvalFirstShown = approvalFirstShown.filter { live.contains($0.key) }
+            approvalCardErrors = approvalCardErrors.filter { live.contains($0.key) }
+            approvals = fresh.sorted { ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast) }
+            approvalsAsOf = now
+            approvalsError = nil
+            if !arrived.isEmpty { NSApp.requestUserAttention(.criticalRequest) }
+        } catch {
+            approvals = []
+            approvalsAsOf = nil
+            approvalsError = "Cards unknown: \(error.localizedDescription)"
+        }
+    }
+
+    private func scheduleApprovalsRefresh() {
+        approvalsRefresh?.cancel()
+        approvalsRefresh = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await self?.refreshApprovals()
+        }
+    }
+
+    /// Catches cards whose events were missed, and drops expired ones, while linked.
+    private func startApprovalsPoll() {
+        approvalsPoll?.cancel()
+        approvalsPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled, let self, self.phase == .connected else { return }
+                await self.refreshApprovals()
+            }
+        }
+    }
+
+    /// Sends Adam's answer to one card. The only caller is the card's button action in
+    /// `ApprovalsPanel`: voice, chat text and anything Jorah writes have no path here.
+    func answerApprovalFromClick(id: String, decision: String) {
+        guard !isDemo, phase == .connected, canAnswerApprovals, !approvalBusy.contains(id),
+              let card = approvals.first(where: { $0.id == id }),
+              let shown = approvalFirstShown[id],
+              ApprovalRules.mayAnswer(card: card, decision: decision, firstShownAt: shown, now: Date())
+        else { return }
+        approvalBusy.insert(id)
+        approvalCardErrors[id] = nil
+        Task {
+            defer { approvalBusy.remove(id) }
+            do {
+                let result = try await client.request("plugin.approval.resolve", .object([
+                    "id": .string(id), "decision": .string(decision),
+                ]))
+                let recorded = result["decision"].string
+                if let recorded, recorded != decision {
+                    approvalNote = "Already answered elsewhere (\(recorded)): \(card.title)"
+                } else {
+                    approvalNote = "\(decision == "deny" ? "Denied" : "Allowed once"): \(card.title)"
+                }
+                approvals.removeAll { $0.id == id }
+            } catch let error as GatewayClient.RequestError
+                where error.message.contains("already resolved") || error.message.contains("unknown or expired") {
+                // Someone else answered first (Telegram), or it timed out. The first answer stands.
+                approvalNote = "Not sent: already answered elsewhere or expired: \(card.title)"
+                approvals.removeAll { $0.id == id }
+            } catch {
+                approvalCardErrors[id] = "Not answered: \(error.localizedDescription)"
+            }
+            await refreshApprovals()
+        }
     }
 
     // MARK: - Models
@@ -713,6 +892,14 @@ final class HUDModel {
                     }
                 }
             }
+        case "plugin.approval.requested":
+            scheduleApprovalsRefresh()
+        case "plugin.approval.resolved":
+            // Answered here, in Telegram, or timed out: the first answer wins and the card goes.
+            if let id = ApprovalParsing.resolvedId(fromEvent: payload.any) {
+                approvals.removeAll { $0.id == id }
+            }
+            scheduleApprovalsRefresh()
         case "device.pair.resolved":
             client.pairingResolved(decision: payload["decision"].string ?? "unknown")
         case "shutdown":

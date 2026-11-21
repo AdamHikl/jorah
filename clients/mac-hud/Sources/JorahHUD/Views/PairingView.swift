@@ -8,6 +8,7 @@ struct PairingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var token = ""
     @State private var allowTyping = true
+    @State private var allowCards = true
 
     var body: some View {
         @Bindable var model = model
@@ -63,11 +64,20 @@ struct PairingView: View {
                         .font(Theme.mono(10)).foregroundStyle(Theme.dim)
                 }
             }
-            Text("The HUD never asks for approvals, pairing or admin access.")
+            Toggle(isOn: $allowCards) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Let me answer Jorah's approval cards here").font(.system(size: 12))
+                    Text(allowCards
+                        ? "Adds: operator.approvals (Allow once or Deny, by click only)"
+                        : "Cards stay in Telegram only")
+                        .font(Theme.mono(10)).foregroundStyle(Theme.dim)
+                }
+            }
+            Text("The HUD never asks for pairing or admin access.")
                 .font(.system(size: 11)).foregroundStyle(Theme.dim)
 
             Button(model.phase == .connecting ? "Connecting…" : "Ask to pair") {
-                model.pair(sharedToken: token, allowTyping: allowTyping)
+                model.pair(sharedToken: token, allowTyping: allowTyping, allowCards: allowCards)
                 token = ""
             }
             .keyboardShortcut(.defaultAction)

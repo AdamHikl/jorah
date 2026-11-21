@@ -1012,6 +1012,10 @@ from the journal times].
   active hours). The overnight gaps before 2026-11-20 were nights with the PC off.
 - **journalctl:** `--grep` exits 1 with no output when nothing matches. A wrong invocation id exits 0
   with no output.
+- **Clocks:** the monotonic clock, which the uptime rule uses so sleep doesn't count, ran about 3 %
+  slow against the wall clock (1,667 s against about 1,716 s since the 07:43:58 start). That only
+  makes the 2.5-hour rule a few minutes later. Messages show systemd's wall-clock start
+  (`ActiveEnterTimestamp`).
 - **Old Mac store:** `/Users/adam/.openclaw-jorah/cron/jobs.json` still has an enabled
   `heartbeat-main` row, last run 2026-11-05. The check takes the newest receipt per job name, so that
   row doesn't matter.

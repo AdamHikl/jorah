@@ -76,9 +76,9 @@ def span(seconds):
 
 
 def systemd_show(unit, props):
-    """A unit's properties from systemd, or None if systemd didn't answer."""
+    """A unit's properties from systemd, or None if systemd didn't answer. Times as @<unix seconds>."""
     try:
-        out = subprocess.run(["systemctl", "show", unit, "-p", ",".join(props)],
+        out = subprocess.run(["systemctl", "show", "--timestamp=unix", unit, "-p", ",".join(props)],
                              capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -88,18 +88,25 @@ def systemd_show(unit, props):
 
 
 def gateway_state(show=systemd_show, mono=lambda: time.clock_gettime(time.CLOCK_MONOTONIC)):
-    """{active, invocation, up_s} of the Gateway's unit, or None if systemd didn't answer.
-    up_s is on the monotonic clock, so time the PC spent asleep doesn't count as up."""
-    props = show(GATEWAY, ["ActiveState", "SubState", "InvocationID", "ActiveEnterTimestampMonotonic"])
+    """{active, invocation, up_s, started_at} of the Gateway's unit, or None if systemd didn't answer.
+    up_s is on the monotonic clock, so time the PC spent asleep doesn't count as up. In this WSL that
+    clock runs about 3 % slow against the wall clock, which only makes the 2.5-hour rule a little
+    later, so messages show started_at, systemd's wall-clock start."""
+    props = show(GATEWAY, ["ActiveState", "SubState", "InvocationID", "ActiveEnterTimestampMonotonic",
+                           "ActiveEnterTimestamp"])
     if props is None:
         return None
     try:
         entered = int(props.get("ActiveEnterTimestampMonotonic") or 0) / 1e6
     except ValueError:
         entered = 0
+    try:
+        started_at = float((props.get("ActiveEnterTimestamp") or "").lstrip("@")) or None
+    except ValueError:
+        started_at = None
     return {"active": props.get("ActiveState") or "unknown", "sub": props.get("SubState") or "",
             "invocation": props.get("InvocationID") or None,
-            "up_s": max(0.0, mono() - entered) if entered else None}
+            "up_s": max(0.0, mono() - entered) if entered else None, "started_at": started_at}
 
 
 def read_heartbeats(db=STATE_DB, timeout=5):
@@ -168,13 +175,13 @@ def evaluate(now, gateway, heartbeats, journal, stale_after=STALE_AFTER, settle=
         return done("unknown", "systemd didn't answer for the Gateway")
     up = gateway.get("up_s")
     report["gateway"] = {"active": gateway["active"], "up_s": up,
-                         "since": None if up is None else now - up}
+                         "since": gateway.get("started_at") or (None if up is None else now - up)}
     if gateway["active"] != "active":
         return done("pending", f"the Gateway is {gateway['active']}, so there is nothing to check "
                                f"(the watchdog's Gateway check covers it)")
     if up is None or not gateway.get("invocation"):
         return done("unknown", "systemd gave no start time or invocation for the Gateway")
-    since = now - up
+    since = report["gateway"]["since"]
     if up < settle:
         return done("pending", f"the Gateway started {int(up)} s ago")
 

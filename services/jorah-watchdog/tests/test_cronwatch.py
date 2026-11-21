@@ -94,6 +94,12 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(report["status"], "unknown")
         self.assertIn("journal", report["summary"])
 
+    def test_messages_show_systemds_wall_clock_start_not_the_monotonic_one(self):
+        started = NOW - 4 * HOUR - 7 * 60  # the monotonic clock ran slow: up_s says 4 h only
+        report = cronwatch.evaluate(NOW, {**gateway(up=4 * HOUR), "started_at": started}, beats(3), [])
+        self.assertEqual(report["gateway"]["since"], started)
+        self.assertIn(f"up since {cronwatch.clock(started)}", report["summary"])
+
     def test_a_failure_line_still_fails_when_the_receipts_are_unreadable(self):
         report = cronwatch.evaluate(NOW, gateway(), OSError("no file"), [line(0.5)])
         self.assertEqual(report["status"], "failing")
@@ -227,7 +233,8 @@ class Main(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
         self.show = lambda unit, props: {"ActiveState": "active", "SubState": "running",
-                                         "InvocationID": "abc", "ActiveEnterTimestampMonotonic": "1000000"}
+                                         "InvocationID": "abc", "ActiveEnterTimestampMonotonic": "1000000",
+                                         "ActiveEnterTimestamp": f"@{int(NOW - 4 * HOUR - 300)}"}
 
     def run_main(self, report, db="/nonexistent/openclaw.sqlite", run=None):
         out, err = io.StringIO(), io.StringIO()
@@ -245,6 +252,7 @@ class Main(unittest.TestCase):
         self.assertEqual(report["checked_at"], NOW)
         self.assertEqual(path.stat().st_mode & 0o777, 0o644)
         self.assertIn("cron: unknown: couldn't read the cron receipts", out)
+        self.assertEqual(report["gateway"]["since"], int(NOW - 4 * HOUR - 300))
 
     def test_dash_prints_the_report_and_writes_nothing(self):
         code, out, err = self.run_main("-", run=Journal(grep=entry(NOW - 60, "[cron] failed to start: x")))

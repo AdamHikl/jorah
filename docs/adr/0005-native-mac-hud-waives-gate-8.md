@@ -25,7 +25,7 @@ This is a waived gate in the sense of the roadmap: it is written here, it belong
 | ~~The HUD does not ask for `operator.approvals`~~ Replaced by ADR 0007 (2026-11-21): the HUD may ask for it, by Adam's choice and approval | Answering approvals makes it a new approval surface. ADR 0007 is that decision and lists its tests |
 | The HUD does not ask for `operator.admin` or `operator.pairing` | Least privilege |
 | Adam enters the Gateway token, approves the pairing and grants macOS permissions | `CLAUDE.md`, "Adam's yes" |
-| Nothing private connects before M3's gate | Unchanged. The HUD shows only what the Gateway already sends an operator |
+| Nothing private connects before M3's gate | Unchanged. The HUD shows only what the Gateway already sends an operator, except the PC panel's load figures, read from a reader on Windows (ADR 0008, 2026-11-21) |
 | Unknown is shown as unknown, never 0 | `CLAUDE.md`, "Never" |
 
 ## Scopes

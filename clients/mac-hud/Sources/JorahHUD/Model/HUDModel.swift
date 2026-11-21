@@ -133,6 +133,81 @@ final class HUDModel {
     }
     let power = PowerControl()
 
+    // PC stats (docs/adr/0008-hud-pc-stats.md). Read straight from the PC's reader over Serve, not
+    // through the Gateway, so they keep coming while Jorah is paused. Polled only while the PC
+    // panel is on screen and the HUD window is visible.
+    var pcStatsURLText: String = HUDProfile.defaults.string(forKey: "hud.pcStatsURL") ?? "https://rocket.tail1574a5.ts.net:43231/v1/stats" {
+        didSet { HUDProfile.defaults.set(pcStatsURLText, forKey: "hud.pcStatsURL") }
+    }
+    var pcStats: PCStats?
+    /// When the last good reading arrived on this Mac.
+    var pcStatsAsOf: Date?
+    var pcStatsError: String?
+    @ObservationIgnored private var pcStatsTask: Task<Void, Never>?
+    @ObservationIgnored private lazy var pcStatsSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 8
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.urlCache = nil
+        config.httpCookieStorage = nil
+        return URLSession(configuration: config)
+    }()
+
+    /// The last reading, or nil once it is more than 10 seconds old: an old number is not shown as now.
+    func freshPCStats(at now: Date) -> PCStats? {
+        if isDemo { return pcStats }
+        guard let pcStats, let asOf = pcStatsAsOf, now.timeIntervalSince(asOf) <= 10 else { return nil }
+        return pcStats
+    }
+
+    func startPCStats() {
+        guard !isDemo, pcStatsTask == nil else { return }
+        pcStatsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if Self.hudWindowIsVisible { await self.fetchPCStats() }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    func stopPCStats() {
+        pcStatsTask?.cancel()
+        pcStatsTask = nil
+    }
+
+    private static var hudWindowIsVisible: Bool {
+        NSApp.windows.contains { $0.isVisible && $0.occlusionState.contains(.visible) && $0.frame.width > 600 }
+    }
+
+    func fetchPCStats() async {
+        guard let url = URL(string: pcStatsURLText), url.scheme == "https" || url.scheme == "http" else {
+            pcStatsError = "the PC stats address is not a web address"
+            return
+        }
+        do {
+            let (data, response) = try await pcStatsSession.data(from: url)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else {
+                pcStatsError = status == 502 ? "the reader on the PC is not answering (502)" : "the PC answered \(status)"
+                return
+            }
+            guard data.count <= 64_000 else {
+                pcStatsError = "the PC sent an oversized reading"
+                return
+            }
+            pcStats = try PCStatsParsing.parse(data)
+            pcStatsAsOf = Date()
+            pcStatsError = nil
+        } catch PCStatsParsing.Failure.wrongSchema(let schema) {
+            pcStatsError = "the PC sent \(schema ?? "no schema"), this HUD reads \(PCStats.schema)"
+        } catch is PCStatsParsing.Failure {
+            pcStatsError = "the PC sent something that is not a reading"
+        } catch {
+            pcStatsError = "can't reach the PC: \(error.localizedDescription)"
+        }
+    }
+
     // Connection
     var phase: GatewayClient.Phase = .idle
     var isDemo = false

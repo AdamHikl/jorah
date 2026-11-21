@@ -47,6 +47,21 @@ enum DemoFeed {
             CronRow(id: "d3", name: "Demo: weekly review", enabled: false, nextRun: nil, lastRun: nil, lastStatus: nil, running: false),
         ]
         model.cronAsOf = Date()
+        model.pcStats = PCStats(
+            at: Date(),
+            cpu: .init(name: "Demo CPU", percent: 23, temperatureC: nil, temperatureSource: nil),
+            memory: .init(usedBytes: 14_200_000_000, totalBytes: 34_100_000_000),
+            gpu: .init(name: "Demo GPU", percent: 61, memoryUsedBytes: 9_400_000_000, memoryTotalBytes: 12_800_000_000,
+                       temperatureC: 71, powerW: 140, fanPercent: 45),
+            network: .init(downBytesPerSec: 1_240_000, upBytesPerSec: 86_000, adapters: ["Wi-Fi"]),
+            disks: [
+                .init(drives: ["C:"], model: "Demo SSD", kind: "ssd", usedBytes: 689_000_000_000, totalBytes: 999_000_000_000,
+                      readBytesPerSec: 4_200_000, writeBytesPerSec: 31_000_000, busyPercent: 6, temperatureC: 48, temperatureAt: Date()),
+                .init(drives: ["D:"], model: "Demo HDD", kind: nil, usedBytes: 170_000_000, totalBytes: 500_000_000_000,
+                      readBytesPerSec: 0, writeBytesPerSec: 0, busyPercent: 0, temperatureC: 40, temperatureAt: Date()),
+            ],
+            unknown: ["cpu.temperatureC": "Demo: Core Temp is not running"])
+        model.pcStatsAsOf = Date()
         model.lines = [
             ChatLine(id: "d-u1", role: .user, text: "Demo message: what changed in the repo today?", at: Date().addingTimeInterval(-60)),
         ]

@@ -81,6 +81,14 @@ Adam: "switch it to the max plan now", so a business-and-engineering project loo
 
 **Fix:** `deploy/openclaw-gateway.service` runs `podman info` (60 s cap) as `ExecStartPre`, so the refresh is done before the Gateway starts. A failure there doesn't block the Gateway, and the sandbox still fails closed. `scripts/pc/install-gateway-unit.sh` installs it (`--dry-run`, `--undo`), backup `openclaw-gateway.service.pre-podman-warmup`, no restart. Verified with `systemd-analyze verify` on the PC. **Installed 2026-11-14 15:28 on Adam's yes** [measured]: `/opt/jorah` files match `8b7dfe6` by SHA-256, dry run then install, `systemctl show` lists the `ExecStartPre`, Gateway still active, not restarted. Not tested across a reboot: after the next boot, expect no Telegram warning and `Heartbeat (main)` `ok` in `cron list`. Undo: the script's `--undo`.
 
+## PC panel in the Mac HUD, 2026-11-21
+
+The HUD's COMMAND view has a PC panel: CPU and its temperature, RAM, GPU with temperature and power, VRAM, network, and each disk's space, temperature and (for C:) reads and writes. It reads `scripts/pc/pcstats.ps1` on Windows through Serve `:43231` → `127.0.0.1:43230`, not through the Gateway, so it keeps working while Jorah is paused (ADR 0008, contract `docs/contracts/jorah-pcstats-v1.md`). The CPU temperature comes from Core Temp, started at boot by its own task, because Windows reports none on this board.
+
+**Dry run, 2026-11-21** [measured, from a temp folder, removed after]: one reading had every value but the CPU temperature (Core Temp not running); a 60-second run on a spare port answered 29 of 29 requests with the GPU present, used 0.05% of the PC's CPU and 178 MB.
+
+**Install, update, check, undo:** `scripts/pc/install-pcstats.sh --dry-run`, `--install`, `--status`, `--undo` (from a checkout of `main`, setup key). Status: **not installed yet**.
+
 ## Approval cards in the Mac HUD, 2026-11-21
 
 The Mac HUD (`clients/mac-hud`, ADR 0007) shows Jorah's plugin approval cards above the orb, with Allow once and Deny only. Telegram still gets every card, and the first answer wins. The HUD device holds `operator.read`, `operator.write` and `operator.approvals`, granted at 11:29 through "Ask for card access" and `devices approve` on Adam's request.

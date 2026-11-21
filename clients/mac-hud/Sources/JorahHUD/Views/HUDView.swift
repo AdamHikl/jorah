@@ -26,6 +26,7 @@ struct HUDView: View {
                     SchedulePanel()
                     DevicesPanel()
                     HealthPanel()
+                    PCPanel()
                 }
                 .frame(height: 190)
             }

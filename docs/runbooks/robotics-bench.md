@@ -211,8 +211,8 @@ For runs and the brief (`services/jorah-projects/brief.md`); a project gets it w
 - ROS: `colcon build` in the project's workspace; `rosdep keys`/`rosdep check` work; `rosdep install`
   can't (no root): a missing system package is an Adam task.
 - Gazebo: always `gz sim -s` (server only), `-r --iterations N` for a fixed run, worlds without
-  camera, depth or lidar sensors that need rendering (no GPU in the sandbox). A camera in simulation
-  is a later decision. Wheel and other unlimited joints: `type="revolute"` with limits
+  camera, depth or lidar sensors that need rendering (no GPU in the sandbox). For a camera in
+  simulation use MuJoCo (below), which renders on the CPU. Wheel and other unlimited joints: `type="revolute"` with limits
   ±1.79769e+308, never `continuous`, which this Gazebo's DART physics turns into a fixed joint with
   only a log line [measured 2026-11-17]. Check a simulation by its result (the robot's odometry),
   not by `gz sim` exiting 0.
@@ -221,6 +221,17 @@ For runs and the brief (`services/jorah-projects/brief.md`); a project gets it w
   copy the `platform_packages` lines from `/opt/jorah-bench/smoke/pio/platformio.ini`. Anything else
   needs a download the sandbox refuses. Flashing is Adam's, by hand (`08-robotics.md` hard rules).
 - CAD: `cad-python script.py` (build123d; STEP and STL export). Not `python3`.
+- Pictures and physics: MuJoCo from PyPI, in the project's venv: `pip install mujoco==3.17.0 pillow`
+  (MuJoCo 4.x ships no wheel for Python 3.12). Render with `MUJOCO_GL=egl`: Mesa's CPU renderer
+  (llvmpipe, from the bench's `libegl1` and `libgl1-mesa-dri`) works inside the sandbox, no GPU.
+  It gives pictures from fixed or free cameras (views of a part, like CAD screenshots), a camera on
+  the robot, position servos with torque limits, gravity and contacts. Load build123d parts as STL
+  in mm with mesh `scale="0.001 0.001 0.001"`. An `EGLError` printed at interpreter exit is
+  harmless. Measured 2026-11-21 inside the project-run sandbox (via Claude Code, as the runner
+  starts it): a 3-joint servo arm, 3 simulated seconds in 0.003 s, a 640x480 scene render in 0.27 s,
+  a wrist-camera render in 0.014 s, and four views of a build123d bracket; the check and its
+  pictures are in `docs/evidence/sim-mujoco-2026-11-21/`. Strength checks (FEA) need FreeCAD from
+  the toolbox (1.1.4's x86_64 AppImage, 821 MB, fits the installer's 1024 MB cap).
 - A new tool goes through Jorah's toolbox (`docs/runbooks/toolbox.md`): a request, Adam's card, the
   installer. A new PlatformIO platform or board, or anything needing root beyond Ubuntu's own
   packages, is still an Adam task done by a build session that adds it to this install.

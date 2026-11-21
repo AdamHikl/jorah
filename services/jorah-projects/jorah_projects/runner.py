@@ -735,7 +735,11 @@ class Runner:
         intake_line = (f"`{project.state_dir}/intake.md` is the founder input: Adam's own words about the project, verbatim, and his answers to Jorah's start questions."
                        if snap.intake not in (None, b"\0unsafe") else
                        "There is no founder input for this project yet: set up from the repo alone, and ask Adam what the repo can't tell you.")
-        bench = {"robotics": "The robotics bench is on PATH: ROS 2 Jazzy (colcon), Gazebo (server only, headless), PlatformIO, build123d. Everything runs offline."}
+        bench = {"robotics": "The robotics bench is on PATH: ROS 2 Jazzy (colcon), Gazebo (server only, headless), PlatformIO, build123d (`cad-python`), KiCad's `kicad-cli`. "
+                 "Everything runs offline; only npm and PyPI are reachable. To see a design and simulate joints: `pip install mujoco==3.17.0 pillow` in the project's venv "
+                 "(MuJoCo 4 has no wheel for this Python 3.12) and render on the CPU with `MUJOCO_GL=egl`: pictures from any angle (look at them to check the design), "
+                 "a camera on the robot, position servos with torque limits, gravity and contacts. Load build123d parts as STL in mm (mesh scale 0.001). "
+                 "An EGLError printed at exit is harmless. Strength checks (FEA) need FreeCAD: request it through the toolbox if it isn't listed."}
         box = toolbox.brief_text(self.s)
         return template.substitute(
             project=project.name, repo=project.repo or "no GitHub repo yet, local only", branch=project.branch, state_dir=project.state_dir,

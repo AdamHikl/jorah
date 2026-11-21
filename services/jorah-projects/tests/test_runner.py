@@ -275,6 +275,21 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("core.fsmonitor", record["reason"])
         self.assertEqual(w.calls(), [])
 
+    def test_the_sandbox_s_empty_config_worktree_is_accepted_but_not_a_filled_or_linked_one(self):
+        w = self.w
+        cfg = w.work / ".git" / "config.worktree"
+        cfg.write_text("")  # what Claude Code's sandbox leaves behind after a run
+        self.assertNotEqual(w.run_now()["outcome"], "error")
+        cfg.write_text("[core]\n\tfsmonitor = touch /tmp/pwned\n")
+        record = w.run_now()
+        self.assertEqual(record["outcome"], "error")
+        self.assertIn(".git/config.worktree exists", record["reason"])
+        cfg.unlink()
+        os.symlink(w.tmp / "elsewhere", cfg)
+        record = w.run_now()
+        self.assertEqual(record["outcome"], "error")
+        self.assertIn(".git/config.worktree is a link", record["reason"])
+
     def test_a_github_remote_pointing_elsewhere_is_refused(self):
         w = self.w
         git(w.work, "remote", "set-url", "github", "https://example.invalid/x.git")

@@ -5,7 +5,10 @@ ssh command or an include: any of them would run code as jorah outside the sandb
 
 - Before any git command, .git/config is parsed as a plain file (`git config --file`, which runs
   nothing) and every key must be on ALLOWED. Anything else refuses the run. `.git` must be a real
-  folder (not a `gitdir:` file) with no `config.worktree` and no `commondir`.
+  folder (not a `gitdir:` file) with no `commondir`, and no `config.worktree` but an empty one:
+  Claude Code's sandbox leaves an empty `.git/config.worktree` behind in every repo it works in
+  (seen in all of ~/work on 2026-11-21), and git reads that file only with
+  extensions.worktreeConfig, which ALLOWED refuses.
 - Every git command, and every git that gitleaks starts, gets global and system config switched
   off and the dangerous keys pinned through GIT_CONFIG_COUNT (hooks to /dev/null, no fsmonitor, no
   pager, no credential helper, no editor).
@@ -95,8 +98,15 @@ class Repo:
         if dot.is_symlink() or not dot.is_dir():
             raise UnsafeRepo(".git isn't a plain folder")
         for name in ("config.worktree", "commondir"):
-            if (dot / name).exists() or (dot / name).is_symlink():
-                raise UnsafeRepo(f".git/{name} exists")
+            path = dot / name
+            if path.is_symlink():
+                raise UnsafeRepo(f".git/{name} is a link")
+            if not path.exists():
+                continue
+            # The sandbox's leftover: empty, so it holds nothing even if git read it.
+            if name == "config.worktree" and path.is_file() and path.stat().st_size == 0:
+                continue
+            raise UnsafeRepo(f".git/{name} exists")
         config = dot / "config"
         if config.is_symlink() or not config.is_file():
             raise UnsafeRepo(".git/config isn't a plain file")

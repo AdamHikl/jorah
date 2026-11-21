@@ -76,5 +76,7 @@
     "sessionid", "session_id", "sid", "sig", "signature", "credential", "credentials", "jwt", "bearer", "code_verifier",
     "x-amz-credential", "x-amz-signature", "x-amz-security-token", "x-goog-credential", "x-goog-signature"],
   "searchQueryMaxChars": 200,
-  "acpSpawnsPerHourWithoutConfirm": 3
+  "acpSpawnsPerHourWithoutConfirm": 3,
+  "consultAgents": ["deep"],
+  "consultAgentsAbout": "Agents main asks for a second opinion, never with a card (Adam's yes of 2026-11-21). In their own sessions only read, search and url tools are allowed: no shell, no writes, no sessions tools, no spawns. Their fetches follow the URL rule like any chat that isn't Adam's own. Adding one needs Adam's yes and the same tool limits in its config (config/pc/deep-consult.patch.json5)."
 }

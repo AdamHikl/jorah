@@ -101,11 +101,12 @@ test("deep's result marks the chat too, so a save after it is a card", () => {
   assert.equal(run("supply_save", SAVE).verdict, "confirm");
 });
 
-test("by voice, a save is a card; deep may use price_compare but never saves silently", () => {
+test("by voice, a save is a card; deep may use price_compare but never saves", () => {
   const { run } = fresh();
   assert.equal(run("supply_save", SAVE, VOICE).verdict, "confirm");
   assert.equal(run("price_compare", { offers: [] }, DEEP).verdict, "allow");
-  assert.equal(run("supply_save", SAVE, DEEP).verdict, "confirm");
+  // deep is a consult agent (matrix.consultAgents): it only reads, searches and fetches.
+  assert.equal(run("supply_save", SAVE, DEEP).verdict, "block");
 });
 
 test("a reminder whose own text mentions the web is a card even in a clean chat", () => {

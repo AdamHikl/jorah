@@ -1,0 +1,29 @@
+// `deep` as a consult with no card, 2026-11-21, on Adam's request: "can you make it that it doesn't
+// need to ask my permission, just make it work". jorah-guard asked Adam before every hand-off to
+// `deep` from a chat that had read outside text, because `deep` had a sandboxed shell with
+// internet, so a brief could carry data out past the URL rule. In Adam's one long chat that was
+// every hand-off after the first. `deep` doesn't need a shell: its only exec calls (guard log,
+// 13 to 21 Nov) were its own hourly heartbeats. So it loses the shell, file writes and the
+// sessions tools; jorah-guard enforces the same (matrix.consultAgents) and lets main ask it freely.
+// What's left: read and ls in its own sandbox workspace, web_search, web_fetch, x_search,
+// price_compare, view_image, session_status.
+// Managed claude-cli turns expose none of Claude's own tools (docs/gateway/cli-backends.md,
+// "Managed turns expose no Claude-native tools by default"), so this removes the shell for real.
+// Arrays are replaced, so the deny list repeats the four entries from front.patch.json5.
+// Undo: tools.deny back to ["image_generate", "video_generate", "music_generate", "message"].
+{
+  agents: {
+    entries: {
+      deep: {
+        tools: {
+          deny: [
+            "image_generate", "video_generate", "music_generate", "message",
+            "exec", "process", "write", "edit", "apply_patch",
+            "sessions_list", "sessions_history", "sessions_search", "sessions_send", "sessions_spawn",
+            "sessions_yield", "subagents",
+          ],
+        },
+      },
+    },
+  },
+}

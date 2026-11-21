@@ -10,6 +10,11 @@ import { isWrapper, unwrap } from "./wrapper.js";
 
 const CARD_MAX = 500;
 
+// What a consult agent (matrix.consultAgents) may do: read, search, fetch. Nothing that writes,
+// runs a command, reads other chats or starts work.
+const CONSULT_CLASSES = new Set(["read", "search", "url"]);
+const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
+
 export function classify(matrix, tool) {
   for (const cls of ["read", "taintRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
     "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "confirmAlways", "cronOnly"]) {
@@ -269,6 +274,13 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
 
   if (view.frozen() && cls !== "read") return { verdict: "block", reason: "Jorah is frozen (/jorah-freeze). Adam clears it at a terminal." };
 
+  // A consult agent (`deep`) only thinks, reads and searches the web. That is what lets main ask it
+  // without a card (case "spawn"). The config takes its shell, writes and sessions tools away
+  // (config/pc/deep-consult.patch.json5); this holds even if the config drifts.
+  if (isConsultAgent(matrix, agent) && !CONSULT_CLASSES.has(cls)) {
+    return { verdict: "block", reason: `${agent} only thinks, reads and searches the web; ${tool} is main's or background's job` };
+  }
+
   switch (cls) {
     case "read":
       return { verdict: "allow" };
@@ -350,8 +362,14 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       if (acp && (state.tainted || view.countAcp(key) > (matrix.acpSpawnsPerHourWithoutConfirm ?? 3))) {
         return { ...card("Jorah wants to start a coding job", [state.tainted ? why(state) : "More than 3 jobs this hour.", `Who: ${who}`, `Brief: ${short(params.task, 330)}`]), taint: "worker result" };
       }
-      // background and deep have a sandboxed shell with internet access, so a brief written after
-      // outside text could carry data out past the URL rule. Show it to Adam first.
+      // Asking `deep` (Opus) never needs a card (Adam, 2026-11-21: "it doesn't need to ask my
+      // permission, just make it work"). It has no shell and no writes (above), so its only ways out
+      // are web_search and web_fetch, which this guard checks in its session as in main's: a child
+      // is never Adam's own chat. A brief can't send data anywhere main couldn't send it itself. The
+      // brief's URLs are still checked, and the answer still marks this chat.
+      if (!acp && isConsultAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
+      // background has a sandboxed shell with internet access, so a brief written after outside
+      // text could carry data out past the URL rule. Show it to Adam first.
       if (!acp && state.tainted) return { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`]), taint: "worker result" };
       return { verdict: "allow", taint: "worker result" };
     }

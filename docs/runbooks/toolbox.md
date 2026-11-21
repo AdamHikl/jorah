@@ -4,10 +4,11 @@ Adam asked on 2026-11-17 that Jorah be able to use Fusion 360, a Cura slicer for
 tool, coding environments and web research, and preferably install and learn new tools himself.
 He approved this plan the same day. The decision is recorded in `docs/adr/0004-toolbox-installs-and-licences.md`.
 
-**State, 2026-11-20:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
+**State, 2026-11-21:** installed on the PC: KiCad 10.0.8, the toolbox (empty), and the four tools
 for main. See "Install record". Since 2026-11-20, GitHub release assets are looked up in code (see
 "GitHub lookup"), and sizes are limits set in code, not Jorah's estimates (see "Sizes in code").
-Open: deploying "Sizes in code", the end-to-end check (step 5) and Adam's slicer test.
+"Sizes in code" was deployed on 2026-11-21. Open: the end-to-end check (step 5, plus 5b for Zig)
+and Adam's slicer test.
 
 Checked off the PC [measured 2026-11-18, in fresh `ubuntu:24.04` containers on the Mac; amd64
 under emulation for KiCad]:
@@ -461,11 +462,34 @@ true and his sandbox mounts only `/home/jorah/workspace` (checked read-only on t
 2026-11-20). The description now lists every field. Project runs bind `/` read-only, so the
 runner's pointers to the file stay.
 
-Deploy (not yet done): `packages/contracts/toolbox`, `services/jorah-toolbox`,
-`services/jorah-projects` and `docs/contracts` (no Gateway), then `plugins/jorah-projects` and the
-live `AGENTS.md` (Gateway recycle). The plugin, runner and installer need the new `toolcheck.py`
-together. A proposal written before the deploy and approved after it is refused ("the card's
-fields don't match ... size"): Jorah proposes it again.
+**Deployed 2026-11-21, on Adam's yes typed in the build session ("Yes deploy it")**, from
+`ae73b32`:
+
+1. Before: the live files matched `a54d9e9`, `/readyz` was ready and no proposal was waiting in
+   `/var/lib/jorah-toolbox/proposals/`. Backup: `/root/opt-jorah-pre-sizes-2026-11-21.tgz` (root
+   600, 92 entries).
+2. No Gateway, 07:31: `deploy_reviewed.py deploy packages/contracts/toolbox services/jorah-toolbox
+   services/jorah-projects docs/contracts/jorah-tool-v1.md`, 59 files deployed and recorded. As
+   jorah, the runner and the installer both load the contract with `fill_sizes`, and Zig's example
+   passes `check` with the card size "up to 1024 MB download (measured at install), installed up to
+   16x it, min 64 MB". The contract's tests pass on the PC. The installer is path-started, so no
+   restart was needed.
+3. In the coordinator's Gateway slot: `deploy_reviewed.py deploy plugins/jorah-projects` (16 files).
+   The live `AGENTS.md` became `4322aab5…`, which equals `main`'s (jorah:jorah 644), with the backup
+   `AGENTS.md.pre-sizes`, recorded with `record-live`.
+4. `systemctl start jorah-gateway-recycle.service` at 07:33:11. The Gateway started at 07:33:18
+   ("ready after 25 s", `NRestarts` 0). At 07:34:13 `/readyz` reported ready, coreReady and
+   `failing` [], and the journal showed "jorah-guard: matrix loaded; state ok" and
+   `jorah-projects` among the 16 plugins listening.
+
+**Found while deploying, not caused by it:** since 02:13 on 2026-11-21 (after what looks like the
+reboot; the lock `state/openclaw.sqlite.cron-authority.lock` is dated 02:12), every Gateway start
+logs "[cron] failed to start: Cron receipt authority is unavailable", retried about 120 times an
+hour, and memory-core's dreaming reconcile fails the same way. It was handed to the coordinating
+session and was not touched here.
+
+A proposal written before the deploy and approved after it is refused ("the card's fields don't
+match ... size"): Jorah proposes it again.
 
 ## Undo
 

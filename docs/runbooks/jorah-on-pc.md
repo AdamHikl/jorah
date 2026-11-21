@@ -961,7 +961,7 @@ the Gateway was stopped while the file was moved. Do the same only under the sam
 Gateway, no holder, empty file.
 
 **Open:**
-- An alarm when cron stops: "Cron watch" below.
+- An alarm when cron stops: "Cron watch" below, installed the same day.
 - Windows Update can still restart the PC overnight and leave WSL state half written. Active hours
   are Adam's setting.
 - After the 2026.10.33 upgrade, check whether an empty cron lock still fails closed.
@@ -1031,7 +1031,16 @@ from the journal times].
    watchdog's timer.
 4. Within 5 minutes, `journalctl -u jorah-watchdog -n 3 -o cat` shows `cron ok`.
 
-**Status:** source and unit tests only, not deployed.
+**Installed 2026-11-21 on Adam's yes ("Yes, deploy it")** [measured]
+(`docs/evidence/cron-watch-2026-11-21/`):
+- Deployed from `5e41e21` and `fb5ba77` with `deploy_reviewed.py`. The dry run was as expected
+  above, then the install. The units in `/etc/systemd/system` match git by SHA-256.
+- First timer-driven run, 08:18:50: `cron: ok: newest heartbeat: heartbeat-deep at 07:46`, then
+  `checks: gateway ok, runner ok, cron ok`.
+- Across the 08:20 Gateway restart: the 08:24:06 run searched the new start's journal and said
+  `cron ok`. Nothing was sent.
+- Not tested live: a real cron outage alert. Unit tests cover the failure line, the 2.5-hour rule,
+  "pending" across restarts, unknown and stale reports.
 
 **Not covered:**
 - While the PC is off, nothing can be sent, as for the watchdog.

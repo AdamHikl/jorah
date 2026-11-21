@@ -6,7 +6,9 @@ minutes from jorah-watchdog.timer as the system user jorah-watchdog and talks to
 directly, with its own bot (the plan's "rescue bot", docs/plan/02-architecture.md). Adam asked for it
 on 2026-11-18.
 
-  check   Look at the Gateway and the runner, keep track in the state file, send what is due.
+  check   Look at the Gateway, the runner and the cron watch's report (cronwatch.py, run just
+          before by jorah-cron-watch.service), keep track in the state file, send what is due.
+          --dry-run prints what it would send and saves nothing.
   daily   Once a day (jorah-daily-watch.timer): OpenClaw's security advisories against what runs
           (advisories.py), and the night's drift report from jorah-drift.service (drift.py).
           --dry-run prints what it would send and saves nothing.
@@ -32,10 +34,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import advisories  # noqa: E402
+import cronwatch  # noqa: E402
 import drift  # noqa: E402
 
-DOWN_AFTER = {"gateway": 10 * 60, "runner": 20 * 60}
-NAMES = {"gateway": "Jorah (the Gateway)", "runner": "the project runner"}
+DOWN_AFTER = {"gateway": 10 * 60, "runner": 20 * 60, "cron": 10 * 60}
+NAMES = {"gateway": "Jorah (the Gateway)", "runner": "the project runner",
+         "cron": "the Gateway's scheduler (hourly heartbeats, Dreaming)"}
+CRON_UNIT = "jorah-cron-watch.service"
+CRON_STALE_AFTER = 15 * 60
+SKIP = object()  # not watched, or too early to tell: the state keeps what it had
 REMIND_EVERY = 6 * 3600
 GAP_AFTER = 30 * 60
 
@@ -65,8 +72,9 @@ def readyz(port, timeout=5):
         return False
 
 
-def observe(show, ready):
-    """{check: what is wrong, or None when fine}. Unreadable counts as wrong."""
+def observe(show, ready, cron=None, now=None):
+    """{check: what is wrong, or None when fine}. Unreadable counts as wrong. cron is
+    (the cron watch's report, whether to watch it only while its unit is installed), or None."""
     found = {}
     gateway = show("openclaw-gateway.service", ["ActiveState", "SubState"])
     if gateway is None:
@@ -77,19 +85,53 @@ def observe(show, ready):
         found["gateway"] = "it runs but doesn't say ready"
     else:
         found["gateway"] = None
+    for name, problem in (("runner", runner_problem(show)),
+                          ("cron", SKIP if cron is None else cron_problem(show, *cron, now))):
+        if problem is not SKIP:
+            found[name] = problem
+    return found
+
+
+def runner_problem(show):
     timer = show("jorah-projects.timer", ["LoadState", "ActiveState"])
     service = show("jorah-projects.service", ["Result"])
     if timer is not None and timer.get("LoadState") == "not-found":
-        return found  # no runner installed, nothing to watch
+        return SKIP  # no runner installed, nothing to watch
     if timer is None or service is None:
-        found["runner"] = "systemd didn't answer"
-    elif timer.get("ActiveState") != "active":
-        found["runner"] = f"its timer is {timer.get('ActiveState')}"
-    elif service.get("Result") not in ("success", ""):
-        found["runner"] = f"its last tick ended with {service.get('Result')}"
-    else:
-        found["runner"] = None
-    return found
+        return "systemd didn't answer"
+    if timer.get("ActiveState") != "active":
+        return f"its timer is {timer.get('ActiveState')}"
+    if service.get("Result") not in ("success", ""):
+        return f"its last tick ended with {service.get('Result')}"
+    return None
+
+
+def cron_problem(show, report, only_if_installed, now):
+    """From the cron watch's report: None when fine, SKIP while it says "pending" (or isn't
+    installed), otherwise what is wrong. A missing, stale or "unknown" report counts as wrong."""
+    if only_if_installed:
+        unit = show(CRON_UNIT, ["LoadState"])
+        if unit is None:
+            return "systemd didn't answer"
+        if unit.get("LoadState") == "not-found":
+            return SKIP
+    if not report:
+        return f"unknown: no report from the cron watch ({CRON_UNIT})"
+    try:
+        checked = float(report.get("checked_at") or 0)
+    except (TypeError, ValueError):
+        checked = 0
+    if not checked or now - checked > CRON_STALE_AFTER:
+        return ("unknown: the cron watch's newest report is from "
+                f"{clock_text(checked)}" if checked else "unknown: the cron watch's report has no time")
+    status, summary = report.get("status"), report.get("summary") or "no details"
+    if status == "ok":
+        return None
+    if status == "pending":
+        return SKIP
+    if status == "failing":
+        return summary
+    return f"unknown: {summary}"
 
 
 def clock_text(ts):
@@ -276,6 +318,9 @@ def main(argv=None, now=None, show=systemd_show, opener=urllib.request.urlopen,
     parser.add_argument("--state", default="/var/lib/jorah-watchdog/state.json")
     parser.add_argument("--daily-state", default="/var/lib/jorah-watchdog/daily.json")
     parser.add_argument("--drift-report", default=drift.REPORT)
+    parser.add_argument("--cron-report", default=None,
+                        help=f"default {cronwatch.REPORT}, watched while {CRON_UNIT} is installed; "
+                             "a path given here is always watched")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     now = time.time() if now is None else now
@@ -307,9 +352,18 @@ def main(argv=None, now=None, show=systemd_show, opener=urllib.request.urlopen,
         return 0 if ok else 1
 
     state = load_state(args.state)
-    found = observe(show, lambda: readyz(port))
+    cron_report = load_state(args.cron_report or cronwatch.REPORT)
+    cron_report = cron_report if isinstance(cron_report, dict) else {}
+    found = observe(show, lambda: readyz(port), (cron_report, args.cron_report is None), now)
     due = step(state, found, now)
     log("checks: " + ", ".join(f"{k} {'ok' if v is None else 'DOWN (' + v + ')'}" for k, v in found.items()))
+    if "cron" not in found and cron_report.get("status") == "pending":
+        log(f"cron: pending, state kept ({cron_report.get('summary')})")
+    if args.dry_run:
+        for kind, _, text in due:
+            log(f"would send ({kind}):\n{text}")
+        log(f"{len(due)} message(s) due; dry run, nothing sent or saved")
+        return 0
     for kind, name, text in due:
         if not token:
             log(f"due but no bot token yet, not sent: {kind} {name or ''}".rstrip())

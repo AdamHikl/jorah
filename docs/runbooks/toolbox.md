@@ -487,7 +487,8 @@ reboot; the lock `state/openclaw.sqlite.cron-authority.lock` is dated 02:12), ev
 logs "[cron] failed to start: Cron receipt authority is unavailable", retried about 120 times an
 hour, and memory-core's dreaming reconcile fails the same way. It was handed to the coordinating
 session and was not touched here. Fixed at 07:44 the same day; see "Cron down after Windows Update
-restarts, 2026-11-21" in `docs/runbooks/jorah-on-pc.md`.
+restarts, 2026-11-21" in `docs/runbooks/jorah-on-pc.md`. The watchdog now checks for this
+("Cron watch", same runbook).
 
 A proposal written before the deploy and approved after it is refused ("the card's fields don't
 match ... size"): Jorah proposes it again.

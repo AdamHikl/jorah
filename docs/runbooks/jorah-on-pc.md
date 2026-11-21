@@ -961,10 +961,83 @@ the Gateway was stopped while the file was moved. Do the same only under the sam
 Gateway, no holder, empty file.
 
 **Open:**
-- No alarm fires when cron stops (the "heartbeat alarm" session is building one).
+- An alarm when cron stops: "Cron watch" below.
 - Windows Update can still restart the PC overnight and leave WSL state half written. Active hours
   are Adam's setting.
 - After the 2026.10.33 upgrade, check whether an empty cron lock still fails closed.
+
+## Cron watch: alerts when the Gateway's scheduler stops, 2026-11-21
+
+**Why:** on 2026-11-21 cron failed at every Gateway start from 02:13 until the fix at 07:43 (see
+above). `/readyz` still said `ready: true` with `failing: []`, so the watchdog stayed quiet, and the
+hourly heartbeats and the 03:00 Memory Dreaming Promotion were missed without an alert.
+
+**What:** `services/jorah-watchdog/cronwatch.py`, run by `jorah-cron-watch.service` before every
+watchdog check, so every 5 minutes. The watchdog's unit pulls it in (`Wants=`) and waits for it
+(`After=`), the way `jorah-daily-watch` pulls in the drift check; there is no new timer. It runs as
+root, like the drift check, with no network, a read-only `/home` and only `CAP_DAC_READ_SEARCH`. It
+reads two sources:
+- **Receipts:** the newest `finished_at_ms` of each enabled heartbeat job (`payload_kind =
+  'heartbeat'`) in `cron_run_receipts`, from `state/openclaw.sqlite`, opened with `?mode=ro` by
+  `python3 -I`. It reads only times, statuses and job names, never prompts, outputs or error text.
+- **Journal:** the Gateway's journal for its current start (`_SYSTEMD_INVOCATION_ID`), searched with
+  `journalctl --grep` for "[cron] failed to start", "Cron maintenance failed" or "Cron receipt
+  authority is unavailable". It first checks that this start has any journal line at all, because a
+  wrong invocation id gives no lines rather than an error.
+
+**Verdicts** (`/var/lib/jorah-cron-watch/report.json`, 0644, `cronwatch.py show`):
+- **failing:** one of those lines, with no heartbeat finished after the newest one. Or no heartbeat
+  has finished for 2.5 hours while the Gateway has been up longer than that, on the monotonic clock,
+  so sleep doesn't count.
+- **pending:** the Gateway isn't active, started less than 2 minutes ago, or has been up less than
+  2.5 hours with no heartbeat in the last 2.5 hours (after a boot or the 6-hourly restart). The
+  watchdog keeps what it had: no new alert and no "Back".
+- **unknown:** the state or the journal can't be read, or systemd doesn't answer. It counts as down,
+  never as fine.
+- **ok:** a heartbeat finished in the last 2.5 hours, and no such line came after it.
+
+**Alerts:** the watchdog's usual rules, named "the Gateway's scheduler (hourly heartbeats, Dreaming)":
+- an alert after 10 minutes of failing or unknown, with the reason (the logged line, or the time of
+  the newest heartbeat);
+- a reminder every 6 hours, then "Back" once it is ok;
+- a report older than 15 minutes, or no report, counts as unknown.
+
+On 2026-11-21 the journal rule would have alerted about 10 minutes after the 02:13 start [inferred
+from the journal times].
+
+**Measured on the PC before building** (read-only, 2026-11-21 07:45–07:55):
+- **Sandbox:** the check's three reads work in a throwaway `systemd-run` with the service's own
+  sandbox settings: the state with `mode=ro` and `/home` read-only, the journal, and `systemctl show`.
+- **Schedule:** the heartbeats run every hour, all day (`agents.defaults.heartbeat.every: 1h`, no
+  active hours). The overnight gaps before 2026-11-20 were nights with the PC off.
+- **journalctl:** `--grep` exits 1 with no output when nothing matches. A wrong invocation id exits 0
+  with no output.
+- **Old Mac store:** `/Users/adam/.openclaw-jorah/cron/jobs.json` still has an enabled
+  `heartbeat-main` row, last run 2026-11-05. The check takes the newest receipt per job name, so that
+  row doesn't matter.
+
+**Install** (each step after Adam's yes; `scripts/pc/install-cron-watch.sh`, as root):
+1. `scripts/pc/deploy_reviewed.py deploy services/jorah-watchdog deploy/jorah-cron-watch.service
+   deploy/jorah-watchdog.service scripts/pc/install-cron-watch.sh`.
+2. `install-cron-watch.sh --dry-run`. Expected:
+   - the units verify, and the diff of the watchdog's unit adds only the `Wants=`/`After=` lines;
+   - in the service's sandbox, `cron: ok: newest heartbeat: …`;
+   - then, as `jorah-watchdog`, `checks: gateway ok, runner ok, cron ok` and 0 messages due.
+3. `install-cron-watch.sh` installs both units. It doesn't restart the Gateway or touch the
+   watchdog's timer.
+4. Within 5 minutes, `journalctl -u jorah-watchdog -n 3 -o cat` shows `cron ok`.
+
+**Status:** source and unit tests only, not deployed.
+
+**Not covered:**
+- While the PC is off, nothing can be sent, as for the watchdog.
+- A heartbeat that runs but ends in `error` counts as cron running. Failing heartbeats are a
+  different problem, not watched here.
+- Dreaming isn't checked on its own. It runs once a day, so the hourly heartbeats serve as the
+  scheduler's pulse.
+
+**Undo:** `install-cron-watch.sh --undo` removes `jorah-cron-watch.service`, and the watchdog stops
+watching cron. The `Wants=` left in the watchdog's unit is ignored while the unit is gone.
 
 ## Still open
 

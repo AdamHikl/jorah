@@ -1,0 +1,26 @@
+# The cron watch (services/jorah-watchdog/cronwatch.py): does the live Gateway's cron scheduler still
+# run jobs? Reads the newest heartbeat receipt in the Gateway's SQLite state (read-only) and the
+# Gateway's journal since its current start, and writes /var/lib/jorah-cron-watch/report.json for
+# jorah-watchdog.service to send. Root, because the state is in jorah's private home and the journal
+# is root's; no network, a read-only /home, and no capability but reading.
+# Started by jorah-watchdog.service (Wants=) every 5 minutes, not by its own timer.
+[Unit]
+Description=Jorah: cron watch, does the Gateway's scheduler still run jobs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-watchdog/cronwatch.py check
+StateDirectory=jorah-cron-watch
+StateDirectoryMode=0755
+UMask=0022
+TimeoutStartSec=90s
+PrivateNetwork=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+InaccessiblePaths=/run/WSL
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service

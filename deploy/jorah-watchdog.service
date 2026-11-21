@@ -1,10 +1,12 @@
-# Tells Adam on Telegram when the Gateway or the project runner is down, with its own bot and without
-# the Gateway (services/jorah-watchdog/watchdog.py). No dependency on the Gateway or nftables, so it
-# keeps running when they don't.
+# Tells Adam on Telegram when the Gateway, the project runner or the Gateway's cron scheduler is
+# down, with its own bot and without the Gateway (services/jorah-watchdog/watchdog.py). No dependency
+# on the Gateway or nftables, so it keeps running when they don't. Wants= pulls in the cron watch
+# (jorah-cron-watch.service, read-only) and After= waits for its report; a failed or missing cron
+# watch doesn't stop this run, and its report then counts as unknown.
 [Unit]
-Description=Jorah: watchdog, tells Adam when the Gateway or the project runner is down
-After=network-online.target
-Wants=network-online.target
+Description=Jorah: watchdog, tells Adam when the Gateway, the runner or cron is down
+After=network-online.target jorah-cron-watch.service
+Wants=network-online.target jorah-cron-watch.service
 
 [Service]
 Type=oneshot

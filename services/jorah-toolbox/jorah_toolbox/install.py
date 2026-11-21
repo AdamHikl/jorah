@@ -226,7 +226,9 @@ class Installer:
         checks = result["checks"]
         registry = self.installed()
         current = registry["tools"].get(m["name"])
-        if current and current.get("version") == m["version"] and current.get("sha256") == m["sha256"]:
+        # The same approval twice is a no-op. The same version with a changed manifest (a command or
+        # its environment fixed after a failed smoke test, so a new id) is installed again over it.
+        if current and current.get("id") == pid and current.get("version") == m["version"] and current.get("sha256") == m["sha256"]:
             result["status"] = "installed"
             checks["already"] = True
             return result

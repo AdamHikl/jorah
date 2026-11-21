@@ -300,6 +300,19 @@ class Archives(World):
         self.assertEqual(result["status"], "installed")
         self.assertTrue(result["checks"]["already"])
 
+    def test_the_same_version_with_a_fixed_manifest_is_installed_again(self):
+        self.approve()
+        self.installer().run_queue()
+        fixed = copy.deepcopy(self.m)
+        fixed["purpose"] = fixed["purpose"] + " Its command fixed after a failed smoke test."
+        pid = self.approve(fixed)
+        [result] = self.installer().run_queue()
+        self.assertEqual(result["status"], "installed", result["error"])
+        self.assertNotIn("already", result["checks"])
+        registry = json.loads((self.opt / "installed.json").read_text())
+        self.assertEqual(registry["tools"]["uv"]["id"], pid)
+        self.assertEqual(sorted(p.name for p in (self.opt / "tools/uv").iterdir()), ["0.9.18"])
+
     def test_a_zip_unpacks_and_its_links_are_refused(self):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:

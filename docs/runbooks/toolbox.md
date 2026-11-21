@@ -228,8 +228,14 @@ or a run needs, not only one Adam named, and shows run-written requests with the
 talks to him; never from a heartbeat or an automation. `toolbox_install` waits up to 2 minutes for
 the installer and up to 1 minute for the smoke test (it wakes the runner) and returns both, so a
 failure comes back in the same turn and Jorah proposes the fix as a new card. FreeCAD 1.1.4's first
-install failed on its command, the AppImage's own file name; the rules now say to point at the
-unpacked image's `AppRun`.
+install failed on its command, the AppImage's own file name. The second pointed `freecadcmd` at
+`AppRun`, which starts FreeCAD's window whatever the command is called, so the smoke test aborted
+(no display); a fixed proposal of the same version was then skipped as "already" installed. Now
+the rules say `usr/bin/<program>` (FreeCAD: `usr/bin/freecadcmd`, `usr/bin/ccx`, `usr/bin/gmsh`),
+and the installer installs a same-version proposal again when its manifest differs. Checked on
+the PC the same day, offline: `usr/bin/freecadcmd --version` prints `FreeCAD 1.1.4`, and a
+cantilever check (gmsh mesh, CalculiX solve, results read back) ran in `freecadcmd` with no
+launcher and no display.
 
 Since 2026-11-21 the card comes in the same reply, with no typed yes first: until then Jorah
 waited for one, called his summary "the card", and each new ask left another waiting proposal

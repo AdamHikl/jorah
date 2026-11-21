@@ -7,6 +7,10 @@
 // login. Side effect: main is now inside the Podman sandbox too, so its own exec works.
 // The key is in the secret store as ANTHROPIC_API_KEY_JORAH, used through the profile anthropic:jorah-store (api-key-ref.plan.json). auth.order.anthropic was [] so no key could
 // be used silently; it now names that profile, for every agent, background included.
+// deep: max-lane.patch.json5 repins its own Opus 5.5 entry to claude-cli, so this pins it back
+// (2026-11-21, Adam: "switch jorah to api now"). Its tools are unchanged on either runtime
+// (deep-consult.patch.json5 denies the shell).
+// Alongside it, main's and deep's own auth orders go back to anthropic:jorah-store (see the runbook).
 {
   auth: { order: { anthropic: ["anthropic:jorah-store"] } },
   agents: {
@@ -23,6 +27,11 @@
         "anthropic/claude-sonnet-4-6": { agentRuntime: { id: "openclaw" } },
         "anthropic/claude-opus-4-6": { agentRuntime: { id: "openclaw" } },
         "anthropic/*": { agentRuntime: { id: "openclaw" } },
+      },
+    },
+    entries: {
+      deep: {
+        models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "openclaw" } } },
       },
     },
   },

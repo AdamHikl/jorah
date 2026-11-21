@@ -295,6 +295,11 @@ export function writeResult(dir, record, files) {
 /** A request for the runner: requests/<id>.json, then a touch of the runner's signal file. */
 export function writeRequest(root, dir, record) {
   writeWhole(ensure(join(dir, "requests")), `${record.id}.json`, `${JSON.stringify(record)}\n`);
+  return wakeRunner(root);
+}
+
+/** Touch requests.signal so the runner's path unit starts a tick now. False if it couldn't. */
+export function wakeRunner(root) {
   const signal = join(root, "requests.signal");
   try {
     const t = new Date();

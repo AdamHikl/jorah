@@ -25,7 +25,7 @@
 // Plain object entry, the same shape definePluginEntry returns, so it needs no build or install.
 
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { buildDigest, localDate } from "./lib/digest.js";
 import { unpushed } from "./lib/git.js";
@@ -35,7 +35,7 @@ import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, read
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
 import { applyGithub, fillSizes, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
   readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
-import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
+import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
   "project_start", "project_connect", "project_set_level", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove"];
@@ -90,6 +90,11 @@ export function pauseState(entry, state, requests) {
 }
 
 const GITHUB_TIMEOUT_MS = 20_000;
+// toolbox_install waits for the installer, then for the runner's smoke test (it wakes the runner).
+const INSTALL_WAIT_MS = 120_000;
+const SMOKE_WAIT_MS = 60_000;
+const POLL_MS = 2_000;
+const CLOCK_SLACK_MS = 5_000;
 const GITHUB_MAX_BYTES = 4 << 20;
 const GITHUB_CACHE_MS = 10 * 60_000;
 
@@ -134,8 +139,29 @@ export async function githubRelease(fetchImpl, where, now = () => new Date(), pa
   }
 }
 
-export function register(api, { now = () => new Date(), fetch: fetchImpl = globalThis.fetch } = {}) {
+export function register(api, { now = () => new Date(), fetch: fetchImpl = globalThis.fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const s = settings(api.pluginConfig ?? {});
+  // Polls check() every POLL_MS until it returns something or ms runs out (counted in polls, not
+  // the clock, so a fixed test clock ends too).
+  const waitFor = async (ms, check) => {
+    for (let polls = Math.ceil(ms / POLL_MS); ; polls -= 1) {
+      const got = check();
+      if (got || polls <= 0) return got || null;
+      await sleep(POLL_MS);
+    }
+  };
+  const readJsonFile = (path) => {
+    try {
+      return JSON.parse(readFileSync(path, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  // An installed version whose smoke test failed may be proposed again, to fix its command.
+  const smokeFailed = (name, id) => {
+    const t = readJsonFile(join(s.toolboxVar, "tested", `${name}.json`));
+    return t?.id === id && t.ok === false;
+  };
   const tracker = new MediaTracker(() => now().getTime());
   const calls = new Map(); // toolCallId -> { sessionKey, via }
 
@@ -719,7 +745,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   api.registerTool({
     name: "toolbox_propose",
     label: "Propose a tool for the toolbox",
-    description: "Propose one tool for Jorah's toolbox. manifest, contract jorah-tool-v1: contract \"jorah-tool-v1\"; name (lower-case, dashes); title; version (released at least 7 days ago); kind \"archive\" or \"apt\"; purpose (what you will do with it, a sentence Adam can read; the learning run's task); homepage; release_page; licence (SPDX if there is one) and licence_source (the publisher's page stating it); released (YYYY-MM-DD); sandbox {\"network\": []} (tools run offline); smoke (a command line as a list, starting with one of its commands, e.g. [\"uv\", \"--version\"]); optional smoke_expect (text its output contains) and for_project. An archive also has url (https, the x86_64 Linux file), sha256 (the publisher's checksum), format (tar, zip, appimage or file), commands ({command: its path after strip removes the leading folders; for an archive holding uv-x86_64-unknown-linux-gnu/uv with strip 1, {\"uv\": \"uv\"}}), optional strip (leading folders to drop, 0-3) and env. An apt request has packages (Ubuntu package names) instead. Never estimate sizes: leave installed_mb out and a limit is set from the download size. For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) also leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256 and release date; give download_mb only if the publisher states it, otherwise the installer measures it (up to 1024 MB). A refusal names each field to fix. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
+    description: "Propose one tool for Jorah's toolbox. manifest, contract jorah-tool-v1: contract \"jorah-tool-v1\"; name (lower-case, dashes); title; version (released at least 7 days ago); kind \"archive\" or \"apt\"; purpose (what you will do with it, a sentence Adam can read; the learning run's task); homepage; release_page; licence (SPDX if there is one) and licence_source (the publisher's page stating it); released (YYYY-MM-DD); sandbox {\"network\": []} (tools run offline); smoke (a command line as a list, starting with one of its commands, e.g. [\"uv\", \"--version\"]); optional smoke_expect (text its output contains) and for_project. An archive also has url (https, the x86_64 Linux file), sha256 (the publisher's checksum), format (tar, zip, appimage or file), commands ({command: its path after strip removes the leading folders; for an archive holding uv-x86_64-unknown-linux-gnu/uv with strip 1, {\"uv\": \"uv\"}; an AppImage is unpacked, so point inside it, usually at its AppRun launcher, which sets up its environment (AppRun <program> starts another program from its usr/bin), never at the AppImage's file name}), optional strip (leading folders to drop, 0-3) and env. An apt request has packages (Ubuntu package names) instead. Never estimate sizes: leave installed_mb out and a limit is set from the download size. For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) also leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256 and release date; give download_mb only if the publisher states it, otherwise the installer measures it (up to 1024 MB). A refusal names each field to fix. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
     parameters: { type: "object", additionalProperties: false, required: ["manifest"], properties: { manifest: { type: "object", description: "The jorah-tool-v1 request" } } },
     async execute(id, p) {
       if (frozen(s.guardStateDir)) return refuse("Jorah is frozen (/jorah-freeze), so no tool is proposed until Adam clears it");
@@ -731,7 +757,8 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       if (canonicalSize(request) > 64 * 1024) return refuse("the request is over 64 KB");
       const dir = join(s.toolboxVar, "proposals");
       if (!existsSync(dir)) return unavailable("the toolbox isn't installed on this machine yet (scripts/pc/install-toolbox.sh)");
-      if (readToolbox(s).installed[request.name]?.version === request.version) return refuse(`${request.name} ${request.version} is installed already: see toolbox_list`);
+      const have = readToolbox(s).installed[request.name];
+      if (have?.version === request.version && !smokeFailed(request.name, have.id)) return refuse(`${request.name} ${request.version} is installed already: see toolbox_list`);
       let m = request;
       let github = null;
       if (where) {
@@ -773,7 +800,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       return reply({
         status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub, ...limits,
         ...(replaced.length ? { replaced, replaced_note: "older proposals of this tool and version that waited for a card are gone; this one replaces them" } : {}),
-        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} If Adam's own message asked for this tool, call toolbox_install with exactly these card fields now, in this same turn: the card is his yes, so don't wait for a typed one. If a run asked for it or it's your idea, tell him and wait until he asks for it.`,
+        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} In a turn Adam started (typed or by voice), call toolbox_install with exactly these card fields now, in this same turn, whether he asked for the tool or you or a run need it for his work: the card is his yes, so don't wait for a typed one. From a heartbeat or an automation, don't: nobody is there to answer the card; mention it at his next message.`,
       });
     },
   });
@@ -787,7 +814,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   api.registerTool({
     name: "toolbox_install",
     label: "Install a tool in the toolbox",
-    description: "Install a proposed tool (toolbox_list's waiting_for_card, or toolbox_propose's answer), passing its card fields exactly. Always a card for Adam showing them. When Adam asked for the tool, call it right after toolbox_propose, in the same turn: the card is his yes. On Allow the installer (user jorah-toolbox, no root) downloads it, checks the SHA-256 and, for GitHub releases, the date and digest GitHub holds, unpacks it without running it and puts it in /opt/jorah-toolbox; then the runner smoke-tests it offline and a learning run writes your notes. Ubuntu packages end at a root command Adam runs (toolbox_list shows it).",
+    description: "Install a proposed tool (toolbox_list's waiting_for_card, or toolbox_propose's answer), passing its card fields exactly. Always a card for Adam showing them. In a turn Adam started, call it right after toolbox_propose: the card is his yes. On Allow the installer (user jorah-toolbox, no root) downloads it, checks the SHA-256 and, for GitHub releases, the date and digest GitHub holds, unpacks it without running it and puts it in /opt/jorah-toolbox; then the runner smoke-tests it offline and a learning run writes your notes. Waits up to about 3 minutes and returns the installer's result and the smoke test's: on a failure you can fix, propose again and install in this same turn (a new card). Ubuntu packages end at a root command Adam runs (toolbox_list shows it).",
     parameters: { type: "object", additionalProperties: false, required: Object.keys(CARD), properties: CARD },
     async execute(id, p) {
       if (!TOOL_ID.test(p?.id ?? "")) return refuse("id must be a proposal's id, tb- and 10 hex digits");
@@ -815,11 +842,39 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         return unavailable(`the approval couldn't be written: ${firstLine(e)}`);
       }
       api.logger.info(`jorah-projects: toolbox install of ${m.name} ${m.version} (${p.id}) approved`);
+      const approvedAt = now().getTime();
+      if (m.kind === "apt") {
+        return reply({ status: "approved", id: p.id, name: m.name, version: m.version,
+          next: "The installer marks it needs-root within a minute; toolbox_list then shows the one command Adam runs as root." });
+      }
+      // The installer starts within seconds (its path unit watches approved/). Wait for its result
+      // here, so a failure comes back in this turn while Adam is still looking.
+      const result = await waitFor(INSTALL_WAIT_MS, () => {
+        const r = readJsonFile(join(s.toolboxVar, "results", `${p.id}.json`));
+        return r?.id === p.id && Date.parse(r.at) >= approvedAt - CLOCK_SLACK_MS ? r : null;
+      });
+      if (!result) {
+        return reply({ status: "approved", id: p.id, name: m.name, version: m.version,
+          note: `the installer hasn't finished after ${INSTALL_WAIT_MS / 1000} s (a big download?)`,
+          next: "Tell Adam it's approved and still installing; check toolbox_list in a few minutes and report the result." });
+      }
+      const checks = result.checks ?? null;
+      if (result.status !== "installed") {
+        return reply({ status: "failed", id: p.id, name: m.name, version: m.version, error: result.error ?? null, checks,
+          next: "Tell Adam it failed and why, in a sentence. If the error is one you can fix (a command path: use one of the executables it lists, exactly as written; a size limit: installed_mb at the size it gives), call toolbox_propose with the fix and then toolbox_install with its card fields, now, in this turn: a new card. A hash, digest or date that doesn't match is not yours to fix: stop and tell Adam." });
+      }
+      const woke = wakeRunner(s.stateRoot);
+      const smoke = await waitFor(woke ? SMOKE_WAIT_MS : 0, () => {
+        const t = readJsonFile(join(s.toolboxVar, "tested", `${m.name}.json`));
+        return t?.id === p.id ? t : null;
+      });
       return reply({
-        status: "approved", id: p.id, name: m.name, version: m.version,
-        next: m.kind === "apt"
-          ? "The installer marks it needs-root within a minute; toolbox_list then shows the one command Adam runs as root."
-          : "The installer starts within seconds; toolbox_list shows the result, then the smoke test and the learning run (the runner's next ticks, every 15 minutes).",
+        status: "installed", id: p.id, name: m.name, version: m.version, checks,
+        smoke_test: smoke ? { ok: smoke.ok, expect_found: smoke.expectFound ?? null, error: smoke.error ?? null, output_tail: tail(smoke.output, 600) }
+          : { status: "not run yet: the runner tests it at its next tick (every 15 minutes)" },
+        next: !smoke ? "Tell Adam it's installed and the smoke test is still to come; report it from toolbox_list when he next asks."
+          : smoke.ok ? "Tell Adam it's installed and the smoke test passed; a learning run writes your notes next (toolbox_list shows it)."
+            : "Tell Adam the smoke test failed and why. If its command or arguments are wrong (the output says so), call toolbox_propose with the fix and toolbox_install with its card fields now, in this turn: a new card replaces it. Otherwise stop and tell him.",
       });
     },
   });

@@ -223,6 +223,14 @@ Expected:
 4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
    done and `~/work/.toolbox/notes/uv.md` exists.
 
+Since 2026-11-21 (later the same day): in any turn Adam started, Jorah raises the card for a tool he
+or a run needs, not only one Adam named, and shows run-written requests with their cards when Adam
+talks to him; never from a heartbeat or an automation. `toolbox_install` waits up to 2 minutes for
+the installer and up to 1 minute for the smoke test (it wakes the runner) and returns both, so a
+failure comes back in the same turn and Jorah proposes the fix as a new card. FreeCAD 1.1.4's first
+install failed on its command, the AppImage's own file name; the rules now say to point at the
+unpacked image's `AppRun`.
+
 Since 2026-11-21 the card comes in the same reply, with no typed yes first: until then Jorah
 waited for one, called his summary "the card", and each new ask left another waiting proposal
 (uv had four). A proposal now replaces older waiting ones of the same tool and version (a run's

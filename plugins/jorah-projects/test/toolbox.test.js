@@ -65,7 +65,7 @@ function fixture({ installed = true } = {}) {
   return { root, opt, var: v };
 }
 
-function load(fx, { now = NOW, fetch = fakeGithub(goodReleases()) } = {}) {
+function load(fx, { now = NOW, fetch = fakeGithub(goodReleases()), sleep = async () => {} } = {}) {
   const tools = new Map();
   const hooks = {};
   register({
@@ -74,7 +74,7 @@ function load(fx, { now = NOW, fetch = fakeGithub(goodReleases()) } = {}) {
     logger: { info: () => {}, warn: () => {} },
     on: (name, fn) => { (hooks[name] ??= []).push(fn); },
     registerTool: (t) => tools.set(t.name, t),
-  }, { now: () => now, fetch });
+  }, { now: () => now, fetch, sleep });
   let n = 0;
   return async (name, params = {}, ctx = ADAM) => {
     const id = `call-${++n}`;
@@ -374,8 +374,10 @@ test("toolbox_propose: a new chat proposal replaces older waiting ones of the sa
   const left = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
   assert.deepEqual(left, [approvedOne.id, runId, uv.id, second.id].map((i) => `${i}.json`).sort(),
     "the approved one, the run's and the other tool's stay");
-  assert.match(second.next, /call toolbox_install with exactly these card fields now, in this same turn: the card is his yes/);
-  assert.match(second.next, /If a run asked for it or it's your idea, tell him and wait/);
+  assert.match(second.next, /call toolbox_install with exactly these card fields now, in this same turn, whether he asked/);
+  assert.match(second.next, /the card is his yes/);
+  assert.match(second.next, /whether he asked for the tool or you or a run need it for his work/);
+  assert.match(second.next, /From a heartbeat or an automation, don't/);
 });
 
 test("toolbox_propose refuses a tool and version that is installed, and toolbox_list hides leftover proposals for it", async () => {
@@ -389,4 +391,66 @@ test("toolbox_propose refuses a tool and version that is installed, and toolbox_
   assert.match(again.reason, /uv 0\.9\.18 is installed already/);
   const list = await call("toolbox_list");
   assert.deepEqual(list.waiting_for_card.map((w) => w.id), [], `${leftover.id} is for the installed version`);
+});
+
+// A fake installer and runner: on the given poll, write what they would write.
+function fakeQueue(fx, steps) {
+  let polls = 0;
+  return async () => {
+    polls += 1;
+    for (const [at, write] of steps) if (at === polls) write();
+  };
+}
+const writeJson = (path, data) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(data)); };
+
+test("toolbox_install waits for the installer and the smoke test and returns both, and wakes the runner", async () => {
+  const fx = fixture();
+  const m = example("good", "uv.json");
+  const id = proposalId(m);
+  mkdirSync(join(fx.root, "state"), { recursive: true });
+  const call = load(fx, { sleep: fakeQueue(fx, [
+    [3, () => writeJson(join(fx.var, "results", `${id}.json`), { v: 1, id, status: "installed", at: NOW.toISOString(), checks: { sha256: "matches" } })],
+    [5, () => writeJson(join(fx.var, "tested", "uv.json"), { id, ok: true, expectFound: true, output: "uv 0.9.18" })],
+  ]) });
+  const { card } = await call("toolbox_propose", { manifest: m });
+  const r = await call("toolbox_install", card);
+  assert.equal(r.status, "installed");
+  assert.deepEqual(r.checks, { sha256: "matches" });
+  assert.equal(r.smoke_test.ok, true);
+  assert.equal(r.smoke_test.output_tail, "uv 0.9.18");
+  assert.match(r.next, /smoke test passed/);
+  assert.ok(existsSync(join(fx.root, "state", "requests.signal")), "the runner is woken for the smoke test");
+});
+
+test("toolbox_install returns a failure in the same turn, with the next step to fix it; an older result doesn't count", async () => {
+  const fx = fixture();
+  const m = example("good", "uv.json");
+  const id = proposalId(m);
+  writeJson(join(fx.var, "results", `${id}.json`), { v: 1, id, status: "installed", at: "2026-11-01T00:00:00Z" });
+  const error = "command uv: uv.AppImage isn't a file inside the tool (strip 0); executables in it: AppRun, usr/bin/uv";
+  const call = load(fx, { sleep: fakeQueue(fx, [
+    [2, () => writeJson(join(fx.var, "results", `${id}.json`), { v: 1, id, status: "failed", at: NOW.toISOString(), error })],
+  ]) });
+  const { card } = await call("toolbox_propose", { manifest: m });
+  const r = await call("toolbox_install", card);
+  assert.equal(r.status, "failed");
+  assert.equal(r.error, error);
+  assert.match(r.next, /call toolbox_propose with the fix and then toolbox_install/);
+  assert.match(r.next, /A hash, digest or date that doesn't match is not yours to fix/);
+});
+
+test("toolbox_install: no result in time is still approved, with a note; a failed smoke test allows proposing the version again", async () => {
+  const fx = fixture();
+  const m = example("good", "uv.json");
+  const call = load(fx);
+  const { id, card } = await call("toolbox_propose", { manifest: m });
+  const r = await call("toolbox_install", card);
+  assert.equal(r.status, "approved");
+  assert.match(r.note, /hasn't finished after 120 s/);
+  writeFileSync(join(fx.opt, "installed.json"), JSON.stringify({ v: 1, tools: { uv: { id, version: m.version, kind: "archive" } } }));
+  writeJson(join(fx.var, "tested", "uv.json"), { id, ok: false, error: "exit 127" });
+  const again = await call("toolbox_propose", { manifest: { ...m, commands: { uv: "bin/uv" } } });
+  assert.equal(again.status, "proposed", JSON.stringify(again));
+  writeJson(join(fx.var, "tested", "uv.json"), { id, ok: true });
+  assert.equal((await call("toolbox_propose", { manifest: { ...m, commands: { uv: "uv2" } } })).status, "refused");
 });

@@ -52,9 +52,14 @@ function Show-Task($name) {
 function Show-Reading {
     try {
         $j = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 http://127.0.0.1:43230/v1/stats).Content | ConvertFrom-Json
-        "Reading at $($j.at): CPU $($j.cpu.percent)%, CPU temperature $(if ($null -ne $j.cpu.temperatureC) { "$($j.cpu.temperatureC) C ($($j.cpu.temperatureSource))" } else { "unknown" }), GPU $(if ($j.gpu) { "$($j.gpu.percent)% $($j.gpu.temperatureC) C" } else { "unknown" }), disks $(($j.disks | ForEach-Object { "$($_.drives -join "") $($_.temperatureC) C" }) -join ", ")"
-        foreach ($p in $j.unknown.PSObject.Properties) { "  unknown $($p.Name): $($p.Value)" }
-    } catch { "Reading: none on 127.0.0.1:43230 ($($_.Exception.Message))" }
+    } catch { return "Reading: none on 127.0.0.1:43230 ($($_.Exception.Message))" }
+    $cpuTemp = "unknown"
+    if ($null -ne $j.cpu.temperatureC) { $cpuTemp = [string]$j.cpu.temperatureC + " C, " + $j.cpu.temperatureSource }
+    $gpu = "unknown"
+    if ($j.gpu) { $gpu = [string]$j.gpu.percent + "%, " + $j.gpu.temperatureC + " C" }
+    $disks = @($j.disks | ForEach-Object { ($_.drives -join " ") + " " + $_.temperatureC + " C" }) -join ", "
+    "Reading at " + $j.at + ": CPU " + $j.cpu.percent + "%, CPU temperature " + $cpuTemp + "; GPU " + $gpu + "; disks " + $disks
+    foreach ($p in $j.unknown.PSObject.Properties) { "  unknown " + $p.Name + ": " + $p.Value }
 }
 '
 

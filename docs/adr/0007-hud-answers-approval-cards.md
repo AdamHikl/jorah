@@ -57,7 +57,7 @@ Scratch Gateway (`jorah-hud-test` profile, loopback, channels and cron off, loca
 
 Not covered on scratch: a real guarded turn (needs a model), and cards from Telegram or voice turns. The live test covers the first.
 
-Live, Adam: the uv install from the HUD (`tb-cf6866267c`), Allow once in the HUD, `toolbox_list` shows uv installed.
+Live, Adam, 2026-11-21: passed. Two `toolbox_install` cards were allowed in the HUD and installed: uv 0.13.8 (`tb-9f96fe897d`, 13:44) and ripgrep (`tb-da7bd38a1b`, 13:57). Cards from Telegram or voice turns in the HUD are still untested (`docs/evidence/hud-approval-cards/`).
 
 ## Re-check
 

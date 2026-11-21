@@ -16,7 +16,8 @@ Adam typed "yes" in the HUD to install uv (toolbox proposal `tb-cf6866267c`). Th
 | Layout | `demo-card.png`: `JORAH_HUD_DEMO=1`, made-up card, buttons off |
 | Install | `just mac-hud-install` on Adam's Mac, 2026-11-21 11:27, relaunched |
 | Live scope grant | Adam clicked "Ask for card access"; request `8fbfc9e6` checked in `devices list` ("Jorah HUD" from the Mac's Tailscale address, asking for approvals, read, write) and approved at Adam's request in chat. `devices list` then showed the HUD with `operator.read, operator.write, operator.approvals` |
-| Adam's uv test | Open |
+| Adam's live test | Passed 2026-11-21, Adam clicking Allow once in the HUD: uv 0.13.8 (`tb-9f96fe897d`), approved and installed 13:44:17, smoke test printed `uv 0.13.8 (x86_64-unknown-linux-gnu)`; ripgrep (`tb-da7bd38a1b`), approved and installed 13:57:44, SHA-256 and GitHub digest matched. Checked on the PC by the coordinating session. From e510f3b (Gateway restarted 13:55) a tool Adam asks for goes to the card in the same turn |
+| Telegram or voice turns' cards in the HUD | Not tested |
 
 ## Scratch results
 

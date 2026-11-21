@@ -81,6 +81,14 @@ Adam: "switch it to the max plan now", so a business-and-engineering project loo
 
 **Fix:** `deploy/openclaw-gateway.service` runs `podman info` (60 s cap) as `ExecStartPre`, so the refresh is done before the Gateway starts. A failure there doesn't block the Gateway, and the sandbox still fails closed. `scripts/pc/install-gateway-unit.sh` installs it (`--dry-run`, `--undo`), backup `openclaw-gateway.service.pre-podman-warmup`, no restart. Verified with `systemd-analyze verify` on the PC. **Installed 2026-11-14 15:28 on Adam's yes** [measured]: `/opt/jorah` files match `8b7dfe6` by SHA-256, dry run then install, `systemctl show` lists the `ExecStartPre`, Gateway still active, not restarted. Not tested across a reboot: after the next boot, expect no Telegram warning and `Heartbeat (main)` `ok` in `cron list`. Undo: the script's `--undo`.
 
+## Approval cards in the Mac HUD, 2026-11-21
+
+The Mac HUD (`clients/mac-hud`, ADR 0007) shows Jorah's plugin approval cards above the orb, with Allow once and Deny only. Telegram still gets every card, and the first answer wins. The HUD device holds `operator.read`, `operator.write` and `operator.approvals`, granted at 11:29 through "Ask for card access" and `devices approve` on Adam's request.
+
+**Live test passed** [measured on the PC]: Adam allowed two `toolbox_install` cards in the HUD. uv 0.13.8 (`tb-9f96fe897d`) was approved and installed at 13:44, and its smoke test printed `uv 0.13.8`. ripgrep (`tb-da7bd38a1b`) was approved and installed at 13:57:44, and its SHA-256 and GitHub digest matched. Not tested: cards from turns started in Telegram or by voice appearing in the HUD.
+
+**If the HUD says it can't answer cards:** click "Ask for card access" and check that `openclaw --profile jorah devices list` shows "Jorah HUD" asking for approvals, read and write. Then approve the request id the HUD shows. To revoke: `openclaw --profile jorah devices revoke`. Evidence: `docs/evidence/hud-approval-cards/`.
+
 ## Jorah answering his own voice, 2026-11-20
 
 **Found** (Adam, and the HUD session from the PC journal, 18:14:30 to 18:15:43): four turns in 36 s, each starting 2 to 5 s after the previous reply, because Jorah heard the end of his own reply.

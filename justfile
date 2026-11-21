@@ -59,3 +59,29 @@ ios-runner-sample-sim:
 # on loopback, outside the Gateway: build, simulator steps, refusals, wrong key, runner stopped.
 ios-e2e-local:
     node plugins/jorah-ios/e2e/loopback.mjs
+
+# Mac only. Builds the Jorah HUD app into build/JorahHUD.app. It is signed with the first
+# "Apple Development" certificate in the Keychain (or JORAH_SIGN_ID, a fingerprint), so macOS
+# keeps its Microphone and Speech Recognition permissions across rebuilds. With no certificate
+# it falls back to ad hoc, and macOS asks for them again after every build.
+mac-hud:
+    swift build -c release --package-path clients/mac-hud --scratch-path build/mac-hud-spm
+    rm -rf build/JorahHUD.app
+    mkdir -p build/JorahHUD.app/Contents/MacOS
+    cp clients/mac-hud/Info.plist build/JorahHUD.app/Contents/Info.plist
+    cp build/mac-hud-spm/release/JorahHUD build/JorahHUD.app/Contents/MacOS/JorahHUD
+    mkdir -p build/JorahHUD.app/Contents/Resources
+    cp scripts/pc/jorah-power.sh build/JorahHUD.app/Contents/Resources/jorah-power.sh
+    id="${JORAH_SIGN_ID:-$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2; exit}')}"; \
+      if [ -n "$id" ]; then codesign --force --sign "$id" build/JorahHUD.app; else echo "No Apple Development certificate: signing ad hoc"; codesign --force --sign - build/JorahHUD.app; fi
+    codesign -d -r- build/JorahHUD.app 2>&1 | tail -1
+
+# Mac only. Opens the HUD with made-up data and no connection, to look at the layout.
+mac-hud-demo: mac-hud
+    JORAH_HUD_DEMO=1 build/JorahHUD.app/Contents/MacOS/JorahHUD
+
+# Mac only. Copies the HUD to ~/Applications as "Jorah HUD", so Spotlight and Launchpad find it.
+# Run it again after each build: the installed copy does not update by itself.
+mac-hud-install: mac-hud
+    rm -rf "$HOME/Applications/Jorah HUD.app"
+    ditto build/JorahHUD.app "$HOME/Applications/Jorah HUD.app"

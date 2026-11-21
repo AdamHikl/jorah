@@ -1,0 +1,942 @@
+import Foundation
+import Observation
+
+struct ChatLine: Identifiable, Equatable {
+    enum Role { case user, assistant, notice }
+    let id: String
+    var role: Role
+    var text: String
+    var at: Date?
+    var streaming = false
+}
+
+struct ActivityItem: Identifiable, Equatable {
+    enum State { case running, done, failed }
+    let id: String
+    var runId: String
+    var name: String
+    var detail: String
+    var state: State
+    var startedAt: Date
+    var endedAt: Date?
+    var isSubagent: Bool
+}
+
+struct SessionRow: Identifiable, Equatable {
+    var id: String { key }
+    let key: String
+    var title: String
+    var updatedAt: Date?
+    var active: Bool
+    var model: String?
+    var totalTokens: Int?
+    var modelProvider: String? = nil
+    /// Why this model: "user" (chosen), "auto" or "inherited". Nil means the default, or not reported.
+    var overrideSource: String? = nil
+    /// The parent session's key, when this session is a sub-agent.
+    var spawnedBy: String? = nil
+    var status: String? = nil
+    var startedAt: Date? = nil
+    var endedAt: Date? = nil
+
+    var isRunning: Bool {
+        if let status { return status == "running" || status == "queued" }
+        return active
+    }
+}
+
+struct ModelChoice: Identifiable, Equatable {
+    let id: String
+    var name: String
+    var provider: String
+    var available: Bool?
+    var unavailableReason: String?
+
+    /// The value `sessions.patch` takes: `provider/model`.
+    var ref: String { HUDModel.modelRef(provider: provider, model: id) }
+}
+
+struct CronRow: Identifiable, Equatable {
+    let id: String
+    var name: String
+    var enabled: Bool
+    var nextRun: Date?
+    var lastRun: Date?
+    var lastStatus: String?
+    var running: Bool
+}
+
+struct PresenceRow: Identifiable, Equatable {
+    let id: String
+    var label: String
+    var detail: String
+    var seenAt: Date?
+}
+
+struct EventTick: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let at: Date
+}
+
+enum OrbState: String {
+    case offline = "OFFLINE"
+    case listening = "LISTENING"
+    case idle = "STANDING BY"
+    case thinking = "THINKING"
+    case acting = "WORKING"
+    case speaking = "REPLYING"
+}
+
+/// Everything the HUD shows. Each panel keeps its own "as of" time, and a value the
+/// Gateway has not sent stays nil and is drawn as unknown, never as 0.
+@MainActor
+@Observable
+final class HUDModel {
+    // Settings
+    var gatewayURLText: String = UserDefaults.standard.string(forKey: "hud.gatewayURL") ?? "wss://rocket.tail1574a5.ts.net" {
+        didSet { UserDefaults.standard.set(gatewayURLText, forKey: "hud.gatewayURL") }
+    }
+    var commandMode: Bool = UserDefaults.standard.object(forKey: "hud.commandMode") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(commandMode, forKey: "hud.commandMode") }
+    }
+
+    var voiceURLText: String = UserDefaults.standard.string(forKey: "hud.voiceURL") ?? "wss://rocket.tail1574a5.ts.net:43211" {
+        didSet {
+            UserDefaults.standard.set(voiceURLText, forKey: "hud.voiceURL")
+            voice.configure(url: URL(string: voiceURLText))
+        }
+    }
+
+    // Voice
+    var voiceState: VoiceEngine.State = .off
+    var voiceLevel: Double = 0
+    var voiceError: String?
+    var lastHeard: String?
+    /// The last few words the wake listener heard on this Mac. Memory only, cleared when it stops.
+    var wakeHeard: String?
+    /// The whole message behind the last spoken overview. Memory only; closed by Adam or replaced.
+    var fullReply: String?
+    var lastSpoken: String?
+    var wakeEnabled = false
+    let voice = VoiceEngine()
+
+    // Kill switch
+    var showPower = false
+    var powerBusy = false
+    var powerLog: [String] = []
+    /// When this Mac paused Jorah on the PC. The PC is the truth: this only remembers what was done here.
+    var pausedAt: Date? = UserDefaults.standard.object(forKey: "hud.pausedAt") as? Date {
+        didSet { UserDefaults.standard.set(pausedAt, forKey: "hud.pausedAt") }
+    }
+    let power = PowerControl()
+
+    // Connection
+    var phase: GatewayClient.Phase = .idle
+    var isDemo = false
+    var showPairing = false
+    var serverVersion: String?
+    var grantedScopes: [String] = []
+    var connectedAt: Date?
+    var gatewayUptimeAtHello: (ms: Double, at: Date)?
+    var lastTickAt: Date?
+
+    // Conversation
+    /// The Gateway's main session, the one Telegram and voice use.
+    var mainSessionKey: String?
+    /// The session the HUD is showing and typing into. Starts as the main one.
+    var currentSessionKey: String?
+    var mainSessionId: String?
+    var sessionError: String?
+
+    // Model of the session on screen. Nil means unknown.
+    var models: [ModelChoice] = []
+    var modelsAsOf: Date?
+    var currentModel: String?
+    var currentModelSource: String?
+    var defaultModel: String?
+    var modelError: String?
+    var modelBusy = false
+
+    // Sub-agents spawned by the session on screen
+    var subagents: [SessionRow] = []
+    var subagentsAsOf: Date?
+    var subagentsError: String?
+    private var subagentsRefresh: Task<Void, Never>?
+    var lines: [ChatLine] = []
+    var historyAsOf: Date?
+    var draft = ""
+    var sendError: String?
+
+    // Work
+    var activity: [ActivityItem] = []
+    var activeRuns: Set<String> = []
+    var lastDeltaAt: Date?
+    var ticker: [EventTick] = []
+
+    // Panels
+    var sessions: [SessionRow] = []
+    var sessionsAsOf: Date?
+    var cron: [CronRow] = []
+    var cronAsOf: Date?
+    var cronError: String?
+    var presence: [PresenceRow] = []
+    var presenceAsOf: Date?
+    var healthOK: Bool?
+    var healthAsOf: Date?
+    var channels: [String] = []
+    var pluginErrors: Int?
+    var heartbeatSeconds: Int?
+
+    let client = GatewayClient()
+    private var cronRefresh: Task<Void, Never>?
+    private var sessionsRefresh: Task<Void, Never>?
+    private var historyRefresh: Task<Void, Never>?
+
+    var canWrite: Bool { grantedScopes.contains("operator.write") || grantedScopes.contains("operator.admin") }
+
+    var orbState: OrbState {
+        // An open voice session speaks for itself, whatever the Gateway link is doing.
+        switch voiceState {
+        case .listening, .connecting: return .listening
+        case .thinking: return .thinking
+        case .speaking: return .speaking
+        case .off, .waitingForWake: break
+        }
+        guard phase == .connected || isDemo else { return .offline }
+        if activity.contains(where: { $0.state == .running }) { return .acting }
+        if let lastDeltaAt, Date().timeIntervalSince(lastDeltaAt) < 1.5 { return .speaking }
+        if !activeRuns.isEmpty { return .thinking }
+        return .idle
+    }
+
+    init() {
+        client.onPhase = { [weak self] phase in self?.phaseChanged(phase) }
+        client.onHello = { [weak self] hello in self?.applyHello(hello) }
+        client.onEvent = { [weak self] name, payload in self?.apply(event: name, payload: payload) }
+
+        voice.configure(url: URL(string: voiceURLText))
+        voice.onState = { [weak self] state in
+            guard let self else { return }
+            // A spoken turn runs on the PC (jorah-voice → the Gateway's main session), not through
+            // this HUD, so its transcript is fetched when Jorah starts speaking and when he's done.
+            let wasBusy = self.voiceState == .thinking || self.voiceState == .speaking
+            if state == .speaking || (wasBusy && !state.isSessionOpen) || (wasBusy && state == .listening) {
+                self.scheduleHistoryRefresh(onlyForSession: self.mainSessionKey)
+            }
+            self.voiceState = state
+            self.wakeEnabled = self.voice.wakeEnabled
+            if state != .waitingForWake { self.wakeHeard = nil }
+            if state.isSessionOpen { self.voiceError = nil }
+        }
+        voice.onWakeHeard = { [weak self] text in
+            guard let self, self.voiceState == .waitingForWake else { return }
+            self.wakeHeard = text
+        }
+        voice.onLevel = { [weak self] level in
+            guard let self else { return }
+            // Rise at once, fall gently, so the orb does not flicker.
+            self.voiceLevel = max(Double(level), self.voiceLevel * 0.82)
+        }
+        voice.onHeard = { [weak self] text in self?.lastHeard = text }
+        voice.onReply = { [weak self] text in self?.lastSpoken = text }
+        voice.onFullReply = { [weak self] text in self?.fullReply = text }
+        voice.onError = { [weak self] message in
+            guard let self else { return }
+            self.voiceError = message
+            self.wakeEnabled = self.voice.wakeEnabled
+        }
+    }
+
+    // MARK: - Kill switch
+
+    func runPower(_ action: PowerControl.Action, backup: Bool = true) {
+        guard !isDemo, !powerBusy else { return }
+        powerBusy = true
+        powerLog = []
+        if action == .pause {
+            voice.setWake(false)
+            voice.endSession()
+            wakeEnabled = false
+        }
+        power.run(action, backup: backup, onLine: { [weak self] line in
+            self?.powerLog.append(line)
+        }, onFinish: { [weak self] ok in
+            guard let self else { return }
+            self.powerBusy = false
+            switch action {
+            case .pause:
+                if ok {
+                    self.pausedAt = Date()
+                    self.client.stop()
+                } else {
+                    self.powerLog.append("Jorah may be partly stopped. Use \"Check what is running\".")
+                }
+            case .resume:
+                if ok {
+                    self.pausedAt = nil
+                    self.startIfPaired()
+                }
+            case .status:
+                break
+            }
+        })
+    }
+
+    // MARK: - Voice
+
+    func toggleTalk() {
+        guard !isDemo else { return }
+        if voiceState.isSessionOpen { voice.endSession() } else { voice.startSession() }
+    }
+
+    func setWake(_ enabled: Bool) {
+        guard !isDemo else { return }
+        voiceError = nil
+        wakeEnabled = enabled
+        voice.setWake(enabled)
+    }
+
+    // MARK: - Connection
+
+    func startIfPaired() {
+        guard !isDemo else { return }
+        // Paused from here: do not hammer a Gateway that was stopped on purpose.
+        guard pausedAt == nil else { return }
+        guard GatewayClient.hasStoredDeviceToken, let url = URL(string: gatewayURLText) else {
+            showPairing = true
+            return
+        }
+        client.start(url: url, sharedToken: nil, scopes: GatewayClient.storedScopes)
+    }
+
+    /// First pairing, or a scope change. `sharedToken` is typed by Adam and is not stored.
+    func pair(sharedToken: String, allowTyping: Bool) {
+        guard let url = URL(string: gatewayURLText), url.scheme == "wss" || url.scheme == "ws" else {
+            phase = .failed("The Gateway address must start with wss://")
+            return
+        }
+        var scopes = ["operator.read"]
+        if allowTyping { scopes.append("operator.write") }
+        GatewayClient.forgetPairing()
+        client.start(url: url, sharedToken: sharedToken, scopes: scopes)
+    }
+
+    func forgetPairing() {
+        client.stop()
+        GatewayClient.forgetPairing()
+        resetLiveState()
+        showPairing = true
+    }
+
+    private func phaseChanged(_ phase: GatewayClient.Phase) {
+        self.phase = phase
+        switch phase {
+        case .connected:
+            showPairing = false
+        case .pairingRequired:
+            showPairing = true
+        case .idle, .connecting, .failed:
+            // Live facts are no longer current. Keep the transcript, drop "running" claims.
+            activeRuns.removeAll()
+            for index in activity.indices where activity[index].state == .running {
+                activity[index].state = .failed
+                activity[index].endedAt = Date()
+                activity[index].detail = "connection lost before this finished"
+            }
+        }
+    }
+
+    private func resetLiveState() {
+        lines = []; activity = []; activeRuns = []; sessions = []; cron = []; presence = []
+        healthOK = nil; healthAsOf = nil; sessionsAsOf = nil; cronAsOf = nil; presenceAsOf = nil
+        serverVersion = nil; grantedScopes = []; connectedAt = nil; gatewayUptimeAtHello = nil
+        currentSessionKey = nil; mainSessionId = nil; sessionError = nil
+        models = []; modelsAsOf = nil; currentModel = nil; currentModelSource = nil; defaultModel = nil
+        subagents = []; subagentsAsOf = nil
+    }
+
+    func applyHello(_ hello: JSONValue) {
+        let now = Date()
+        serverVersion = hello["server"]["version"].string
+        grantedScopes = (hello["auth"]["scopes"].array ?? []).compactMap(\.string)
+        connectedAt = now
+        let snapshot = hello["snapshot"]
+        if let uptime = snapshot["uptimeMs"].double { gatewayUptimeAtHello = (uptime, now) }
+        applyPresence(snapshot["presence"], at: now)
+        applyHealth(snapshot["health"], at: now)
+        mainSessionKey = snapshot["sessionDefaults"]["mainSessionKey"].string ?? mainSessionKey
+        if currentSessionKey == nil { currentSessionKey = mainSessionKey }
+        guard !isDemo else { return }
+        Task { await bootstrap() }
+    }
+
+    private func bootstrap() async {
+        // Listeners are already installed, so events that race these calls are not lost.
+        if let list = try? await client.request("sessions.subscribe", .object(["limit": .number(30), "excludeSubagents": .bool(true)])) {
+            applySessions(list["list"])
+        }
+        if let key = currentSessionKey {
+            _ = try? await client.request("sessions.messages.subscribe", .object(["key": .string(key)]))
+            await loadHistory()
+        }
+        await loadModels()
+        await refreshSubagents()
+        await refreshCron()
+    }
+
+    // MARK: - Models
+
+    nonisolated static func modelRef(provider: String?, model: String) -> String {
+        guard let provider, !provider.isEmpty, !model.hasPrefix(provider + "/") else { return model }
+        return "\(provider)/\(model)"
+    }
+
+    private func updateCurrentModelFromRoster() {
+        guard let key = currentSessionKey, let row = sessions.first(where: { $0.key == key }),
+              let model = row.model else { return }
+        currentModel = Self.modelRef(provider: row.modelProvider, model: model)
+        currentModelSource = row.overrideSource
+    }
+
+    func loadModels() async {
+        guard let key = currentSessionKey else { return }
+        do {
+            let result = try await client.request("models.list", .object([
+                "sessionKey": .string(key), "view": .string("configured"), "includeDetails": .bool(true),
+            ]))
+            guard currentSessionKey == key else { return }
+            models = (result["models"].array ?? []).compactMap { choice in
+                guard let id = choice["id"].string else { return nil }
+                return ModelChoice(
+                    id: id, name: choice["name"].string ?? id, provider: choice["provider"].string ?? "",
+                    available: choice["available"].bool, unavailableReason: choice["unavailableReason"].string)
+            }
+            if defaultModel == nil { defaultModel = result["modelSelectionPolicy"]["defaultModel"].string }
+            modelsAsOf = Date()
+            modelError = nil
+        } catch {
+            modelError = "Model list is unknown: \(error.localizedDescription)"
+        }
+    }
+
+    /// Switches the model of the session on screen. Nil goes back to the default.
+    func setModel(_ ref: String?) {
+        guard !isDemo, canWrite, !modelBusy, let key = currentSessionKey else { return }
+        modelBusy = true
+        modelError = nil
+        Task {
+            defer { modelBusy = false }
+            do {
+                let result = try await client.request("sessions.patch", .object([
+                    "key": .string(key), "model": ref.map { .string($0) } ?? .null,
+                ]))
+                guard currentSessionKey == key else { return }
+                let resolved = result["resolved"]
+                if let model = resolved["model"].string {
+                    currentModel = Self.modelRef(provider: resolved["modelProvider"].string, model: model)
+                    currentModelSource = ref == nil ? nil : "user"
+                } else {
+                    // The Gateway accepted the change but did not say what is now in effect.
+                    currentModel = ref
+                    currentModelSource = ref == nil ? nil : "user"
+                }
+            } catch {
+                modelError = "Model not changed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    // MARK: - Sub-agents
+
+    func refreshSubagents() async {
+        guard !isDemo, phase == .connected, let key = currentSessionKey else { return }
+        do {
+            let result = try await client.request("sessions.list", .object([
+                "spawnedBy": .string(key), "limit": .number(30),
+            ]))
+            guard currentSessionKey == key else { return }
+            let rows = (result["sessions"].array ?? result.array ?? []).compactMap(Self.sessionRow(from:))
+            subagents = rows.sorted {
+                ($0.startedAt ?? $0.updatedAt ?? .distantPast) > ($1.startedAt ?? $1.updatedAt ?? .distantPast)
+            }
+            subagentsAsOf = Date()
+            subagentsError = nil
+        } catch {
+            subagentsError = error.localizedDescription
+        }
+    }
+
+    private func scheduleSubagentsRefresh() {
+        subagentsRefresh?.cancel()
+        subagentsRefresh = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await self?.refreshSubagents()
+        }
+    }
+
+    /// Stops one sub-agent and anything it spawned.
+    func stopSubagent(_ key: String) {
+        guard !isDemo, canWrite else { return }
+        Task {
+            do {
+                _ = try await client.request("sessions.abort", .object(["key": .string(key)]))
+                subagentsError = nil
+            } catch {
+                subagentsError = "Not stopped: \(error.localizedDescription)"
+            }
+            await refreshSubagents()
+        }
+    }
+
+    // MARK: - Sessions
+
+    var isViewingMain: Bool { currentSessionKey == nil || currentSessionKey == mainSessionKey }
+
+    var currentSessionTitle: String {
+        guard let key = currentSessionKey else { return "session unknown" }
+        if key == mainSessionKey { return "Main" }
+        return sessions.first(where: { $0.key == key })?.title ?? key
+    }
+
+    /// Shows another session: its transcript, its live replies and its tool calls.
+    func switchSession(to key: String) {
+        guard !isDemo, phase == .connected, key != currentSessionKey else { return }
+        let previous = currentSessionKey
+        currentSessionKey = key
+        mainSessionId = nil
+        lines = []
+        activity = []
+        activeRuns = []
+        historyAsOf = nil
+        sendError = nil
+        sessionError = nil
+        models = []; modelsAsOf = nil; currentModel = nil; currentModelSource = nil; modelError = nil
+        subagents = []; subagentsAsOf = nil; subagentsError = nil
+        updateCurrentModelFromRoster()
+        Task {
+            if let previous {
+                _ = try? await client.request("sessions.messages.unsubscribe", .object(["key": .string(previous)]))
+            }
+            do {
+                _ = try await client.request("sessions.messages.subscribe", .object(["key": .string(key)]))
+            } catch {
+                sessionError = "Live updates for this session are unknown: \(error.localizedDescription)"
+            }
+            // A later switch may have won while these calls were in flight.
+            guard currentSessionKey == key else { return }
+            await loadHistory()
+            await loadModels()
+            await refreshSubagents()
+        }
+    }
+
+    /// Starts a fresh conversation with Jorah and shows it. The main session is left as it is.
+    func newConversation() {
+        guard !isDemo, phase == .connected, canWrite else { return }
+        sessionError = nil
+        Task {
+            do {
+                let result = try await client.request("sessions.create", .object([
+                    "idempotencyKey": .string(UUID().uuidString),
+                ]))
+                guard let key = result["key"].string ?? result["session"]["key"].string
+                    ?? result["sessionKey"].string
+                else {
+                    sessionError = "The Gateway created a session but did not say which. Pick it from the list."
+                    return
+                }
+                if let row = Self.sessionRow(from: result["session"]) ?? Self.sessionRow(from: result) {
+                    merge(session: row)
+                }
+                switchSession(to: key)
+            } catch {
+                sessionError = "Could not start a new conversation: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Reloads the transcript half a second after the last change, if `key` is the session on
+    /// screen (or unknown). Notices shown here (stops, failures) are kept in time order.
+    private func scheduleHistoryRefresh(onlyForSession key: String?) {
+        guard !isDemo, phase == .connected else { return }
+        if let key, let current = currentSessionKey, key != current { return }
+        historyRefresh?.cancel()
+        historyRefresh = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled, let self else { return }
+            let notices = self.lines.filter { $0.role == .notice }
+            await self.loadHistory()
+            for notice in notices where !self.lines.contains(where: { $0.id == notice.id }) {
+                let at = notice.at ?? .distantPast
+                let index = self.lines.firstIndex(where: { ($0.at ?? .distantPast) > at }) ?? self.lines.endIndex
+                self.lines.insert(notice, at: index)
+            }
+        }
+    }
+
+    private func loadHistory() async {
+        guard let key = currentSessionKey else { return }
+        do {
+            let result = try await client.request("chat.history", .object([
+                "sessionKey": .string(key), "limit": .number(40),
+            ]))
+            guard currentSessionKey == key else { return }
+            mainSessionId = result["sessionId"].string
+            var loaded: [ChatLine] = []
+            for (index, message) in (result["messages"].array ?? []).enumerated() {
+                guard let line = Self.line(from: message, fallbackId: "h\(index)") else { continue }
+                loaded.append(line)
+            }
+            lines = loaded
+            historyAsOf = Date()
+            if let run = result["inFlightRun"]["runId"].string {
+                activeRuns.insert(run)
+                let text = result["inFlightRun"]["text"].string ?? ""
+                upsertAssistant(runId: run, text: text, streaming: true)
+            }
+        } catch {
+            lines.append(ChatLine(id: UUID().uuidString, role: .notice,
+                                  text: "History is unknown: \(error.localizedDescription)", at: Date()))
+        }
+    }
+
+    func refreshCron() async {
+        do {
+            let result = try await client.request("cron.list", .object(["includeDisabled": .bool(true), "limit": .number(50)]))
+            let jobs = result["jobs"].array ?? result.array ?? []
+            cron = jobs.compactMap { job in
+                guard let id = job["id"].string else { return nil }
+                let state = job["state"]
+                return CronRow(
+                    id: id,
+                    name: job["displayName"].string ?? job["name"].string ?? id,
+                    enabled: job["enabled"].bool ?? false,
+                    nextRun: state["nextRunAtMs"].dateFromMs ?? job["nextRunAtMs"].dateFromMs,
+                    lastRun: state["lastRunAtMs"].dateFromMs ?? job["lastRunAtMs"].dateFromMs,
+                    lastStatus: state["lastRunStatus"].string ?? job["lastRunStatus"].string,
+                    running: !state["runningAtMs"].isNull)
+            }
+            cronAsOf = Date()
+            cronError = nil
+        } catch {
+            cronError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Sending
+
+    func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, canWrite, let key = currentSessionKey else { return }
+        draft = ""
+        sendError = nil
+        let idempotencyKey = UUID().uuidString
+        lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date()))
+        var params: [String: JSONValue] = [
+            "sessionKey": .string(key),
+            "message": .string(text),
+            "idempotencyKey": .string(idempotencyKey),
+        ]
+        if let mainSessionId { params["sessionId"] = .string(mainSessionId) }
+        Task {
+            do {
+                let ack = try await client.request("chat.send", .object(params))
+                if let run = ack["runId"].string { activeRuns.insert(run) }
+            } catch {
+                sendError = "Not sent: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func stopRun() {
+        guard canWrite, let key = currentSessionKey else { return }
+        Task { _ = try? await client.request("chat.abort", .object(["sessionKey": .string(key)])) }
+    }
+
+    // MARK: - Events
+
+    func apply(event name: String, payload: JSONValue) {
+        let now = Date()
+        if name != "tick" {
+            ticker.append(EventTick(name: name, at: now))
+            if ticker.count > 40 { ticker.removeFirst(ticker.count - 40) }
+        }
+        switch name {
+        case "tick":
+            lastTickAt = now
+        case "chat":
+            applyChat(payload, at: now)
+        case "agent":
+            applyAgent(payload, at: now)
+        case "session.message":
+            // A transcript change in the subscribed session, including turns that didn't start here
+            // (voice, Telegram). Reloading is simpler and safer than merging the event's own shape.
+            let key = payload["sessionKey"].string ?? payload["key"].string ?? payload["session"]["key"].string
+            scheduleHistoryRefresh(onlyForSession: key)
+        case "session.tool":
+            let sessionKey = payload["sessionKey"].string
+            let fromChild = payload["spawnedBy"].string != nil && payload["spawnedBy"].string == currentSessionKey
+            guard sessionKey == nil || sessionKey == currentSessionKey || fromChild else { break }
+            applyTool(runId: payload["runId"].string ?? "session", data: payload["data"].isNull ? payload : payload["data"],
+                      spawnedBy: fromChild ? payload["spawnedBy"].string : nil, at: now)
+            if fromChild { scheduleSubagentsRefresh() }
+        case "presence":
+            applyPresence(payload["presence"].isNull ? payload : payload["presence"], at: now)
+        case "health":
+            applyHealth(payload, at: now)
+        case "cron", "cron.inventory.changed":
+            cronRefresh?.cancel()
+            cronRefresh = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                await self?.refreshCron()
+            }
+        case "sessions.changed":
+            if let row = Self.sessionRow(from: payload["session"]) {
+                if let parent = row.spawnedBy {
+                    // Sub-agents stay out of the roster and go to their own panel.
+                    if parent == currentSessionKey { scheduleSubagentsRefresh() }
+                    break
+                }
+                merge(session: row)
+                updateCurrentModelFromRoster()
+                sessionsAsOf = now
+            } else {
+                sessionsRefresh?.cancel()
+                sessionsRefresh = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled, let self else { return }
+                    if let list = try? await self.client.request("sessions.list", .object(["limit": .number(30), "excludeSubagents": .bool(true)])) {
+                        self.applySessions(list)
+                    }
+                }
+            }
+        case "device.pair.resolved":
+            client.pairingResolved(decision: payload["decision"].string ?? "unknown")
+        case "shutdown":
+            lines.append(ChatLine(id: UUID().uuidString, role: .notice,
+                                  text: "The Gateway is shutting down: \(payload["reason"].string ?? "no reason given")", at: now))
+        default:
+            break
+        }
+    }
+
+    private func applyChat(_ payload: JSONValue, at now: Date) {
+        guard let runId = payload["runId"].string else { return }
+        if let key = payload["sessionKey"].string, let current = currentSessionKey, key != current { return }
+        switch payload["state"].string {
+        case "delta":
+            activeRuns.insert(runId)
+            lastDeltaAt = now
+            if !payload["message"].isNull, let snapshot = Self.text(of: payload["message"]) {
+                upsertAssistant(runId: runId, text: snapshot, streaming: true)
+            } else if payload["replace"].bool == true {
+                upsertAssistant(runId: runId, text: payload["deltaText"].string ?? "", streaming: true)
+            } else {
+                appendAssistant(runId: runId, delta: payload["deltaText"].string ?? "")
+            }
+        case "final":
+            activeRuns.remove(runId)
+            if let text = Self.text(of: payload["message"]) {
+                upsertAssistant(runId: runId, text: text, streaming: false)
+            } else {
+                finishAssistant(runId: runId)
+            }
+        case "aborted":
+            activeRuns.remove(runId)
+            finishAssistant(runId: runId)
+            lines.append(ChatLine(id: UUID().uuidString, role: .notice, text: "Stopped.", at: now))
+        case "error":
+            activeRuns.remove(runId)
+            finishAssistant(runId: runId)
+            lines.append(ChatLine(id: UUID().uuidString, role: .notice,
+                                  text: "Run failed: \(payload["errorMessage"].string ?? "no reason given")", at: now))
+        default:
+            break
+        }
+    }
+
+    private func applyAgent(_ payload: JSONValue, at now: Date) {
+        guard let runId = payload["runId"].string else { return }
+        let data = payload["data"]
+        switch payload["stream"].string {
+        case "lifecycle":
+            switch data["phase"].string {
+            case "start": activeRuns.insert(runId)
+            case "end", "error": activeRuns.remove(runId)
+            default: break
+            }
+        case "tool":
+            applyTool(runId: runId, data: data, spawnedBy: payload["spawnedBy"].string, at: now)
+        default:
+            break
+        }
+    }
+
+    private func applyTool(runId: String, data: JSONValue, spawnedBy: String?, at now: Date) {
+        let name = data["name"].string ?? data["toolName"].string ?? data["title"].string ?? "tool"
+        let id = data["toolCallId"].string ?? data["id"].string ?? "\(runId):\(name)"
+        let phase = data["phase"].string ?? data["status"].string ?? "start"
+        let finished = ["result", "end", "done", "completed", "error", "failed"].contains(phase)
+        let failed = data["isError"].bool == true || phase == "error" || phase == "failed"
+
+        if let index = activity.firstIndex(where: { $0.id == id }) {
+            if finished {
+                activity[index].state = failed ? .failed : .done
+                activity[index].endedAt = now
+            }
+        } else {
+            activity.append(ActivityItem(
+                id: id, runId: runId, name: name, detail: Self.summary(of: data["args"]),
+                state: finished ? (failed ? .failed : .done) : .running,
+                startedAt: now, endedAt: finished ? now : nil,
+                isSubagent: spawnedBy != nil))
+            if activity.count > 80 { activity.removeFirst(activity.count - 80) }
+        }
+    }
+
+    private func applyPresence(_ value: JSONValue, at now: Date) {
+        guard let entries = value.array else { return }
+        presence = entries.enumerated().map { index, entry in
+            let label = entry["host"].string ?? entry["clientId"].string ?? entry["deviceFamily"].string ?? "client"
+            let parts = [entry["mode"].string, entry["platform"].string, entry["version"].string].compactMap { $0 }
+            return PresenceRow(
+                id: entry["connectionId"].string ?? entry["instanceId"].string ?? "\(index)-\(label)",
+                label: label, detail: parts.joined(separator: " · "), seenAt: entry["ts"].dateFromMs)
+        }
+        presenceAsOf = now
+    }
+
+    private func applyHealth(_ value: JSONValue, at now: Date) {
+        // The hello snapshot can be an empty object until the Gateway has measured health.
+        guard let object = value.object, !object.isEmpty else { return }
+        healthOK = value["ok"].bool
+        healthAsOf = value["ts"].dateFromMs ?? now
+        channels = (value["channelOrder"].array ?? []).compactMap(\.string)
+        pluginErrors = value["plugins"]["errors"].array?.count
+        heartbeatSeconds = value["heartbeatSeconds"].int
+    }
+
+    private func applySessions(_ list: JSONValue) {
+        guard let rows = list["sessions"].array ?? list.array else { return }
+        sessions = rows.compactMap(Self.sessionRow(from:)).filter { $0.spawnedBy == nil }
+        sessionsAsOf = Date()
+        if let model = list["defaults"]["model"].string {
+            defaultModel = Self.modelRef(provider: list["defaults"]["modelProvider"].string, model: model)
+        }
+        updateCurrentModelFromRoster()
+    }
+
+    private func merge(session row: SessionRow) {
+        if let index = sessions.firstIndex(where: { $0.key == row.key }) {
+            sessions[index] = row
+        } else {
+            sessions.insert(row, at: 0)
+        }
+        sessions.sort { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+    }
+
+    // MARK: - Transcript helpers
+
+    private func assistantIndex(_ runId: String) -> Int? {
+        lines.lastIndex(where: { $0.id == "a-\(runId)" })
+    }
+
+    private func upsertAssistant(runId: String, text: String, streaming: Bool) {
+        if let index = assistantIndex(runId) {
+            lines[index].text = text
+            lines[index].streaming = streaming
+        } else {
+            lines.append(ChatLine(id: "a-\(runId)", role: .assistant, text: text, at: Date(), streaming: streaming))
+        }
+    }
+
+    private func appendAssistant(runId: String, delta: String) {
+        if let index = assistantIndex(runId) {
+            lines[index].text += delta
+            lines[index].streaming = true
+        } else {
+            lines.append(ChatLine(id: "a-\(runId)", role: .assistant, text: delta, at: Date(), streaming: true))
+        }
+    }
+
+    private func finishAssistant(runId: String) {
+        if let index = assistantIndex(runId) { lines[index].streaming = false }
+    }
+
+    static func line(from message: JSONValue, fallbackId: String) -> ChatLine? {
+        let role: ChatLine.Role
+        switch message["role"].string {
+        case "user": role = .user
+        case "assistant": role = .assistant
+        default: return nil
+        }
+        guard var text = text(of: message), !text.isEmpty else { return nil }
+        if role == .user { text = withoutSpokenNote(text) }
+        let id = message["__openclaw"]["id"].string.map { "\($0)-\(fallbackId)" } ?? fallbackId
+        return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs)
+    }
+
+    /// jorah-voice puts a bracketed "[Spoken turn. …]" instruction (its TURN_NOTE) in front of
+    /// Adam's words. The transcript keeps it; the screen shows his words with a mic mark.
+    static func withoutSpokenNote(_ text: String) -> String {
+        guard let start = text.range(of: "[Spoken turn."),
+              text.distance(from: text.startIndex, to: start.lowerBound) < 120,
+              let end = text[start.upperBound...].firstIndex(of: "]")
+        else { return text }
+        let words = (text[..<start.lowerBound] + text[text.index(after: end)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return "🎙 " + words
+    }
+
+    /// Visible text of a chat message: a string, or the text blocks of a content array.
+    static func text(of message: JSONValue) -> String? {
+        if message.isNull { return nil }
+        let content = message["content"]
+        if let string = content.string { return string }
+        if let blocks = content.array {
+            let parts = blocks.compactMap { block -> String? in
+                block["type"].string == "text" ? block["text"].string : nil
+            }
+            return parts.isEmpty ? nil : parts.joined(separator: "\n")
+        }
+        return message["text"].string
+    }
+
+    static func sessionRow(from row: JSONValue) -> SessionRow? {
+        guard let key = row["key"].string else { return nil }
+        let title = row["derivedTitle"].string ?? row["title"].string ?? row["displayName"].string
+            ?? row["label"].string ?? key
+        var session = SessionRow(
+            key: key, title: title, updatedAt: row["updatedAt"].dateFromMs,
+            active: row["hasActiveRun"].bool ?? false,
+            model: row["model"].string, totalTokens: row["totalTokens"].int)
+        session.modelProvider = row["modelProvider"].string
+        session.overrideSource = row["modelOverrideSource"].string
+        session.spawnedBy = row["spawnedBy"].string
+        session.status = row["status"].string
+        session.startedAt = row["startedAt"].dateFromMs
+        session.endedAt = row["endedAt"].dateFromMs
+        return session
+    }
+
+    /// One short line describing a tool call's arguments.
+    static func summary(of args: JSONValue) -> String {
+        guard let object = args.object, !object.isEmpty else { return "" }
+        for key in ["command", "cmd", "query", "url", "path", "file_path", "prompt", "task"] {
+            if let value = object[key]?.string { return clip(value) }
+        }
+        let parts = object.keys.sorted().prefix(3).map { key -> String in
+            let value = object[key]?.string ?? object[key]?.serialized ?? ""
+            return "\(key)=\(value)"
+        }
+        return clip(parts.joined(separator: " "))
+    }
+
+    static func clip(_ text: String, _ limit: Int = 90) -> String {
+        let single = text.replacingOccurrences(of: "\n", with: " ")
+        return single.count > limit ? String(single.prefix(limit)) + "…" : single
+    }
+}

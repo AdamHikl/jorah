@@ -1,3 +1,5 @@
 # KiCad PPA's public signing-key fingerprint, not a secret (Adam's yes, 2026-11-18)
 deploy/kicad/versions.env:generic-api-key:9
 docs/runbooks/toolbox.md:generic-api-key:115
+# Mac HUD: a Swift type declaration (privateKey: Curve25519.Signing.PrivateKey), not a key (Adam's yes, 2026-11-21)
+clients/mac-hud/Sources/JorahHUD/Gateway/DeviceIdentity.swift:generic-api-key:11

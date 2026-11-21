@@ -925,6 +925,47 @@ line. After the OpenClaw 2026.10.33 upgrade, check that line again.
 **Undo:** `openclaw --profile jorah config unset agents.entries.main.bootstrapMaxChars`, and copy
 `AGENTS.md.pre-distill` back (then `record-live` the old file from its commit).
 
+## Cron down after Windows Update restarts, 2026-11-21
+
+**What happened [measured]:** Windows Update restarted the PC four times overnight, at 02:10,
+02:12, 03:05 and 03:08 (System log event 1074 from `MoUsoCoreWorker.exe` and
+`TrustedInstaller.exe`, then clean shutdowns: events 109 and 13, no Kernel-Power 41). WSL was not
+shut down cleanly. The 02:12 restart cut the Gateway off right after it created
+`state/openclaw.sqlite.cron-authority.lock`. The file stayed empty (0 bytes, dated 02:12:04), and
+the journal of that boot lost its last seconds too. OpenClaw 2026.10.9 takes that lock with
+`staleRecovery: "remove-if-definitely-stale"`. It only removes a stale lock when it can read the
+lock's payload, so an empty file fails closed forever. From 02:13 every Gateway start logged
+"[cron] failed to start: Cron receipt authority is unavailable", and `openclaw cron list` failed
+with the same error. `/readyz` still said ready with `failing` []. Missed: the hourly
+heartbeats of main, background and deep after 01:10, and the 03:00 memory dreaming. No reminders
+of Adam's are cron jobs, so none were missed. Found by the toolbox deploy session at 07:33.
+
+**Fix, on Adam's yes of 2026-11-21 ("Yes, fix it now"), 07:43:**
+1. `/readyz` ready; `gateway-recycle.sh --dry-run` said idle; the lock was still the empty file.
+2. `systemctl stop openclaw-gateway.service`. No OpenClaw process was left, and `fuser` showed
+   nobody holding the lock.
+3. Moved the empty lock to `/root/openclaw.sqlite.cron-authority.lock.empty-2026-11-21` (kept as
+   evidence), then `sync`.
+4. `systemctl start openclaw-gateway.service` at 07:43:58. Ready after 25 s, `NRestarts` 0.
+
+**Result [measured]:**
+- The Gateway wrote a new 222-byte lock and holds it.
+- No cron or authority errors in the journal since the start.
+- `openclaw cron status` shows enabled with 4 jobs, and `cron list` works.
+- At 07:46 all four overdue jobs ran with status ok: heartbeat-main, Memory Dreaming Promotion
+  (it had failed at 07:02 on 2026-11-20), heartbeat-background and heartbeat-deep.
+
+OpenClaw's docs say "Do not delete lock files to force entry", because a live Gateway might own
+the lock. That risk didn't apply here: the owner died with the restart three reboots earlier, and
+the Gateway was stopped while the file was moved. Do the same only under the same checks: stopped
+Gateway, no holder, empty file.
+
+**Open:**
+- No alarm fires when cron stops (the "heartbeat alarm" session is building one).
+- Windows Update can still restart the PC overnight and leave WSL state half written. Active hours
+  are Adam's setting.
+- After the 2026.10.33 upgrade, check whether an empty cron lock still fails closed.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

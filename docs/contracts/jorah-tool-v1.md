@@ -38,10 +38,10 @@ Unknown fields are refused. Text has no spaces at either end and no control char
 | `url` | archive | yes | `https`, a public host, at most 150 characters, so the card shows it in full |
 | `sha256` | archive | yes, except for a GitHub release asset | 64 lower-case hex digits. For a GitHub release asset, leave it out: GitHub's digest of the asset fills it in. Otherwise the publisher's own checksum, not computed by Jorah from a download |
 | `format` | archive | yes | `tar` (any compression), `zip`, `appimage` (type 2, squashfs) or `file` (a single binary) |
-| `strip` | archive | no | 0 to 3 leading folders to drop, for `tar` and `zip` only |
+| `strip` | archive | no | 0 to 3 leading folders to drop, for `tar` and `zip` only. `commands` paths start below them |
 | `download_mb` | all | no | Whole megabytes (MiB), 1 to 4096. No fractions anywhere, so Python and JavaScript hash the request alike. For a GitHub release asset, leave it out: the asset's size, rounded up, fills it in. Elsewhere give it only when the publisher states it; without it the installer measures the download and stops past 1024 MB (see "Sizes") |
 | `installed_mb` | all | no | Whole megabytes, 1 to 16384; for an archive, at least `download_mb`. For an archive, leave it out: a ceiling is set from the download size (see "Sizes"). Never Jorah's estimate |
-| `commands` | archive | yes | 1 to 12 entries of `{name: path inside the tool}`. Names: `a-z`, digits, `. _ + -`. Paths: plain parts only (letters, digits, `. _ + @ -`), with no `..`. Each becomes a wrapper in `/opt/jorah-toolbox/bin`. A `file` tool has exactly one |
+| `commands` | archive | yes | 1 to 12 entries of `{name: path inside the tool}`, the path as it is after `strip`: an archive holding `uv-x86_64-unknown-linux-gnu/uv` with `strip: 1` has the path `uv`. Names: `a-z`, digits, `. _ + -`. Paths: plain parts only (letters, digits, `. _ + @ -`), with no `..`. Each becomes a wrapper in `/opt/jorah-toolbox/bin`. A `file` tool has exactly one |
 | `env` | archive | no | At most 12 variables the wrapper sets, such as a tool's data folder. The only `$` allowed is `${TOOL}` (the tool's folder) and `${STATE}` (its writable state folder, `~/sandbox/.cache/jorah-toolbox/<name>`). No backquote, double quote, backslash or newline. `PATH`, `HOME`, `LD_*`, `BASH_ENV` and similar can't be set |
 | `packages` | apt | yes | 1 to 20 Ubuntu package names, at most 134 characters together |
 

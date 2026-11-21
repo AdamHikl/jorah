@@ -519,7 +519,9 @@ match ... size"): Jorah proposes it again.
 - `GitHub has no published release ...`: the tag in the URL is wrong, or the release is a draft.
 - `command X: Y isn't a file inside the tool (strip N); executables in it: ...`: the path in
   `commands` or `strip` is wrong. The installer removed what it had unpacked; Jorah proposes again
-  with one of the paths it names (a new card).
+  with one of the paths it names (a new card). Paths count from below the folders `strip` drops;
+  uv's first install on 2026-11-21 failed because the proposal kept the folder
+  (`uv-x86_64-unknown-linux-gnu/uv` with `strip: 1`), so the tool description and Jorah's rules now say so.
 - `unpacked it is N MB, well over the M MB limit`: the tool grows more than its format's factor
   (see the contract's "Sizes"). Jorah proposes again with `installed_mb` set to N, which the new
   card shows.

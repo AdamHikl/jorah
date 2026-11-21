@@ -353,3 +353,40 @@ test("toolbox_propose: another host with no sizes is proposed without any lookup
   const withDownload = await call("toolbox_propose", { manifest: { ...zig, download_mb: 55 } });
   assert.equal(withDownload.card.size, "55 MB download, up to 880 MB installed");
 });
+
+test("toolbox_propose: a new chat proposal replaces older waiting ones of the same tool and version, not a run's or an approved one", async () => {
+  const fx = fixture();
+  const call = load(fx);
+  const dir = join(fx.var, "proposals");
+  const m = example("good", "orca-slicer.json");
+  const approvedOne = await call("toolbox_propose", { manifest: { ...m, purpose: "Slice parts for Adam's printer: an approved wording." } });
+  assert.equal((await call("toolbox_install", approvedOne.card)).status, "approved");
+  const first = await call("toolbox_propose", { manifest: m });
+  const runM = { ...m, purpose: "Slice parts for the robot project's brackets." };
+  const runId = proposalId(runM);
+  writeFileSync(join(dir, `${runId}.json`), JSON.stringify({ v: 1, id: runId, from: { via: "run", project: "robot" }, manifest: runM }));
+  const uv = await call("toolbox_propose", { manifest: example("good", "uv.json") });
+  assert.equal(uv.replaced, undefined, "another tool replaces nothing");
+
+  const second = await call("toolbox_propose", { manifest: { ...m, purpose: "Slice parts for Adam's printer: set up its profile and slice a 20 mm test cube." } });
+  assert.equal(second.status, "proposed");
+  assert.deepEqual(second.replaced, [first.id]);
+  const left = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
+  assert.deepEqual(left, [approvedOne.id, runId, uv.id, second.id].map((i) => `${i}.json`).sort(),
+    "the approved one, the run's and the other tool's stay");
+  assert.match(second.next, /call toolbox_install with exactly these card fields now, in this same turn: the card is his yes/);
+  assert.match(second.next, /If a run asked for it or it's your idea, tell him and wait/);
+});
+
+test("toolbox_propose refuses a tool and version that is installed, and toolbox_list hides leftover proposals for it", async () => {
+  const fx = fixture();
+  const call = load(fx);
+  const m = example("good", "uv.json");
+  const leftover = await call("toolbox_propose", { manifest: { ...m, purpose: "Install Python packages for project runs, an older wording." } });
+  writeFileSync(join(fx.opt, "installed.json"), JSON.stringify({ v: 1, tools: { uv: { id: "tb-aaaaaaaaaa", version: m.version, kind: "archive" } } }));
+  const again = await call("toolbox_propose", { manifest: m });
+  assert.equal(again.status, "refused");
+  assert.match(again.reason, /uv 0\.9\.18 is installed already/);
+  const list = await call("toolbox_list");
+  assert.deepEqual(list.waiting_for_card.map((w) => w.id), [], `${leftover.id} is for the installed version`);
+});

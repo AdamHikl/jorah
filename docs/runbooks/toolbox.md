@@ -49,8 +49,9 @@ Jorah: toolbox_propose, or a run writes ~/work/.toolbox/requests/<name>.json
    v
 /var/lib/jorah-toolbox/proposals/<id>.json           toolbox_list shows it waiting for a card
    |
-   |   Adam: yes -> toolbox_install(card fields) -> guard card: id, name, version, source,
-   |   sha256, licence, released, size -> Allow
+   |   Adam asked for it: toolbox_install(card fields) in the same turn (a run's request or Jorah's
+   |   idea: once Adam asks) -> guard card: id, name, version, source, sha256, licence, released,
+   |   size -> Allow. A new chat proposal replaces older waiting ones for the same tool and version
    v
 /var/lib/jorah-toolbox/approved/<id>.json            written only by the plugin, after the card
    |   jorah-toolbox.path starts jorah-toolbox.service (user jorah-toolbox, no root)
@@ -221,6 +222,12 @@ Expected:
 3. Tap Allow. Within a minute, `toolbox_list` (ask "what's in your toolbox?") shows uv installed.
 4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
    done and `~/work/.toolbox/notes/uv.md` exists.
+
+Since 2026-11-21 the card comes in the same reply, with no typed yes first: until then Jorah
+waited for one, called his summary "the card", and each new ask left another waiting proposal
+(uv had four). A proposal now replaces older waiting ones of the same tool and version (a run's
+proposals stay), and once a tool's version is installed, `toolbox_propose` refuses it again and
+`toolbox_list` hides leftover proposals for it.
 
 If anything fails, `toolbox_list` says why. Copy that line to the build session. If Jorah says
 GitHub's hourly limit is used up, ask again after the time he gives.

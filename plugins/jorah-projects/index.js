@@ -34,7 +34,7 @@ import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUES
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
 import { applyGithub, fillSizes, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
-  readProposal, readToolbox, writeFresh } from "./lib/toolbox.js";
+  readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
 import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
@@ -678,6 +678,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         };
       });
       const waiting = tb.proposals.items.map((p) => p.data).filter((p) => p && p.manifest && !installedIds.has(p.id) && !approvedIds.has(p.id)
+        && tb.installed[p.manifest.name]?.version !== p.manifest.version
         && resultOf.get(p.id)?.status !== "needs-root").map((p) => {
         const m = p.manifest;
         const problems = checkManifest(m, today());
@@ -730,6 +731,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       if (canonicalSize(request) > 64 * 1024) return refuse("the request is over 64 KB");
       const dir = join(s.toolboxVar, "proposals");
       if (!existsSync(dir)) return unavailable("the toolbox isn't installed on this machine yet (scripts/pc/install-toolbox.sh)");
+      if (readToolbox(s).installed[request.name]?.version === request.version) return refuse(`${request.name} ${request.version} is installed already: see toolbox_list`);
       let m = request;
       let github = null;
       if (where) {
@@ -758,6 +760,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       } catch (e) {
         return unavailable(`the proposal couldn't be written: ${firstLine(e)}`);
       }
+      const replaced = supersede(s, m, pid);
       const limits = m.kind === "archive" ? {
         sizes: `${sized.filled.length ? "installed_mb is a limit set from the download size, not a measurement"
           : "installed_mb" in m ? "installed_mb is the one you gave, enforced as a limit"
@@ -769,7 +772,8 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       } : {};
       return reply({
         status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub, ...limits,
-        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} When he says yes, call toolbox_install with exactly these card fields.`,
+        ...(replaced.length ? { replaced, replaced_note: "older proposals of this tool and version that waited for a card are gone; this one replaces them" } : {}),
+        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} If Adam's own message asked for this tool, call toolbox_install with exactly these card fields now, in this same turn: the card is his yes, so don't wait for a typed one. If a run asked for it or it's your idea, tell him and wait until he asks for it.`,
       });
     },
   });
@@ -783,7 +787,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   api.registerTool({
     name: "toolbox_install",
     label: "Install a tool in the toolbox",
-    description: "Install a proposed tool (toolbox_list's waiting_for_card, or toolbox_propose's answer), passing its card fields exactly. Always a card for Adam showing them. On Allow the installer (user jorah-toolbox, no root) downloads it, checks the SHA-256 and, for GitHub releases, the date and digest GitHub holds, unpacks it without running it and puts it in /opt/jorah-toolbox; then the runner smoke-tests it offline and a learning run writes your notes. Ubuntu packages end at a root command Adam runs (toolbox_list shows it).",
+    description: "Install a proposed tool (toolbox_list's waiting_for_card, or toolbox_propose's answer), passing its card fields exactly. Always a card for Adam showing them. When Adam asked for the tool, call it right after toolbox_propose, in the same turn: the card is his yes. On Allow the installer (user jorah-toolbox, no root) downloads it, checks the SHA-256 and, for GitHub releases, the date and digest GitHub holds, unpacks it without running it and puts it in /opt/jorah-toolbox; then the runner smoke-tests it offline and a learning run writes your notes. Ubuntu packages end at a root command Adam runs (toolbox_list shows it).",
     parameters: { type: "object", additionalProperties: false, required: Object.keys(CARD), properties: CARD },
     async execute(id, p) {
       if (!TOOL_ID.test(p?.id ?? "")) return refuse("id must be a proposal's id, tb- and 10 hex digits");

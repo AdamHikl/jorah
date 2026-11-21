@@ -11,7 +11,7 @@
 //   /opt/jorah-toolbox/installed.json           what is installed
 
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const CONTRACT = "jorah-tool-v1";
@@ -451,6 +451,27 @@ export function writeFresh(dir, name, body, tmpDir = dir) {
   writeFileSync(tmp, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o644, flag: "wx" });
   renameSync(tmp, path);
   return true;
+}
+
+// A new chat proposal replaces older ones for the same tool and version that still wait for a card,
+// so they don't pile up each time Jorah rewords the purpose (each wording is a new id). A run's
+// proposals and anything approved stay. Returns the ids it removed.
+export function supersede(s, m, keepId) {
+  const tb = readToolbox(s);
+  const approved = new Set(tb.approved.items.map((a) => a.data?.id));
+  const gone = [];
+  for (const { file, data } of tb.proposals.items) {
+    const old = data?.manifest;
+    if (!old || data.id === keepId || file !== `${data.id}.json` || !ID.test(data.id ?? "") || approved.has(data.id)) continue;
+    if (old.name !== m.name || old.version !== m.version || data.from?.via === "run") continue;
+    try {
+      unlinkSync(join(s.toolboxVar, "proposals", file));
+      gone.push(data.id);
+    } catch {
+      // Left in place: toolbox_list still shows it, and the next proposal tries again.
+    }
+  }
+  return gone;
 }
 
 export function readProposal(s, id) {

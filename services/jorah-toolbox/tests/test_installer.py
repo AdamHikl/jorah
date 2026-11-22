@@ -240,12 +240,24 @@ class Archives(World):
         self.assertFalse((self.opt / "bin/uv").exists())
         self.assertIn("executables in it: uv, uvx", result["error"], "what's there, so the request can be fixed")
 
-    def test_a_wrong_strip_names_the_paths_that_are_there(self):
+    def test_a_wrong_strip_is_fixed_by_finding_the_command_by_name(self):
         self.m["strip"] = 0
         self.approve()
         [result] = self.installer().run_queue()
-        self.assertIn("command uv: uv isn't a file inside the tool (strip 0); executables in it: uv-x86_64/uv, uv-x86_64/uvx",
-                      result["error"])
+        self.assertEqual(result["status"], "installed", result["error"])
+        self.assertEqual(result["checks"]["commandsFoundByName"], {"uv": "uv-x86_64/uv", "uvx": "uv-x86_64/uvx"})
+        self.assertIn('/uv-x86_64/uv"', (self.opt / "bin/uv").read_text())
+
+    def test_a_name_that_matches_two_executables_still_names_the_paths(self):
+        self.tar = tar_bytes({"a/uv": (b"#!/bin/sh\necho a\n", 0o755), "b/uv": (b"#!/bin/sh\necho b\n", 0o755),
+                              "a/uvx": (b"#!/bin/sh\necho x\n", 0o755)})
+        self.m["sha256"] = sha(self.tar)
+        self.net = Net({GH_URL: self.tar, API_URL: self.release("2025-12-16T10:00:00Z", self.m["sha256"])})
+        self.m["strip"] = 0
+        self.approve()
+        [result] = self.installer().run_queue()
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("command uv: uv isn't a file inside the tool (strip 0); executables in it: a/uv, a/uvx, b/uv", result["error"])
 
     def test_another_host_without_sizes_is_measured_at_install(self):
         url = "https://downloads.example.org/uv-0.9.18.tar.gz"

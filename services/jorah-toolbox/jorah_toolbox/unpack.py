@@ -169,6 +169,22 @@ def executables(root, limit=8):
     return found[:limit]
 
 
+def by_name(root, names):
+    """The one executable under `root` whose file name is the first of `names` that any has, as
+    (relative path, real path), or None when no name matches or a name matches more than one: a
+    command whose path was wrong (a folder strip already dropped, an AppImage's own file name) is
+    found by its name instead of failing the install. Only regular files the walk already vetted."""
+    every = executables(root, limit=100000)
+    for name in names:
+        hits = [rel for rel in every if os.path.basename(rel) == name]
+        if len(hits) == 1:
+            real = inside(root, hits[0])
+            return (hits[0], real) if real else None
+        if len(hits) > 1:
+            return None
+    return None
+
+
 def inside(root, rel):
     """The real path of `rel` under `root` if it resolves inside `root` to a regular file, else None."""
     root = os.path.realpath(root)

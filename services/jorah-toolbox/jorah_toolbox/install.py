@@ -291,14 +291,24 @@ class Installer:
             checks["installedBytes"] = total
             if total > installed_mb * 1.25 * 1048576 + 50 * 1048576:
                 raise Refused(f"unpacked it is {total // 1048576} MB, well over the {installed_mb} MB limit")
+            fixed = {}
             for cmd, rel in m["commands"].items():
                 real = unpack.inside(tool, rel)
                 if real is None:
-                    found = unpack.executables(tool)
-                    raise Refused(f"command {cmd}: {rel} isn't a file inside the tool"
-                                  + (f" (strip {m.get('strip', 0)}); executables in it: {', '.join(found)}" if found else ""))
+                    # Found by name when exactly one executable in the checked download has it
+                    # (2026-11-22: uv's folder, FreeCAD's AppImage name). The card and the hash
+                    # are unchanged; only where the wrapper points.
+                    hit = unpack.by_name(tool, [os.path.basename(rel), cmd])
+                    if hit is None:
+                        found = unpack.executables(tool)
+                        raise Refused(f"command {cmd}: {rel} isn't a file inside the tool"
+                                      + (f" (strip {m.get('strip', 0)}); executables in it: {', '.join(found)}" if found else ""))
+                    fixed[cmd], real = hit
                 if not os.stat(real).st_mode & 0o111:
                     os.chmod(real, 0o755)
+            if fixed:
+                checks["commandsFoundByName"] = fixed
+                m = {**m, "commands": {**m["commands"], **fixed}}
             self._place(m, pid, tool, registry, checks)
         finally:
             shutil.rmtree(staging, ignore_errors=True)

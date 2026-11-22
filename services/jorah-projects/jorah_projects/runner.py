@@ -23,7 +23,7 @@ from pathlib import Path
 from string import Template
 from zoneinfo import ZoneInfo
 
-from . import claude, config, contract, fsio, intake, protect, scan, toolbox
+from . import claude, config, contract, fsio, intake, protect, scan, toolbox, vendor
 from .gitsafe import GitError, Repo, UnsafeRepo, init_local, mirror_path
 
 FAILED = {"failed", "timeout", "error"}
@@ -70,6 +70,7 @@ class Runner:
         self.s = settings
         self._smoke_run = smoke_run or subprocess.run
         self._github_get = github_get or toolbox.github_get
+        self._vendor_collect = vendor.collect
         self.tz = ZoneInfo(settings.timezone)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._disk_free = disk_free or (lambda path: shutil.disk_usage(path).free)
@@ -150,6 +151,7 @@ class Runner:
             record = self.run(project, state, folder, kind, slot, pc)
             record["toolbox"] = self.after_run_toolbox(folder, f"{project.name} run {record['id']}",
                                                        {"project": project.name, "run": record["id"]})
+            record["vendor"] = self.after_run_vendor(project, folder)
             return self.finish(project, state, folder, record, pc)
         finally:
             lock.close()
@@ -763,6 +765,15 @@ class Runner:
         out["notes"] = toolbox.commit_notes(self.s, folder, f"Notes from {label}")
         return out
 
+    def after_run_vendor(self, project, folder):
+        """After a project run: download the vendor files it asked for (jorah_projects/vendor.py)."""
+        if not os.path.isdir(project.work_dir / ".git"):
+            return {"fetched": [], "refused": []}
+        try:
+            return self._vendor_collect(project, project.work_dir, folder)
+        except (OSError, ValueError) as error:
+            return {"fetched": [], "refused": [{"file": "*", "why": f"couldn't read vendor requests: {str(error)[:160]}"}]}
+
     def toolbox_tick(self):
         """Smoke-test newly installed tools, then at most one learning run. Returns its record or None."""
         if not toolbox.available(self.s):
@@ -888,6 +899,10 @@ class Runner:
             item["problems"].append(f"tool request {bad['file']} refused: {bad['why']}")
         for wait in (box.get("requests") or {}).get("waiting", []):
             item["notes"].append(f"tool request {wait['file']} waits for GitHub: {wait['why']}")
+        for got in (record.get("vendor") or {}).get("fetched", []):
+            item["notes"].append(f"vendor file: {got['name']} ({got['kind']}, {got['bytes'] // 1024} KB, unverified) from {got['url'][:120]}")
+        for bad in (record.get("vendor") or {}).get("refused", []):
+            item["problems"].append(f"vendor request {bad['file']} refused: {bad['why']}")
         if (box.get("notes") or {}).get("files"):
             item["notes"].append(f"toolbox notes changed: {', '.join(box['notes']['files'][:5])}")
         snap = None

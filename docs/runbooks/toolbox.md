@@ -36,7 +36,7 @@ Not checked: anything on the PC, inside Claude Code's sandbox, or through the Ga
 | **PCB** | KiCad 10.0.8 from KiCad's PPA (`scripts/pc/install-kicad.sh`) | `kicad-cli`: ERC, DRC, Gerbers and drill files for a board house, BOM, netlists, PDF and SVG, the board as STEP. Schematics as code (SKiDL from PyPI) a run installs when it needs it |
 | **Slicer** | Not installed: Adam's test | Jorah picks one for Adam's printer and installs it through the toolbox. Cura (its AppImage carries CuraEngine and the printer definitions), PrusaSlicer and OrcaSlicer are all AppImages |
 | **Coding** | Python 3.12, Node 26 with npm 11.20, gcc and cmake, git; the robotics bench for robots | npm and PyPI packages go into the project. The 7-day rule is now enforced in runs (`npm_config_min_release_age=7`, `PIP_UPLOADED_PRIOR_TO=P7D` for pip 26.1 and newer, `UV_EXCLUDE_NEWER="7 days"`). Go, Java, uv and the like come through the toolbox |
-| **Web research** | WebSearch and WebFetch in runs with `web: true`; web search in chat | Unchanged. Downloading files such as datasheets or vendor STEP models into a project isn't possible from the sandbox; that is its own decision later |
+| **Web research** | WebSearch and WebFetch in runs with `web: true`; web search in chat | Unchanged. Vendor files (datasheet PDFs with their text, STEP, STL, KiCad symbols and footprints) come through the runner, not the sandbox: a run writes `project/vendor/requests/<name>.json` and the runner downloads it after the run, only for projects with web research, only from public addresses, checked by type and size, never executable, with its SHA-256 and source in `project/vendor/MANIFEST.json` (`jorah_projects/vendor.py`, issue #17). The files stay out of git |
 
 ## How Jorah adds a tool
 

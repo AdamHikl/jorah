@@ -3,7 +3,7 @@
 #
 #   brain-lane.sh status [--probe]   which lane is set; --probe also runs one test turn on main
 #   brain-lane.sh api                every agent on the API key   (config/pc/api-lane.patch.json5)
-#   brain-lane.sh max                main and deep on the Max login (config/pc/max-lane.patch.json5)
+#   brain-lane.sh max                main and deep on the Max login, deep unsandboxed (config/pc/max-lane.patch.json5)
 #
 # The Mac HUD runs it through scripts/pc/jorah-brain.sh (docs/adr/0009-hud-brain-switch.md).
 # background stays on the key on both lanes: its shell needs the embedded runtime's sandbox.
@@ -25,7 +25,12 @@ SWITCHED_AGENTS="main deep"
 oc() { openclaw --profile jorah "$@"; }
 say() { printf '%s\n' "$*"; }
 
-config_json() { oc config get "$1" --json 2>/dev/null || echo null; }
+# A path's value as JSON, or null when it is unset or can't be read (config get prints an error
+# object and exits 1 for an unset path, so only a successful answer is passed on).
+config_json() {
+    local out
+    if out="$(oc config get "$1" --json 2>/dev/null)"; then printf '%s\n' "$out"; else echo null; fi
+}
 
 # "anthropic:jorah-store", "none" or nothing (unknown).
 agent_order() {
@@ -43,6 +48,7 @@ has_key_profile() {
 read_lane() {
     DEFAULTS="$(config_json agents.defaults.models)" \
     DEEP="$(config_json agents.entries.deep.models)" \
+    DEEP_SANDBOX="$(config_json agents.entries.deep.sandbox.mode)" \
     ORDER="$(config_json auth.order)" \
     MAIN_ORDER="$(agent_order main)" \
     DEEP_ORDER="$(agent_order deep)" \
@@ -89,6 +95,19 @@ if isinstance(deep, dict):
 lane = runtime_lane.get(runtime, "unknown" if runtime is None else "mixed")
 print("deep (Opus): " + {"api": "API key", "max": "Max login"}.get(lane, f"unknown ({runtime})"))
 lanes.append(lane)
+
+# On Max deep runs outside its sandbox (claude-cli cannot honour it); on the API lane it is sandboxed.
+# An unset mode reads as null, which is the default sandbox.
+sandbox = os.environ.get("DEEP_SANDBOX", "").strip()
+if sandbox == "null":
+    print("deep sandbox: on (default)")
+    lanes.append("api")
+elif sandbox == "\"off\"":
+    print("deep sandbox: off (Max lane, tools limited to its allow list)")
+    lanes.append("max")
+else:
+    print(f"deep sandbox: unknown ({sandbox[:30] or 'unreadable'})")
+    lanes.append("unknown")
 
 order = load("ORDER")
 default_order = order.get("anthropic") if isinstance(order, dict) else None
@@ -233,7 +252,7 @@ switch_to() {
     say "4/6 Applying it (hot reload, no restart)"
     oc config patch --file "$patch" 2>&1 | tail -n 3 || fail "the patch did not apply"
 
-    say "5/6 Key order for $SWITCHED_AGENTS"
+    say "5/6 Key order for $SWITCHED_AGENTS, and deep's sandbox"
     for agent in $SWITCHED_AGENTS; do
         if [ "$target" = api ]; then
             oc models auth order set --provider anthropic --agent "$agent" "$KEY_PROFILE" >/dev/null 2>&1 \
@@ -244,6 +263,17 @@ switch_to() {
         fi
         say "    $agent: $(agent_order "$agent")"
     done
+
+    # deep's sandbox moves with the lane: the Max patch turns it off with an allow list; here the API
+    # lane removes both, so deep is sandboxed as before.
+    if [ "$target" = api ]; then
+        for path in agents.entries.deep.sandbox agents.entries.deep.tools.allow; do
+            if [ "$(config_json "$path")" != null ]; then
+                oc config unset "$path" >/dev/null 2>&1 || fail "could not remove $path"
+            fi
+        done
+    fi
+    say "    deep sandbox: $(config_json agents.entries.deep.sandbox.mode | tr -d '"' | sed 's/^null$/on (default)/')"
 
     say "6/6 Validating and reading it back"
     oc config validate 2>&1 | tail -n 1 || fail "the config does not validate"

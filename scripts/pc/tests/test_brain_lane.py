@@ -45,8 +45,24 @@ if cmd == "config get":
         print(json.dumps({"anthropic/claude-opus-5-5": {"agentRuntime": {"id": state["deep"]}}}))
     elif path == "auth.order":
         print(json.dumps({"anthropic": state["order"]}))
+    elif path in ("agents.entries.deep.sandbox.mode", "agents.entries.deep.sandbox", "agents.entries.deep.tools.allow"):
+        value = {"agents.entries.deep.sandbox.mode": state.get("deep_sandbox"),
+                 "agents.entries.deep.sandbox": {"mode": state["deep_sandbox"]} if state.get("deep_sandbox") else None,
+                 "agents.entries.deep.tools.allow": state.get("deep_allow")}[path]
+        if value is None:
+            print(json.dumps({"ok": False, "error": {"type": "cli_error", "message": f"Config path is valid but unset: {path}."}}))
+            sys.exit(1)
+        print(json.dumps(value))
     else:
         sys.exit(1)
+elif cmd == "config unset":
+    path = args[2]
+    if path == "agents.entries.deep.sandbox":
+        state["deep_sandbox"] = None
+    elif path == "agents.entries.deep.tools.allow":
+        state["deep_allow"] = None
+    save()
+    print(f"Removed {path}. Change will apply without restarting the gateway.")
 elif cmd == "config patch":
     if "--dry-run" in args:
         print("Dry run successful: 13 update(s) validated against ~/.openclaw-jorah/openclaw.json.")
@@ -55,6 +71,9 @@ elif cmd == "config patch":
         state["defaults"] = [lane] * len(state["models"])
         state["deep"] = lane
         state["order"] = [os.environ["FAKE_KEY"]] if lane == "openclaw" else []
+        if lane == "claude-cli":
+            state["deep_sandbox"] = "off"
+            state["deep_allow"] = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"]
         save()
         print("Applied 13 config update(s). Change will apply without restarting the gateway.")
 elif cmd == "models auth":
@@ -92,6 +111,8 @@ def lane_state(lane):
         "deep": runtime,
         "order": [KEY] if lane == "api" else [],
         "agents": {"main": order, "deep": order, "background": KEY},
+        "deep_sandbox": "off" if lane == "max" else None,
+        "deep_allow": ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"] if lane == "max" else None,
         "profiles": {"main": True, "deep": True, "background": True},
     }
 
@@ -198,11 +219,35 @@ class BrainLane(unittest.TestCase):
         self.assertNotIn("--agent background", calls.replace("order get --provider anthropic --agent background", ""))
         self.assertEqual(len(list(self.backups.glob("openclaw.json.*.pre-api"))), 1)
 
+        state = json.loads(self.state.read_text())
+        # On the API lane deep is sandboxed again: the script removed the Max lane's two settings.
+        self.assertIsNone(state["deep_sandbox"])
+        self.assertIsNone(state["deep_allow"])
+        self.assertIn("config unset agents.entries.deep.sandbox", calls)
+        self.assertIn("config unset agents.entries.deep.tools.allow", calls)
+
         code, lines, err = self.run_script("max")
         self.assertEqual(code, 0, "\n".join(lines) + err)
         self.assert_lane(lines[:-1], "max")
         state = json.loads(self.state.read_text())
         self.assertEqual(state["agents"], {"main": "none", "deep": "none", "background": KEY})
+        self.assertEqual(state["deep_sandbox"], "off")
+        self.assertIn("deep sandbox: off (Max lane, tools limited to its allow list)", lines)
+
+    def test_max_with_deep_still_sandboxed_is_mixed(self):
+        state = lane_state("max")
+        state["deep_sandbox"] = None
+        self.set_state(state)
+        code, lines, _ = self.run_script("status")
+        self.assert_lane(lines, "mixed")
+        self.assertIn("deep sandbox: on (default)", lines)
+
+    def test_api_switch_with_deep_already_sandboxed_unsets_nothing(self):
+        state = lane_state("api")
+        self.set_state(state)
+        code, lines, err = self.run_script("api")
+        self.assertEqual(code, 0, "\n".join(lines) + err)
+        self.assertNotIn("config unset", self.calls.read_text())
 
     def test_api_refused_without_a_key_profile_changes_nothing(self):
         state = lane_state("max")

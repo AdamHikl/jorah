@@ -338,7 +338,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
   // Only the listed tools, whatever their class (2026-11-22): on the Max lane deep runs outside the
   // sandbox (claude-cli can't honour it), so the sandbox's tool list no longer narrows it. A "read"
   // such as memory_get, supply_list or read would let a page's instructions pull Adam's data into
-  // a search query. The config's tools.allow says the same (config/pc/deep-unsandboxed.patch.json5).
+  // a search query. On the Max lane the config says the same (config/pc/max-lane.patch.json5, tools.allow).
   if (isConsultAgent(matrix, agent) && !(matrix.consultTools ?? CONSULT_TOOLS).includes(tool)) {
     return { verdict: "block", reason: `${agent} uses only ${(matrix.consultTools ?? CONSULT_TOOLS).join(", ")}; ${tool} isn't one` };
   }

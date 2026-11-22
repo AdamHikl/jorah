@@ -10,12 +10,21 @@
 // Managed claude-cli turns expose none of Claude's own tools (docs/gateway/cli-backends.md,
 // "Managed turns expose no Claude-native tools by default"), so this removes the shell for real.
 // Arrays are replaced, so the deny list repeats the four entries from front.patch.json5.
-// Undo: tools.deny back to ["image_generate", "video_generate", "music_generate", "message"].
+//
+// Code Mode off, 2026-11-22. Adam's first Telegram consult worked, but `deep` answered without
+// the web: the guard blocked its `exec` (08:50:41). A spawned `deep` runs on the embedded runtime
+// (a sandboxed child can't use claude-cli), and there OpenClaw's "auto" Code Mode engages for
+// Opus: the model sees only `exec`/`wait` and calls web_search from JavaScript
+// (docs/tools/code-mode.md). That `exec` is not a shell, but its default Node executor "is not a
+// security boundary" and runs on the Gateway host, outside Podman. So Code Mode stays off for
+// `deep`: it gets Tool Search (`tool_call`), which jorah-guard unwraps and checks per inner tool.
+// Undo for both: tools.deny as above and `config unset agents.entries.deep.tools.codeMode`.
 {
   agents: {
     entries: {
       deep: {
         tools: {
+          codeMode: false,
           deny: [
             "image_generate", "video_generate", "music_generate", "message",
             "exec", "process", "write", "edit", "apply_patch",

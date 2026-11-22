@@ -191,6 +191,16 @@ On Adam's request, applied the same day [measured]: `openclaw agents add deep` (
 - **Test at the end:** a greeting (Haiku answers directly, fast); "think hard: should I..." (Jorah says it's asking Opus, then answers with "Opus says"); a hand-off by voice. Note any answer that should have gone to Opus.
 - **Undo:** `openclaw --profile jorah config set agents.entries.main.model.primary anthropic/claude-opus-5-5`.
 
+### Opus without a card, 2026-11-21 and 22
+
+On Adam's request ("make it that it doesn't need to ask my permission, just make it work"). Test, fix and evidence: `docs/evidence/consult-opus-2026-11-21/`.
+
+- **Found** [measured]: no hand-off from `main` to `deep` from 13 to 21 Nov. Haiku answered a debugging trade-off and a safety question itself, and a "think hard" spawn waited on a guard card that expired. That test card reached Adam's Telegram.
+- **Live since 2026-11-21 20:33** (`a7a630a`): `deep` has no shell, writes or sessions tools (`config/pc/deep-consult.patch.json5`, backup `openclaw.json.pre-deep-consult`); `jorah-guard`'s `consultAgents` lets main ask it with no card and allows only read, search and url tools in `deep`'s sessions (old guard in `/root/opt-jorah-pre-consult-2026-11-21.tgz`); "When to Ask Opus" at the top of main's `AGENTS.md` (backups `AGENTS.md.pre-consult` in both workspaces).
+- **Adam's Telegram test, 2026-11-22: worked.** Spawn from `agent:main:main` allowed with no card, `deep` answered on Opus 5.5 within a minute. But the guard blocked the child's Code Mode `exec`, so it answered without the web. **Code Mode off for `deep`** (same patch, `codeMode: false`): it then reaches the web through Tool Search, which the guard checks per tool.
+- **Limits:** sandboxed sessions (cron, heartbeats, `background`, CLI test sessions) can't start `deep`; only Adam's own chat can. Which credential a spawned `deep` uses on the embedded runtime is unknown (`models status` says "indeterminate").
+- **Test:** in Telegram, `/new`, then "Which is cheaper with shipping to Slovakia today: Lidl or Kaufland's own-brand AA batteries, 8-pack?" Expected: "Let me ask Opus", then within a few minutes "Opus says…" with shop links and today's date. In the guard log, `deep`'s child shows `web_search` or `web_fetch` allowed and no `exec`.
+
 ## agentmemory, two-week trial from 2026-11-08
 
 Roadmap P5b step 1, started before P5 on Adam's choice ("let's make it two steps"). Next to `memory-core`, not the memory slot. Evaluation: `docs/plan/research/agentmemory.md`.

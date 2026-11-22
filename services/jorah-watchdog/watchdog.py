@@ -30,6 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -224,6 +225,64 @@ def save_state(path, state):
 
 
 DRIFT_STALE_AFTER = 36 * 3600
+DRILL_REPORT = "/var/lib/jorah-toolbox-drill/last.json"
+DRILL_STALE_AFTER = 8 * 24 * 3600
+
+
+def _drill_checked_at(report):
+    checked = report.get("checked_at")
+    if isinstance(checked, (int, float)) and not isinstance(checked, bool):
+        return float(checked)
+    at = report.get("at")
+    if isinstance(at, str):
+        try:
+            return datetime.fromisoformat(at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def drill_step(state, report_path, now):
+    """One-line daily message when the toolbox drill failed or is older than 8 days.
+
+    A missing report says nothing. Never includes file paths.
+    """
+    path = Path(report_path)
+    if not path.exists():
+        state.pop("toolbox_drill", None)
+        return []
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        report = None
+    if not isinstance(report, dict):
+        line = "Jorah's toolbox drill report couldn't be read."
+        key = "unreadable"
+    else:
+        checked_at = _drill_checked_at(report)
+        stale = checked_at is None or (now - checked_at > DRILL_STALE_AFTER)
+        failed = not report.get("ok")
+        if not failed and not stale:
+            state.pop("toolbox_drill", None)
+            return []
+        names = []
+        if failed:
+            names = [str(n) for n in (report.get("failed") or []) if isinstance(n, str) and n]
+            if not names and isinstance(report.get("cases"), list):
+                names = [str(c.get("name")) for c in report["cases"]
+                         if isinstance(c, dict) and not c.get("ok") and c.get("name")]
+            names = [os.path.basename(n) for n in names]
+        since = (time.strftime("%Y-%m-%d", time.gmtime(checked_at))
+                 if checked_at is not None else "unknown") if stale else None
+        if failed:
+            line = f"Jorah's toolbox drill failed ({', '.join(names) if names else 'unknown cases'})" + (
+                f"; toolbox drill hasn't run since {since}." if stale else ".")
+        else:
+            line = f"Jorah's toolbox drill hasn't run since {since}."
+        key = json.dumps([checked_at, failed, names, stale], sort_keys=True)
+    if state.get("toolbox_drill", {}).get("sent") == key:
+        return []
+    return [("toolbox-drill", key, line)]
 
 
 def drift_step(state, report, now):
@@ -261,6 +320,8 @@ def daily_mark(state, kind, key, now):
         state["drift"]["alerted_unknown"] = True
     elif kind == "drift-readable":
         state["drift"]["alerted_unknown"] = False
+    elif kind == "toolbox-drill":
+        state["toolbox_drill"] = {"sent": key}
     else:
         advisories.mark_sent(state, kind, key, now)
 
@@ -290,6 +351,7 @@ def daily(args, now, opener, read_installed):
         log(f"advisories: {len(state.get('advisories', {}))} known; checked against {installed}; "
             f"{len(state.get('notified', {}))} told so far")
     due += drift_step(state, report, now)
+    due += drill_step(state, args.drill_report, now)
     if args.dry_run:
         for kind, _, text in due:
             log(f"would send ({kind}):\n{text}")
@@ -318,6 +380,7 @@ def main(argv=None, now=None, show=systemd_show, opener=urllib.request.urlopen,
     parser.add_argument("--state", default="/var/lib/jorah-watchdog/state.json")
     parser.add_argument("--daily-state", default="/var/lib/jorah-watchdog/daily.json")
     parser.add_argument("--drift-report", default=drift.REPORT)
+    parser.add_argument("--drill-report", default=DRILL_REPORT)
     parser.add_argument("--cron-report", default=None,
                         help=f"default {cronwatch.REPORT}, watched while {CRON_UNIT} is installed; "
                              "a path given here is always watched")

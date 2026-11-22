@@ -1,0 +1,274 @@
+[
+  {
+    "name": "ripgrep",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "ripgrep",
+      "title": "ripgrep (rg), fast recursive search",
+      "version": "15.2.0",
+      "kind": "archive",
+      "purpose": "Search project source trees and log files quickly from project runs.",
+      "homepage": "https://github.com/BurntSushi/ripgrep",
+      "release_page": "https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0",
+      "licence": "Unlicense OR MIT",
+      "licence_source": "https://github.com/BurntSushi/ripgrep/blob/master/COPYING",
+      "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+      "format": "tar",
+      "strip": 1,
+      "commands": {
+        "rg": "rg"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "rg",
+        "--version"
+      ],
+      "smoke_expect": "ripgrep 15.2.0"
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "installed",
+      "commandsFoundByName": false,
+      "smoke_contains": "ripgrep 15.2.0"
+    }
+  },
+  {
+    "name": "ripgrep-topdir-command",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "ripgrep",
+      "title": "ripgrep (rg), fast recursive search",
+      "version": "15.2.0",
+      "kind": "archive",
+      "purpose": "Verify that a command path still including the stripped top folder is resolved by name.",
+      "homepage": "https://github.com/BurntSushi/ripgrep",
+      "release_page": "https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0",
+      "licence": "Unlicense OR MIT",
+      "licence_source": "https://github.com/BurntSushi/ripgrep/blob/master/COPYING",
+      "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+      "format": "tar",
+      "strip": 1,
+      "commands": {
+        "rg": "ripgrep-15.2.0-x86_64-unknown-linux-musl/rg"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "rg",
+        "--version"
+      ],
+      "smoke_expect": "ripgrep 15.2.0"
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "installed",
+      "commandsFoundByName": true,
+      "smoke_contains": "ripgrep 15.2.0"
+    }
+  },
+  {
+    "name": "uv-strip-zero",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "uv",
+      "title": "uv, the Python package and project manager",
+      "version": "0.13.8",
+      "kind": "archive",
+      "purpose": "Verify that strip 0 with a bare command name resolves the executable by name.",
+      "homepage": "https://docs.astral.sh/uv/",
+      "release_page": "https://github.com/astral-sh/uv/releases/tag/0.13.8",
+      "licence": "Apache-2.0 OR MIT",
+      "licence_source": "https://github.com/astral-sh/uv/blob/main/LICENSE-MIT",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz",
+      "format": "tar",
+      "strip": 0,
+      "commands": {
+        "uv": "uv"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "uv",
+        "--version"
+      ],
+      "smoke_expect": "uv 0.13.8"
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "installed",
+      "commandsFoundByName": true,
+      "smoke_contains": "uv 0.13.8"
+    }
+  },
+  {
+    "name": "neovim-appimage",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "neovim",
+      "title": "Neovim, extensible Vim-based text editor",
+      "version": "0.12.6",
+      "kind": "archive",
+      "purpose": "Verify AppImage unpacking and command resolution by name when pointed at the AppImage file name.",
+      "homepage": "https://neovim.io/",
+      "release_page": "https://github.com/neovim/neovim/releases/tag/v0.12.6",
+      "licence": "Apache-2.0",
+      "licence_source": "https://github.com/neovim/neovim/blob/master/LICENSE.txt",
+      "url": "https://github.com/neovim/neovim/releases/download/v0.12.6/nvim-linux-x86_64.appimage",
+      "format": "appimage",
+      "commands": {
+        "nvim": "nvim-linux-x86_64.appimage"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "nvim",
+        "--version"
+      ],
+      "smoke_expect": "0.12.6"
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "installed",
+      "commandsFoundByName": true,
+      "smoke_contains": "0.12.6"
+    }
+  },
+  {
+    "name": "zig",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "zig",
+      "title": "Zig, the compiler and C/C++ cross-compiler",
+      "version": "0.17.1",
+      "kind": "archive",
+      "purpose": "Cross-compile small C tools for the robot's Linux board from project runs, without a separate toolchain per target.",
+      "homepage": "https://ziglang.org/",
+      "release_page": "https://ziglang.org/download/#release-0.17.1",
+      "licence": "MIT",
+      "licence_source": "https://codeberg.org/ziglang/zig/src/branch/master/LICENSE",
+      "released": "2026-11-02",
+      "url": "https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz",
+      "sha256": "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a",
+      "format": "tar",
+      "strip": 1,
+      "commands": {
+        "zig": "zig"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "zig",
+        "version"
+      ],
+      "smoke_expect": "0.17.1"
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "installed",
+      "commandsFoundByName": false,
+      "smoke_contains": "0.17.1"
+    }
+  },
+  {
+    "name": "cowsay-apt",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "cowsay",
+      "title": "cowsay, ASCII speaking cow for smoke checks",
+      "kind": "apt",
+      "purpose": "Verify Ubuntu package lookup and root-handoff result without installing system packages.",
+      "packages": [
+        "cowsay"
+      ],
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "cowsay",
+        "moo"
+      ]
+    },
+    "expect": {
+      "propose": "proposed",
+      "match": null,
+      "install": "needs-root",
+      "commandsFoundByName": false,
+      "smoke_contains": null
+    }
+  },
+  {
+    "name": "apt-nonexistent",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "no-such-apt-tool",
+      "title": "Missing Ubuntu package drill case",
+      "kind": "apt",
+      "purpose": "Verify that a nonexistent Ubuntu binary package name is refused.",
+      "packages": [
+        "jorah-no-such-package"
+      ],
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "no-such-apt-tool",
+        "--version"
+      ]
+    },
+    "expect": {
+      "propose": "refused",
+      "match": "publishes no package named",
+      "install": null,
+      "commandsFoundByName": false,
+      "smoke_contains": null
+    }
+  },
+  {
+    "name": "non-github-too-new",
+    "request": {
+      "contract": "jorah-tool-v1",
+      "name": "zig-too-new",
+      "title": "Zig, too-new non-GitHub release drill case",
+      "version": "0.17.1",
+      "kind": "archive",
+      "purpose": "Verify that a non-GitHub archive released less than 7 days ago is refused.",
+      "homepage": "https://ziglang.org/",
+      "release_page": "https://ziglang.org/download/#release-0.17.1",
+      "licence": "MIT",
+      "licence_source": "https://codeberg.org/ziglang/zig/src/branch/master/LICENSE",
+      "released": "$TODAY",
+      "url": "https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz",
+      "sha256": "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a",
+      "format": "tar",
+      "strip": 1,
+      "commands": {
+        "zig": "zig"
+      },
+      "sandbox": {
+        "network": []
+      },
+      "smoke": [
+        "zig",
+        "version"
+      ]
+    },
+    "expect": {
+      "propose": "refused",
+      "match": "less than 7 days ago",
+      "install": null,
+      "commandsFoundByName": false,
+      "smoke_contains": null
+    }
+  }
+]

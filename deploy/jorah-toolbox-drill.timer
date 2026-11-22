@@ -1,0 +1,13 @@
+# Every Sunday at 04:10, after the 03:40 daily watch and clear of the 02:20 and 08:20 Gateway
+# restarts. Persistent= runs a missed Sunday when the PC comes back.
+[Unit]
+Description=Jorah: weekly toolbox drill
+
+[Timer]
+OnCalendar=Sun *-*-* 04:10:00
+Persistent=true
+RandomizedDelaySec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

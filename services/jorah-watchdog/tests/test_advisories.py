@@ -295,7 +295,7 @@ class Daily(unittest.TestCase):
         self.now += days * DAY
         args = ["daily", "--conf", str(self.dir / "conf"), "--token-file", str(self.dir / "token"),
                 "--daily-state", str(self.dir / "daily.json"), "--drift-report", str(self.dir / "report.json"),
-                *extra]
+                "--drill-report", str(self.dir / "drill.json"), *extra]
         return watchdog.main(args, now=self.now, opener=self.net,
                              read_installed=lambda: {"openclaw": "2026.10.9"})
 
@@ -366,6 +366,45 @@ class Daily(unittest.TestCase):
         self.run_daily()
         self.assertTrue(any("advisories: unknown" in line for line in self.lines))
         self.assertEqual(self.net.sent, [])
+
+    def test_toolbox_drill_alerts_only_when_failed_or_older_than_8_days(self):
+        self.net.github.items = []
+        self.write_report()
+        # Missing report says nothing.
+        self.run_daily()
+        self.assertEqual(self.net.sent, [])
+
+        # Fresh passing report says nothing.
+        drill_path = self.dir / "drill.json"
+        drill_path.write_text(json.dumps({"checked_at": self.now, "ok": True, "failed": []}))
+        self.write_report()
+        self.run_daily()
+        self.assertEqual(self.net.sent, [])
+
+        # Failed drill reports case names only, no paths, and once per failure report.
+        drill_path.write_text(json.dumps({
+            "checked_at": self.now + DAY,
+            "ok": False,
+            "failed": ["zig", "neovim-appimage"],
+            "cases": [{"name": "zig", "ok": False, "problems": ["/home/jorah/sandbox/secret/path"]}],
+        }))
+        self.write_report()
+        self.run_daily()
+        self.assertEqual(len(self.net.sent), 1)
+        msg = self.net.sent[0]["text"]
+        self.assertIn("zig, neovim-appimage", msg)
+        self.assertNotIn("/home/jorah", msg)
+        self.write_report()
+        self.run_daily()
+        self.assertEqual(len(self.net.sent), 1)
+
+        # Passing report older than 8 days says when it last ran.
+        old_ts = self.now - 9 * DAY
+        drill_path.write_text(json.dumps({"checked_at": old_ts, "ok": True, "failed": []}))
+        self.write_report()
+        self.run_daily()
+        self.assertEqual(len(self.net.sent), 2)
+        self.assertIn("toolbox drill hasn't run since", self.net.sent[1]["text"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+# Weekly toolbox drill (scripts/pc/toolbox-drill.py): runs representative requests through the
+# real plugin, installer and bubblewrap smoke test on a scratch toolbox (~/sandbox/toolbox-drill),
+# leaving /opt/jorah-toolbox and /var/lib/jorah-toolbox untouched. Writes the report to
+# /var/lib/jorah-toolbox-drill/last.json (mode 0644, readable by jorah-watchdog).
+[Unit]
+Description=Jorah: weekly toolbox drill (scratch toolbox)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jorah
+Group=jorah
+UMask=0022
+WorkingDirectory=/opt/jorah
+Environment=HOME=/home/jorah
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+StateDirectory=jorah-toolbox-drill
+StateDirectoryMode=0755
+ExecStart=/usr/bin/python3 -I /opt/jorah/scripts/pc/toolbox-drill.py
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=-/home/jorah/sandbox
+PrivateTmp=yes
+InaccessiblePaths=/run/WSL
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# bubblewrap needs user and mount namespaces and netlink (no RestrictNamespaces, no PrivateDevices,
+# no SystemCallFilter=@system-service; see jorah-projects.service).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

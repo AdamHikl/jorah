@@ -543,6 +543,30 @@ match ... size"): Jorah proposes it again.
 - **Settings:** `setup-project-permissions.sh` from the commit before rewrites the project-run
   settings without the toolbox.
 
+## Toolbox drill
+
+`scripts/pc/toolbox-drill.py` checks the whole toolbox path once a week (Sundays at 04:10,
+`jorah-toolbox-drill.timer`). It runs the fixed cases in `deploy/toolbox-drill/cases.json` through
+`toolbox_propose`, `toolbox_install`, the Python installer, and `bubblewrap` smoke tests inside a
+fresh scratch folder (`~/sandbox/toolbox-drill/<UTC>`), then deletes the scratch folder. The live
+`/opt/jorah-toolbox` and `/var/lib/jorah-toolbox` are never touched.
+
+To run one case by hand on the PC (as `jorah`, from `/opt/jorah`):
+
+```bash
+ssh -t -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 wsl -d jorah -u jorah -- bash -lc 'cd /opt/jorah && python3 -I scripts/pc/toolbox-drill.py --case ripgrep'
+```
+
+Add `--dry-run` to print what would run without network calls, or `--keep` to keep the scratch
+folder afterwards.
+
+The drill writes its report to `/var/lib/jorah-toolbox-drill/last.json` (or
+`~/.jorah-toolbox-drill/last.json` when `/var/lib/jorah-toolbox-drill` isn't writable). A failure
+means either an upstream host (GitHub, Launchpad, `changelogs.ubuntu.com`, `ziglang.org`) changed or
+failed, or the contract, plugin, installer, or smoke-test path broke. Read the failing case's
+`problems` in `last.json` and fix it in a build session. `watchdog.py daily` sends one Telegram line
+if the last drill failed or its report is more than 8 days old.
+
 ## Troubleshooting
 
 - `toolbox_list` says the toolbox isn't installed: step 4 hasn't run.

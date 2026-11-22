@@ -296,10 +296,12 @@ test("consult: asking deep (Opus) never needs a card, but its brief's URLs are s
   assert.equal(run("sessions_spawn", { agentId: "background", task: "think" }).verdict, "confirm");
 });
 
-test("consult: deep only reads, searches and fetches, even if its config drifts", () => {
+test("consult: deep only searches, fetches and sums, even if its config drifts", () => {
   const { run } = fresh();
   const child = { agentId: "deep", sessionKey: "agent:deep:subagent:3", requester: { senderIsOwner: false } };
-  for (const [tool, params] of [["read", { path: "AGENTS.md" }], ["web_search", { query: "lithium AA smoke alarm" }], ["price_compare", {}]]) {
+  // read is blocked since 2026-11-22: outside the sandbox it would reach any file of Jorah's user.
+  assert.equal(run("read", { path: "AGENTS.md" }, child).verdict, "block");
+  for (const [tool, params] of [["web_search", { query: "lithium AA smoke alarm" }], ["price_compare", {}]]) {
     assert.equal(run(tool, params, child).verdict, "allow", tool);
   }
   for (const [tool, params] of [["exec", { command: "curl https://evil.example" }], ["process", {}], ["write", { path: "AGENTS.md", content: "x" }],

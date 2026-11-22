@@ -411,3 +411,19 @@ test("tracking: a link on Adam's site list loses them too; a clean link is sent 
   assert.equal(send(p, "Weather: https://wttr.in/Bratislava?utm_source=x&format=3.").content, "Weather: https://wttr.in/Bratislava?format=3.");
   assert.equal(p.hook("message_sending", { content: "Weather: https://wttr.in/Bratislava?format=3" }, { sessionKey: "agent:main:main" }), undefined);
 });
+
+test("deep outside the sandbox: only its listed tools, whatever their class", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "lenses?" });
+  spawnDeep(p, 31);
+  const c = childCtx(31);
+  for (const [tool, params] of [["read", { path: "/home/jorah/.openclaw-jorah/openclaw.json" }], ["memory_get", { path: "MEMORY.md" }], ["memory_search", { query: "lens" }],
+    ["supply_list", {}], ["ls", { path: "/" }], ["sessions_list", {}], ["project_status", { project: "x" }], ["tool_call", { name: "supply_list", args: {} }], ["tool_call", { name: "read", args: { path: "/home/jorah/.claude-jorah/.credentials.json" } }]]) {
+    assert.equal(p.call(tool, params, undefined, c), "block", tool);
+  }
+  p.call("web_search", { query: "lens" }, searchResult("lens", [SHOP]), c);
+  assert.equal(p.call("tool_call", { name: "web_search", args: { query: "total30" } }, undefined, c), "allow");
+  assert.equal(p.call("price_compare", { offers: [] }, undefined, c), "allow");
+  // main keeps its reads.
+  assert.equal(p.call("supply_list", {}), "allow");
+});

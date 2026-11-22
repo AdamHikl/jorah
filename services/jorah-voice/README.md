@@ -53,6 +53,7 @@ Adam's rule of 2026-11-19: by voice, Jorah says only the most important part, at
 ## What it needs from the Gateway
 
 - `gateway.http.endpoints.chatCompletions.enabled: true`. The endpoint stays on loopback, and Tailscale Serve exposes only the speech port, 43210.
+- Requests send `x-openclaw-message-channel: webchat` (because OpenClaw 2026.10.9 refuses plugin approval cards from the `voice` surface) and start the user turn with `brain.TURN_NOTE` (`[Spoken turn. ...`), which `jorah-guard` uses to mark the turn as voice.
 - The Gateway token in `~/.config/jorah-voice/gateway-token`, mode 600, placed by Adam. That token is full operator access, so this service is as trusted as the Gateway itself. It runs as the same `jorah` user in the same sandbox.
 - If the Gateway is down, Jorah says "I can't reach my brain right now" rather than going silent.
 
@@ -77,7 +78,7 @@ By default, spoken turns go to `agent:main:main` (the same session Telegram uses
 
 ## Confirming cards by voice
 
-When an action during a voice turn raises an approval card (`plugin.approval.requested` matching this session key, `turnSourceChannel: "voice"`, and the active turn window), `jorah-voice` forwards the card to the HUD over the voice WebSocket (`card`) and speaks the guard's question once Jorah's current reply finishes.
+When an action during a voice turn raises an approval card (`plugin.approval.requested` matching this session key, `turnSourceChannel` `"webchat"` or `"voice"`, and the active turn window), `jorah-voice` forwards the card to the HUD over the voice WebSocket (`card`) and speaks the guard's question once Jorah's current reply finishes.
 
 - **What is checked:**
   - **Speaker (`identity.py`):** NeMo TitaNet-Large (`nemo_en_titanet_large.onnx`) via sherpa-onnx on the CPU runs alongside Parakeet transcription on the turn's held segments. Cosine similarity against enrolled device centroids in `~/.config/jorah-voice/voiceprint/centroids.json` must meet `thresholds.json`'s `high` threshold on at least 1.5 s of speech within 20 s of Jorah asking. If the model, voiceprint, thresholds, or model SHA-256 check fails, the verdict is `unavailable` and the card falls back to a HUD click.

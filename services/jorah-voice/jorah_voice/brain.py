@@ -53,9 +53,10 @@ def build_request(text, token, session_key=SESSION_KEY):
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "x-openclaw-session-key": session_key,
-        # Marks the turn as spoken, so jorah-guard's cards say "Asked by voice" and typing in the
-        # HUD (which arrives as "webchat") isn't taken for voice.
-        "x-openclaw-message-channel": "voice",
+        # OpenClaw 2026.10.9 refuses plugin approval cards from the "voice" surface, so spoken
+        # turns use "webchat"; jorah-guard recognises them as voice from TURN_NOTE's "[Spoken turn."
+        # prefix, while HUD typing arrives as "webchat" without that marker.
+        "x-openclaw-message-channel": "webchat",
     }
     body = {
         "model": "openclaw/main",

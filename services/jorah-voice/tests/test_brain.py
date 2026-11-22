@@ -21,10 +21,11 @@ class Request(unittest.TestCase):
         headers, body = build_request("What's on today?", "t0ken")
         sent = json.loads(body)
         self.assertEqual(headers["x-openclaw-session-key"], "agent:main:main")
-        self.assertEqual(headers["x-openclaw-message-channel"], "voice")
+        self.assertEqual(headers["x-openclaw-message-channel"], "webchat")
         self.assertEqual(headers["Authorization"], "Bearer t0ken")
         self.assertTrue(sent["stream"])
         self.assertEqual(sent["model"], "openclaw/main")
+        self.assertTrue(TURN_NOTE.startswith("[Spoken turn."))
         self.assertEqual(sent["messages"][-1], {"role": "user", "content": TURN_NOTE + "What's on today?"})
         # The long-reply format rides in the turn itself: the system note alone was ignored (2026-11-19).
         self.assertIn("Full message:", TURN_NOTE)

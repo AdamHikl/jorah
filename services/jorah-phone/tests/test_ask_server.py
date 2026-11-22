@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from jorah_phone import schema  # noqa: E402
 from jorah_phone import server as server_module  # noqa: E402
-from jorah_phone.ask import SAY_MAX, AskError, AskRun, build_request, gateway_stream, share_message, spoken, sse_text  # noqa: E402
+from jorah_phone.ask import SAY_MAX, SHARE_NOTE, SHARE_SESSION_KEY, TURN_NOTE, AskError, AskRun, build_request, gateway_stream, share_message, spoken, sse_text  # noqa: E402
 from jorah_phone.server import Phone, PhoneServer, parse_args  # noqa: E402
 from jorah_phone.tokens import new_token  # noqa: E402
 
@@ -117,7 +117,7 @@ class FakeGateway(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         FakeGateway.seen.append({"auth": self.headers.get("Authorization"), "session": self.headers.get("x-openclaw-session-key"), "body": body})
-        if body["messages"][-1]["content"] == "fail":
+        if body["messages"][-1]["content"] == TURN_NOTE + "fail":
             self.send_response(500)
             self.end_headers()
             return
@@ -153,7 +153,8 @@ class GatewayStreamTest(unittest.TestCase):
         self.assertEqual(seen["session"], "agent:main:main")
         self.assertEqual(seen["body"]["messages"][0]["role"], "system")
         self.assertIn("[app]", seen["body"]["messages"][0]["content"])
-        self.assertEqual(seen["body"]["messages"][1], {"role": "user", "content": "what's the weather"})
+        self.assertEqual(TURN_NOTE, "[Spoken turn.]\n\n")
+        self.assertEqual(seen["body"]["messages"][1], {"role": "user", "content": "[Spoken turn.]\n\nwhat's the weather"})
 
     def test_gateway_failures(self):
         with self.assertRaises(AskError):
@@ -172,7 +173,19 @@ class GatewayStreamTest(unittest.TestCase):
             sse_text('data: {"error": {"message": "boom"}}')
         headers, body = build_request("q", "tok")
         self.assertNotIn("tok", body.decode())
-        self.assertEqual(headers["x-openclaw-message-channel"], "voice")
+        self.assertEqual(headers["x-openclaw-message-channel"], "webchat")
+        sent = json.loads(body)
+        self.assertEqual(sent["messages"][-1], {"role": "user", "content": "[Spoken turn.]\n\nq"})
+
+        shared_headers, shared_body = build_request(
+            share_message("hi", note="check", source="whatsapp", nonce="deadbeef"),
+            "tok",
+            SHARE_SESSION_KEY,
+            SHARE_NOTE,
+        )
+        self.assertEqual(shared_headers["x-openclaw-message-channel"], "webchat")
+        shared_content = json.loads(shared_body)["messages"][-1]["content"]
+        self.assertTrue(shared_content.startswith("[Spoken turn.]\n\nAdam's note: check\n"))
 
 
 class Running:

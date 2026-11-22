@@ -15,6 +15,12 @@ import { loadSites } from "./lib/sites.js";
 const PRIORITY = 1000;
 const REMOVED = "[link removed: not from a source you gave me]";
 
+function promptText(prompt) {
+  if (typeof prompt === "string") return prompt;
+  if (Array.isArray(prompt)) return prompt.map((p) => (typeof p?.text === "string" ? p.text : strings(p).join("\n"))).join("\n");
+  return strings(prompt).join("\n");
+}
+
 function loadMatrix(file) {
   try {
     const m = JSON.parse(readFileSync(file, "utf8"));
@@ -90,6 +96,43 @@ export default {
       if (triggers.size > 500) triggers.delete(triggers.keys().next().value);
     };
 
+    // Spoken-turn marker for webchat turns (2026-11-22): OpenClaw 2026.10.9 refuses plugin approval
+    // cards from "voice", so jorah-voice and jorah-phone send x-openclaw-message-channel: "webchat"
+    // with a prompt starting with "[Spoken turn.". Remember it per runId (or sessionKey when runId
+    // is absent) and clear it on the next before_agent_run for that session. Typing the marker by
+    // hand only changes wording, because voice and webchat get the same checks.
+    const spokenRuns = new Set(); // runIds for spoken webchat turns
+    const spokenSessions = new Set(); // sessionKeys for spoken webchat turns without a runId
+    const sessionSpokenRun = new Map(); // sessionKey -> last spoken runId
+    const capSet = (set, value) => {
+      set.add(value);
+      if (set.size > 500) set.delete(set.values().next().value);
+    };
+    const clearSpoken = (key) => {
+      if (!key) return;
+      spokenSessions.delete(key);
+      const prevRun = sessionSpokenRun.get(key);
+      if (prevRun) {
+        spokenRuns.delete(prevRun);
+        sessionSpokenRun.delete(key);
+      }
+    };
+    const rememberSpoken = (ctx, key, spoken) => {
+      clearSpoken(key);
+      if (!spoken) return;
+      if (ctx?.runId) {
+        capSet(spokenRuns, ctx.runId);
+        if (key) {
+          sessionSpokenRun.set(key, ctx.runId);
+          if (sessionSpokenRun.size > 500) sessionSpokenRun.delete(sessionSpokenRun.keys().next().value);
+        }
+      } else if (key) {
+        capSet(spokenSessions, key);
+      }
+    };
+    const isSpokenRun = (ctx) =>
+      Boolean((ctx?.runId && spokenRuns.has(ctx.runId)) || (ctx?.sessionKey && spokenSessions.has(ctx.sessionKey)));
+
     // Calls the guard blocked: their result (if the Gateway reports one) holds the refusal, which
     // quotes the URL, so it never adds seen URLs.
     const blockedCalls = new Set();
@@ -106,8 +149,8 @@ export default {
       try {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
-        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null };
-        const taintedBefore = sessionState(view, ctx ?? {}, settings).tainted;
+        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx) };
+        const taintedBefore = sessionState(view, ctx ?? {}, settings, run).tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
@@ -117,7 +160,7 @@ export default {
         if (taintedBefore && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
-        const who = speaker(ctx ?? {}, settings);
+        const who = speaker(ctx ?? {}, settings, run);
         const from = who.voice ? "voice" : who.webchat ? "webchat" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
         log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
         if (d.verdict === "allow") return undefined;
@@ -167,12 +210,16 @@ export default {
         remember(ctx);
         rememberTrigger(ctx);
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
-        // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         const r = ctx?.requester;
+        const rawPrompt = promptText(event?.prompt);
+        // Near the start, not only at it: OpenClaw may put an envelope such as a timestamp first.
+        const spoken = r?.channel === "webchat" && rawPrompt.slice(0, 200).includes("[Spoken turn.");
+        rememberSpoken(ctx, key, spoken);
+        // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
         if (!typedByOwner(r)) { state.setWords(key, ""); return undefined; }
         // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
         // Jorah's own earlier words.
-        const prompt = ownTypedText(typeof event?.prompt === "string" ? event.prompt : strings(event?.prompt).join("\n"));
+        const prompt = ownTypedText(rawPrompt);
         state.setWords(key, prompt);
         state.addSeen(key, findUrls(prompt).flatMap(seenForms), "adam");
       } catch (e) {
@@ -185,7 +232,7 @@ export default {
     api.on("before_reset", (event, ctx) => {
       try {
         const key = ctx?.sessionKey ?? event?.sessionKey;
-        if (key) { state.reset(key); log({ session: key, tool: "before_reset", verdict: "reset" }); }
+        if (key) { clearSpoken(key); state.reset(key); log({ session: key, tool: "before_reset", verdict: "reset" }); }
       } catch (e) {
         api.logger.warn(`jorah-guard: before_reset: ${e?.message}`);
       }

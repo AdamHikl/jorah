@@ -344,6 +344,30 @@ class ConfirmSessionFlow(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.session._pending_card)
         self.assertIn({"type": "card_closed", "id": "plugin:tg", "outcome": "elsewhere"}, self.sent)
 
+    async def test_card_matching_accepts_webchat_and_voice_in_window_and_rejects_outside_window(self):
+        self.build()
+        await self.say()
+        await self.settle()
+
+        # webchat card outside the 5 s post-turn window is ignored.
+        await self.approvals.push_request(make_card(card_id="webchat-too-late", channel="webchat", created_at_ms=1006000))
+        await self.settle()
+        self.assertEqual([m for m in self.sent if m["type"] == "card"], [])
+
+        # webchat card inside the window matches.
+        await self.approvals.push_request(make_card(card_id="plugin:webchat", channel="webchat", created_at_ms=1004000))
+        await self.settle()
+        cards = [m for m in self.sent if m["type"] == "card"]
+        self.assertEqual([c["id"] for c in cards], ["plugin:webchat"])
+        await self.approvals.push_resolved({"id": "plugin:webchat", "decision": "allow-once"})
+        await self.settle()
+
+        # voice channel still matches inside the window (old clients).
+        await self.approvals.push_request(make_card(card_id="plugin:voice", channel="voice", created_at_ms=1004500))
+        await self.settle()
+        cards = [m for m in self.sent if m["type"] == "card"]
+        self.assertEqual([c["id"] for c in cards], ["plugin:webchat", "plugin:voice"])
+
     async def test_refused_approvals_falls_back_once_and_no_voice_confirm_still_sends_cards(self):
         approvals = FakeApprovals(list_error=ApprovalsError("missing scope", refused=True))
         self.build(approvals=approvals)

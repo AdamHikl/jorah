@@ -104,3 +104,67 @@ test("plugin sets requireApproval.severity from decide() and falls back fail-clo
   assert.equal(leaves.requireApproval.severity, "critical");
   assert.equal(leaves.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
 });
+
+test("webchat spoken marker gives voice wording without leaking to next run, voice stays voice, telegram unchanged", () => {
+  const dir = mkdtempSync(join(tmpdir(), "jorah-guard-spoken-"));
+  const hooks = {};
+  plugin.register({
+    pluginConfig: { stateDir: dir, matrixFile: MATRIX_FILE, workspace: settings.workspace },
+    logger: { info() {}, warn() {} },
+    on: (name, fn) => { (hooks[name] ??= []).push(fn); },
+    registerCommand() {},
+  });
+  const start = (ev, ctx) => hooks.before_agent_run[0](ev, ctx);
+  const call = (ev, ctx) => hooks.before_tool_call[0](ev, ctx);
+
+  const webchatBase = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "webchat", senderIsOwner: true } };
+  const editMem = { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "plant needs water" }] } };
+
+  // 1. webchat run starting with [Spoken turn. (by runId) gets voice wording.
+  start({ prompt: "[Spoken turn.]\n\nRemember the plant needs water." }, { ...webchatBase, runId: "run-spoken" });
+  const spokenCard = call(editMem, { ...webchatBase, runId: "run-spoken" });
+  assert.equal(spokenCard.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+  assert.match(spokenCard.requireApproval.description, /\nAsked by voice: confirm only if this was you\./);
+
+  // Wrapped/missing-requester call in the same runId inherits both requester and voice wording.
+  const wrapped = call(editMem, { agentId: "main", sessionKey: "agent:main:main", runId: "run-spoken" });
+  assert.equal(wrapped.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+
+  // Parts array with leading whitespace also counts as spoken.
+  start({ prompt: [{ type: "text", text: "  [Spoken turn. Brief]\n\nSave this" }] }, { ...webchatBase, runId: "run-parts" });
+  const partsCard = call(editMem, { ...webchatBase, runId: "run-parts" });
+  assert.equal(partsCard.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+
+  // 2. Next run in the same session without the marker gets HUD wording (no leak across runIds).
+  start({ prompt: "Remember the plant needs water." }, { ...webchatBase, runId: "run-hud" });
+  const hudCard = call(editMem, { ...webchatBase, runId: "run-hud" });
+  assert.doesNotMatch(hudCard.requireApproval.description, /Say 'yes, go ahead'/);
+  assert.doesNotMatch(hudCard.requireApproval.description, /Asked by voice/);
+  assert.match(hudCard.requireApproval.description, /Typed in the HUD or the web chat, not Telegram: confirm only if this was you\./);
+
+  // 3. Keyed by sessionKey when runId is absent, and cleared on the next before_agent_run for that session.
+  start({ prompt: "[Spoken turn.]\n\nSave this" }, webchatBase);
+  const noRunSpoken = call(editMem, webchatBase);
+  assert.equal(noRunSpoken.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+
+  start({ prompt: "Typed in HUD without runId" }, webchatBase);
+  const noRunHud = call(editMem, webchatBase);
+  assert.doesNotMatch(noRunHud.requireApproval.description, /Say 'yes, go ahead'/);
+  assert.match(noRunHud.requireApproval.description, /Typed in the HUD or the web chat, not Telegram: confirm only if this was you\./);
+
+  // 4. Legacy "voice" channel still counts as voice.
+  const oldVoice = call(editMem, { ...VOICE, runId: "run-old-voice" });
+  assert.equal(oldVoice.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+  assert.match(oldVoice.requireApproval.description, /\nAsked by voice: confirm only if this was you\./);
+
+  // 5. Telegram is unchanged (even if prompt starts with [Spoken turn.): clean Telegram edit is allowed.
+  start({ prompt: "[Spoken turn.]\n\nRemember that the plant needs water." }, { ...TELEGRAM, sessionKey: "agent:main:main", runId: "run-tg" });
+  assert.equal(call(editMem, { ...TELEGRAM, sessionKey: "agent:main:main", runId: "run-tg" }), undefined);
+
+  // Verify audit log recorded "voice" for the spoken webchat run and "webchat" for the HUD run.
+  const entries = readFileSync(join(dir, "decisions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(entries[0].from, "voice");
+  assert.equal(entries[0].channel, "webchat");
+  assert.equal(entries[3].from, "webchat");
+  assert.equal(entries[3].channel, "webchat");
+});

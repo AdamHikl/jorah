@@ -391,7 +391,7 @@ class VoiceSession:
             return False
         if self._turn_session_key is None or req.get("sessionKey") != self._turn_session_key:
             return False
-        if req.get("turnSourceChannel") != "voice":
+        if req.get("turnSourceChannel") not in ("voice", "webchat"):
             return False
         created = record.get("createdAtMs")
         if not isinstance(created, (int, float)) or self._turn_started_ms is None:

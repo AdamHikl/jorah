@@ -27,21 +27,25 @@ export function classify(matrix, tool) {
 // Who is asking, from the hook's context (G-S1, 2026-11-11; P5.4, 2026-11-13; 2026-11-22).
 // Chat Completions callers arrive as "webchat", or as whatever x-openclaw-message-channel says, but
 // never with a sender id. So Adam's own typing is Telegram *with* a sender id, or the CLI on the PC
-// (no channel, no sender id, which a Chat Completions caller can't produce). jorah-voice (the HUD's
-// voice too) and jorah-phone send "voice". "webchat" is then typing in the Mac HUD or the Control
-// UI (chat.send over the Gateway's WebSocket), or a caller that names no channel: it is checked
-// exactly as voice is (a card where voice gets one), only the card says what it was. Any other
-// channel is treated as not Adam's own chat.
+// (no channel, no sender id, which a Chat Completions caller can't produce). OpenClaw 2026.10.9
+// refuses plugin approval cards from the "voice" surface, so jorah-voice (the HUD's voice too)
+// and jorah-phone send x-openclaw-message-channel: "webchat" and start the prompt with
+// "[Spoken turn.". index.js recognises that marker in before_agent_run and passes run.voice = true
+// so cards get voice wording ("Asked by voice", VOICE_CARD_HINT); the "voice" channel still counts
+// as voice for old clients. "webchat" without the marker is typing in the Mac HUD or Control UI:
+// it gets the exact same checks as voice, only the card says it was typed (so typing "[Spoken turn."
+// by hand only changes wording). Any other channel is treated as not Adam's own chat.
 export function typedByOwner(r) {
   if (r?.senderIsOwner !== true) return false;
   if (r.channel === "telegram") return typeof r.senderId === "string" && r.senderId.length > 0;
   return r.channel === undefined && r.senderId === undefined;
 }
 
-export function speaker(ctx = {}, settings = {}) {
+export function speaker(ctx = {}, settings = {}, run = {}) {
   const r = ctx.requester ?? null;
-  const voice = r?.channel === "voice";
-  const webchat = r?.channel === "webchat";
+  const webchatRaw = r?.channel === "webchat";
+  const voice = r?.channel === "voice" || (webchatRaw && run?.voice === true);
+  const webchat = webchatRaw && !voice;
   const owner = r?.senderIsOwner === true;
   const typed = typedByOwner(r);
   const cleanKeys = settings.cleanSessionKeys ?? ["agent:main:main"];
@@ -82,8 +86,8 @@ const isCronSession = (key) => sessionRest(key).startsWith("cron:");
 const WEBCHAT = "typed in the HUD or the web chat";
 
 // Session state as the policy needs it.
-export function sessionState(view, ctx, settings) {
-  const who = speaker(ctx, settings);
+export function sessionState(view, ctx, settings, run = {}) {
+  const who = speaker(ctx, settings, run);
   const recorded = view.taintOf(ctx.sessionKey);
   let source = null;
   if (recorded?.tainted) source = recorded.source;
@@ -287,7 +291,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
   }
 
   const cls = classify(matrix, tool);
-  const state = sessionState(view, ctx, settings);
+  const state = sessionState(view, ctx, settings, run);
   const key = ctx.sessionKey;
   const agent = ctx.agentId ?? "unknown";
   const action = typeof params.action === "string" ? params.action : "";

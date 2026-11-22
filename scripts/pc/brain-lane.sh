@@ -32,16 +32,52 @@ config_json() {
     if out="$(oc config get "$1" --json 2>/dev/null)"; then printf '%s\n' "$out"; else echo null; fi
 }
 
+# The agent's anthropic entry from the running Gateway (models.authStatus), as JSON, or nothing.
+# OpenClaw 2026.11.6 runs `models auth order get` and `models auth list` only while the Gateway
+# is stopped ("requires exclusive offline state ownership"), so a running Gateway is asked instead.
+auth_status() {
+    oc gateway call models.authStatus --params "{\"agentId\":\"$1\",\"provider\":\"anthropic\"}" --json 2>/dev/null \
+        | python3 -I -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    sys.exit(1)
+for entry in data.get("providers") or [] if isinstance(data, dict) else []:
+    if isinstance(entry, dict) and entry.get("provider") == "anthropic":
+        print(json.dumps(entry))
+        sys.exit(0)
+sys.exit(1)
+'
+}
+
 # "anthropic:jorah-store", "none" or nothing (unknown).
 agent_order() {
-    oc models auth order get --provider anthropic --agent "$1" 2>/dev/null \
-        | sed -n 's/^Auth profile order override: \([^ ]*\).*/\1/p'
+    local shown entry
+    shown="$(oc models auth order get --provider anthropic --agent "$1" 2>/dev/null \
+        | sed -n 's/^Auth profile order override: \([^ ]*\).*/\1/p')"
+    if [ -n "$shown" ]; then printf '%s\n' "$shown"; return; fi
+    entry="$(auth_status "$1")" || return 0
+    ENTRY="$entry" python3 -I -c '
+import json, os
+order = json.loads(os.environ["ENTRY"]).get("profileOrder")
+if isinstance(order, list) and all(isinstance(x, str) for x in order):
+    print(",".join(order) or "none")
+'
 }
 
 has_key_profile() {
-    local profiles
-    profiles="$(oc models auth list --provider anthropic --agent "$1" 2>/dev/null)" || return 1
-    grep -q -- "- $KEY_PROFILE " <<<"$profiles"
+    local profiles entry
+    if profiles="$(oc models auth list --provider anthropic --agent "$1" 2>/dev/null)"; then
+        grep -q -- "- $KEY_PROFILE " <<<"$profiles"
+        return
+    fi
+    entry="$(auth_status "$1")" || return 1
+    ENTRY="$entry" KEY_PROFILE="$KEY_PROFILE" python3 -I -c '
+import json, os, sys
+profiles = json.loads(os.environ["ENTRY"]).get("profiles") or []
+sys.exit(0 if any(isinstance(p, dict) and p.get("profileId") == os.environ["KEY_PROFILE"] for p in profiles) else 1)
+'
 }
 
 # Prints one line per setting and the lane on the last line. Reads config only.

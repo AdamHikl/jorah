@@ -1,7 +1,7 @@
 """scripts/pc/brain-lane.sh against a fake `openclaw`: how it reads the lane, and both switches.
 
 The fake answers the few commands the script runs, with the output shapes OpenClaw 2026.10.9 gave
-on the PC on 2026-11-21, and applies the lane patches by their file name. It proves the script's
+on the PC on 2026-11-21 (and, for `gateway call models.authStatus`, 2026.11.6 on 2026-11-22), and applies the lane patches by their file name. It proves the script's
 own logic, not OpenClaw's commands: the live run on the PC does that (docs/adr/0009).
 """
 import json
@@ -76,9 +76,20 @@ elif cmd == "config patch":
             state["deep_allow"] = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"]
         save()
         print("Applied 13 config update(s). Change will apply without restarting the gateway.")
+elif cmd == "gateway call" and args[2] == "models.authStatus":
+    agent = json.loads(flag("--params"))["agentId"]
+    if state.get("gateway_down") or agent not in state["agents"]:
+        print('{"ok": false}'); sys.exit(1)
+    value = state["agents"][agent]
+    entry = {"provider": "anthropic", "profileOrder": [] if value == "none" else [value],
+             "profiles": [{"profileId": os.environ["FAKE_KEY"], "type": "api_key"}] if state["profiles"].get(agent) else []}
+    print(json.dumps({"ts": 1, "providers": [entry]}))
 elif cmd == "models auth":
     sub = " ".join(args[2:4])
     agent = flag("--agent")
+    if state.get("offline_only") and (sub == "order get" or args[2] == "list"):
+        print("Cannot admit models.auth ...: This operation requires exclusive offline state ownership.")
+        sys.exit(1)
     if sub == "order get":
         value = state["agents"][agent]
         shown = value if value != "none" else "none (config selects no profiles)"
@@ -180,6 +191,44 @@ class BrainLane(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assert_lane(lines, "max")
         self.assertIn("main key order: none", lines)
+
+    def test_status_on_2026_11_6_asks_the_running_gateway(self):
+        # 2026.11.6 runs `models auth order get` and `models auth list` only with the Gateway stopped.
+        for lane in ("max", "api"):
+            state = lane_state(lane)
+            state["offline_only"] = True
+            self.set_state(state)
+            with self.subTest(lane=lane):
+                code, lines, _ = self.run_script("status")
+                self.assertEqual(code, 0, "\n".join(lines))
+                self.assert_lane(lines, lane)
+        self.assertIn("gateway call models.authStatus", self.calls.read_text())
+
+    def test_status_with_neither_source_is_unknown(self):
+        state = lane_state("max")
+        state["offline_only"] = True
+        state["gateway_down"] = True
+        self.set_state(state)
+        code, lines, _ = self.run_script("status")
+        self.assertEqual(code, 2)
+        self.assert_lane(lines, "unknown")
+        self.assertIn("main key order: unknown", lines)
+
+    def test_api_switch_on_2026_11_6_finds_the_key_profile_through_the_gateway(self):
+        state = lane_state("max")
+        state["offline_only"] = True
+        self.set_state(state)
+        code, lines, err = self.run_script("api")
+        self.assertEqual(code, 0, "\n".join(lines) + err)
+        self.assertEqual(lines[-1], "SWITCHED to api. Existing chats carry over.")
+
+        state = lane_state("max")
+        state["offline_only"] = True
+        state["profiles"]["deep"] = False
+        self.set_state(state)
+        code, lines, _ = self.run_script("api")
+        self.assertEqual(code, 3)
+        self.assertTrue(any(line.startswith("REFUSED: deep has no") for line in lines), lines)
 
     def test_one_setting_off_is_mixed(self):
         for change in ("defaults", "deep", "order", "main"):

@@ -55,9 +55,14 @@ SELECT j.name, r.status, MAX(r.finished_at_ms)
 FROM cron_jobs j
 LEFT JOIN cron_run_receipts r
   ON r.store_key = j.store_key AND r.job_id = j.job_id AND r.finished_at_ms IS NOT NULL
-WHERE j.payload_kind = 'heartbeat' AND j.enabled = 1
+WHERE j.enabled = 1
+  AND (j.payload_kind = 'heartbeat' OR (j.payload_kind = 'agentTurn' AND j.name GLOB 'heartbeat-*'))
 GROUP BY j.name
 """
+# OpenClaw 2026.11.6's doctor retires heartbeat settings into ordinary automations: the jobs keep
+# their id and name (heartbeat-main, ...) and their receipts, but payload_kind becomes 'agentTurn'
+# (measured on the PC, 2026-11-22). So a heartbeat is either kind, and the agentTurn ones are known
+# by the name OpenClaw gives them.
 
 
 def log(line):

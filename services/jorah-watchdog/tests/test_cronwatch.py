@@ -145,6 +145,20 @@ class Heartbeats(unittest.TestCase):
         self.assertEqual(found["heartbeat-deep"]["status"], "error")  # the running one has no finish
         self.assertIsNone(found["heartbeat-background"]["finished_at"])
 
+    def test_counts_heartbeats_migrated_to_agent_turns_by_2026_11_6(self):
+        # 11.6's doctor turns heartbeat jobs into agentTurn automations with the same id and name.
+        self.writer.execute("UPDATE cron_jobs SET payload_kind = 'agentTurn' WHERE job_id IN ('m', 'd')")
+        self.writer.execute("INSERT INTO cron_run_receipts (receipt_id, store_key, job_id, status, "
+                            "started_at_ms, finished_at_ms) VALUES ('r10', ?, 'm', 'ok', ?, ?)",
+                            (LIVE, int((NOW - 0.2 * HOUR) * 1000), int((NOW - 0.2 * HOUR) * 1000)))
+        self.writer.commit()
+        found = cronwatch.read_heartbeats(self.db)
+        self.assertEqual(set(found), {"heartbeat-main", "heartbeat-deep", "heartbeat-background"})
+        # The old store's stale heartbeat-kind row doesn't hide the migrated job's newer run.
+        self.assertEqual(found["heartbeat-main"]["finished_at"], NOW - 0.2 * HOUR)
+        self.assertEqual(found["heartbeat-deep"]["status"], "error")
+        self.assertNotIn("Memory Dreaming Promotion", found)
+
     def test_sees_rows_still_in_the_writers_wal(self):
         self.writer.execute("INSERT INTO cron_run_receipts (receipt_id, store_key, job_id, status, "
                             "started_at_ms, finished_at_ms) VALUES ('r9', ?, 'new', 'ok', ?, ?)",

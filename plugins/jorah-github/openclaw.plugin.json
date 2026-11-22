@@ -45,6 +45,30 @@
         "additionalProperties": {
           "type": "string"
         }
+      },
+      "projectsRegistry": {
+        "type": "string",
+        "description": "The project runner's registry, read for a project's level and pause (default /home/jorah/.config/jorah-projects/projects.json)"
+      },
+      "projectsStateDir": {
+        "type": "string",
+        "description": "The project runner's state, read for its push block and clean head; pushes.jsonl is written here (default /home/jorah/.jorah-projects)"
+      },
+      "standingGrant": {
+        "type": "boolean",
+        "default": false,
+        "description": "Level 2's standing push grant (issue #19): a level-2 project's jorah/ push skips the card when every check passes. Off until Adam's written yes after the P5 guard review and a week at level 1 without incident. Only true turns it on"
+      },
+      "guardStateDir": {
+        "type": "string",
+        "description": "jorah-guard's state folder, read only for its FROZEN file (default /home/jorah/.jorah-guard)"
+      },
+      "selfRepos": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Repo names whose pushes always ask, whatever the grant (default [\"jorah\"])"
       }
     }
   }

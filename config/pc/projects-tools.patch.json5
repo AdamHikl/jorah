@@ -1,24 +1,36 @@
-// DRAFT. Not applied. Makes jorah-projects' twelve tools (plugins/jorah-projects, docs/plan/
+// DRAFT. Not applied. Makes jorah-projects' tools (plugins/jorah-projects, docs/plan/
 // 11-project-mode.md section 5) reach main, the same way github-tools.patch.json5 did for the GitHub
 // tools: OpenClaw offers a plugin's tools only when the agent's tool allow list permits them, and
-// main has an explicit list. Only these twelve names are added, not group:plugins. The guard decides
-// each call (config/permission-matrix.json): list, status and pause read; digest marks the chat;
-// answers, results, run now, resume and start are a card after outside text or by voice; limits,
-// connect and level always.
+// main has an explicit list. Only the plugin's names are added, not group:plugins. The guard decides
+// each call (config/permission-matrix.json): list, status and pause read; digest and preview mark
+// the chat; answers, results, run now, resume and start are a card after outside text or by voice;
+// limits, connect, level and capabilities always.
+//
+// The plugin has eighteen tools: fourteen project_* and four toolbox_*.
+//   - The first twelve project_* tools were this file's first version (2026-11-16).
+//   - toolbox_list, toolbox_propose, toolbox_install and toolbox_remove went live on 2026-11-18
+//     (docs/runbooks/toolbox.md, "The Gateway part": main's list then had 37 entries).
+//   - project_set_capabilities (web research and the robotics bench, always a card, issue #14) and
+//     project_preview (rendered PNG and JPEG views into the workspace outbox, issue #16) are new
+//     with the #13-#24 batch (docs/runbooks/deploy-13-24.md, step 4).
 //
 // THE INSTALL SESSION READS THE LIVE LIST FIRST. Merge patch: the array is the WHOLE list, so an
 // entry left out removes that tool from main. Below is the union of every list committed to main
-// on 2026-11-16 (github-tools and ios-tools patches, plus the tools install-site-readers.sh,
-// install-google.sh, install-phone.sh and install-proactive.sh add to the live list), which may not be what is live.
-// On the PC:
+// up to 2026-11-22 (github-tools and ios-tools patches, plus the tools install-site-readers.sh,
+// install-google.sh, install-phone.sh, install-proactive.sh and the toolbox Gateway step add to the
+// live list), 55 names, which may not be what is live. install-errands.sh's tools (price_compare,
+// supply_save and the rest) are not in it, so applying this file as is would remove them.
+// Never apply this file as is. On the PC:
 //   openclaw --profile jorah config get agents.entries.main.tools.sandbox.tools.alsoAllow
-// then either apply this file if it equals the live list plus the twelve project_* names, or (better)
-// build the patch from the live list plus the twelve names, as install-proactive.sh does.
+// then build the patch from the live list plus project_set_capabilities and project_preview, as
+// install-errands.sh does (docs/runbooks/deploy-13-24.md, step 4, has the exact command).
 //
-// Dry run: openclaw --profile jorah config patch --file /opt/jorah/config/pc/projects-tools.patch.json5 --dry-run
+// Dry run: openclaw --profile jorah config patch --file <the built patch> --dry-run
 // Expected: "Dry run successful" with one update, agents.entries.main.tools.sandbox.tools.alsoAllow.
-// Apply after projects.patch.json5 (the plugin must be enabled first).
-// Undo: the same list without the twelve project_* names.
+// Apply after the plugin's new code is deployed and its consent re-given (plugins enable
+// jorah-projects --accept-capabilities: it declares two new tools).
+// Undo: the live list as it was (backup openclaw.json.pre-13-24), or the same list without the two
+// new names.
 {
   agents: {
     entries: {
@@ -36,6 +48,8 @@
           "project_list", "project_status", "project_digest", "project_answer", "project_task_result",
           "project_run_now", "project_pause", "project_resume", "project_set_limits",
           "project_start", "project_connect", "project_set_level",
+          "project_set_capabilities", "project_preview",
+          "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove",
           "agentmemory__*",
         ] } } },
       },

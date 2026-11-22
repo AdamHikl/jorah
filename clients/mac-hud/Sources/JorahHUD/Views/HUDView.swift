@@ -44,6 +44,9 @@ struct HUDView: View {
         .sheet(isPresented: $model.showBrain) {
             BrainView().environment(model)
         }
+        .sheet(isPresented: $model.showPhraseSheet) {
+            PhraseView().environment(model)
+        }
     }
 }
 
@@ -101,6 +104,8 @@ struct TopBar: View {
             .help("Switch between the calm view and the full command view")
             Menu {
                 Button("Pair or change access…") { model.showPairing = true }
+                Button("Voice confirmation phrase…") { model.showPhraseSheet = true }
+                    .disabled(model.isDemo)
                 Button("Forget this pairing", role: .destructive) { model.forgetPairing() }
             } label: {
                 Image(systemName: "gearshape")
@@ -297,6 +302,17 @@ struct VoiceBar: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Microphone: \(micText)")
+            HStack(spacing: 8) {
+                Text(verbatim: "Voice confirmation phrase").font(Theme.label(9)).foregroundStyle(Theme.dim)
+                Circle().fill(phraseColor).frame(width: 6, height: 6)
+                Text(verbatim: phraseText).font(Theme.label(9)).foregroundStyle(phraseColor)
+                Button(model.phraseState.isSet == true ? "Change…" : "Set…") {
+                    model.showPhraseSheet = true
+                }
+                .font(Theme.label(9))
+                .disabled(model.isDemo)
+                .help("Set, change, or remove your voice confirmation phrase")
+            }
             if let error = model.voiceError {
                 Text(error).font(Theme.mono(10)).foregroundStyle(Theme.red)
                     .multilineTextAlignment(.center).frame(maxWidth: 420)
@@ -319,6 +335,21 @@ struct VoiceBar: View {
         case .off: return Theme.dim
         case .waitingForWake: return Theme.accent
         default: return Theme.amber
+        }
+    }
+
+    private var phraseText: String {
+        if model.isDemo { return "unknown" }
+        if model.phraseBusy { return "checking…" }
+        return model.phraseState.summaryText
+    }
+
+    private var phraseColor: Color {
+        if model.isDemo || model.phraseBusy { return Theme.dim }
+        if model.phraseState.isLocked { return Theme.red }
+        switch model.phraseState {
+        case .set: return Theme.green
+        case .notSet, .unknown: return Theme.dim
         }
     }
 }

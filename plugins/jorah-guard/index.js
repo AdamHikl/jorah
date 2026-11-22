@@ -126,7 +126,7 @@ export default {
           requireApproval: {
             title: d.title,
             description: d.description,
-            severity: "warning",
+            severity: d.severity ?? "critical",
             allowedDecisions: ["allow-once", "deny"],
             timeoutMs: 5 * 60 * 1000,
             pluginId: "jorah-guard",

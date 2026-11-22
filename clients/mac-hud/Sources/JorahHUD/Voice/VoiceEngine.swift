@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Foundation
+import HUDCore
 import OSLog
 import Speech
 
@@ -28,6 +29,7 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
 
     static let wakePhrases: Set<String> = ["jorah", "hey jorah", "jora", "jorra", "zora", "hey jora"]
     static let maxSessionSeconds = 30.0 * 60
+    static let phraseTimeoutSeconds = 10.0
 
     var onState: ((State) -> Void)?
     var onLevel: ((Float) -> Void)?
@@ -37,6 +39,11 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
     var onReply: ((String) -> Void)?
     /// The whole of a long reply, of which only an overview was spoken.
     var onFullReply: ((String) -> Void)?
+    var onCard: ((VoiceCard) -> Void)?
+    var onCardClosed: ((String, String) -> Void)?
+    var onPhraseStatus: ((PhraseStatus) -> Void)?
+    var onPhraseError: ((String) -> Void)?
+    var onPhraseUnknown: ((String?) -> Void)?
     var onError: ((String) -> Void)?
 
     private(set) var state: State = .off {
@@ -60,8 +67,13 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
     private var playFormat: AVAudioFormat?
     private var tapInstalled = false
     private var ready = false
+    private var serverReady = false
     private var sessionGeneration = 0
     private var timeoutWork: DispatchWorkItem?
+    private var settingsConnection: SettingsConnection?
+    private var sessionPhrasePending = false
+    private var pendingSessionPhrasePayload: [String: Any]?
+    private var sessionPhraseTimeout: DispatchWorkItem?
     /// Without echo cancellation, the mic sends silence while Jorah's speech is still playing here.
     /// The PC can say "listening" seconds before the Mac has played everything it was sent, and
     /// the open mic then hands Jorah his own last words as Adam's next turn (2026-11-20).
@@ -155,20 +167,37 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         }
     }
 
+    private enum CredentialsResult {
+        case ok(url: URL, token: String)
+        case badURL
+        case missingToken
+    }
+
+    private func readCredentials() -> CredentialsResult {
+        guard let url, Self.hostIsPrivateTunnel(url) else { return .badURL }
+        guard let token = Keychain.read("adam", service: "jorah-voice").flatMap({ String(data: $0, encoding: .utf8) })?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty
+        else { return .missingToken }
+        return .ok(url: url, token: token)
+    }
+
     /// Opens a voice session now, without the wake word.
     func startSession() {
         guard !state.isSessionOpen else { return }
-        guard let url, Self.hostIsPrivateTunnel(url) else {
+        let url: URL
+        let token: String
+        switch readCredentials() {
+        case .badURL:
             wakeEnabled = false
             onError?("The voice address must be the PC's .ts.net name or 100.x address, so audio stays inside the tailnet.")
             return
-        }
-        guard let token = Keychain.read("adam", service: "jorah-voice").flatMap({ String(data: $0, encoding: .utf8) })?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty
-        else {
+        case .missingToken:
             wakeEnabled = false
             onError?("No jorah-voice token in the Keychain. See \"Voice from the Mac\" in docs/runbooks/jorah-on-pc.md.")
             return
+        case .ok(let validURL, let validToken):
+            url = validURL
+            token = validToken
         }
         stopWakeListening()
         state = .connecting
@@ -195,12 +224,110 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         sendJSON(["type": "interrupt"])
     }
 
+    /// Sends a deliberate click's decision for a voice approval card over the active voice socket.
+    @discardableResult
+    func sendCardDecision(id: String, decision: String) -> Bool {
+        guard state.isSessionOpen, ready, socket != nil,
+              let payload = VoiceMessageEncoding.cardDecision(id: id, decision: decision)
+        else { return false }
+        sendJSON(payload)
+        return true
+    }
+
+    /// Asks the PC for the current confirmation-phrase status.
+    func requestPhraseStatus() {
+        sendPhraseRequest(VoiceMessageEncoding.phraseStatusRequest())
+    }
+
+    /// Sets or changes the confirmation phrase on the PC. Never stored or logged here.
+    func setPhrase(_ phrase: String) {
+        guard let payload = VoiceMessageEncoding.phraseSet(phrase: phrase) else { return }
+        sendPhraseRequest(payload)
+    }
+
+    /// Clears the confirmation phrase on the PC.
+    func clearPhrase() {
+        sendPhraseRequest(VoiceMessageEncoding.phraseClear())
+    }
+
+    private func sendPhraseRequest(_ payload: [String: Any]) {
+        if state.isSessionOpen {
+            settingsConnection?.cancel()
+            settingsConnection = nil
+            startSessionPhraseTimeout()
+            if serverReady, socket != nil {
+                sendJSON(payload)
+            } else {
+                pendingSessionPhrasePayload = payload
+            }
+            return
+        }
+
+        let url: URL
+        let token: String
+        switch readCredentials() {
+        case .badURL:
+            onPhraseUnknown?("The voice address must be the PC's .ts.net name or 100.x address, so audio stays inside the tailnet.")
+            return
+        case .missingToken:
+            onPhraseUnknown?("No jorah-voice token in the Keychain. See \"Voice from the Mac\" in docs/runbooks/jorah-on-pc.md.")
+            return
+        case .ok(let validURL, let validToken):
+            url = validURL
+            token = validToken
+        }
+
+        settingsConnection?.cancel()
+        let connection = SettingsConnection(
+            url: url,
+            token: token,
+            payload: payload,
+            timeoutSeconds: Self.phraseTimeoutSeconds
+        ) { [weak self] outcome in
+            guard let self else { return }
+            self.settingsConnection = nil
+            switch outcome {
+            case .status(let status):
+                self.onPhraseStatus?(status)
+            case .error(let reason):
+                self.onPhraseError?(reason)
+            case .unknown(let reason):
+                self.onPhraseUnknown?(reason)
+            }
+        }
+        settingsConnection = connection
+        connection.start()
+    }
+
+    private func startSessionPhraseTimeout() {
+        sessionPhraseTimeout?.cancel()
+        sessionPhrasePending = true
+        let generation = sessionGeneration
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, generation == self.sessionGeneration, self.sessionPhrasePending else { return }
+            self.sessionPhrasePending = false
+            self.pendingSessionPhrasePayload = nil
+            self.sessionPhraseTimeout = nil
+            self.onPhraseUnknown?("No reply from the PC within 10 seconds.")
+        }
+        sessionPhraseTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.phraseTimeoutSeconds, execute: work)
+    }
+
+    private func clearSessionPhraseTimeout() {
+        sessionPhrasePending = false
+        pendingSessionPhrasePayload = nil
+        sessionPhraseTimeout?.cancel()
+        sessionPhraseTimeout = nil
+    }
+
     // MARK: - Session
 
     private func openSocket(url: URL, token: String) {
         sessionGeneration += 1
         let generation = sessionGeneration
         ready = false
+        serverReady = false
         let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
         self.session = session
         let socket = session.webSocketTask(with: url)
@@ -277,6 +404,11 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
               let type = message["type"] as? String else { return }
         switch type {
         case "ready":
+            serverReady = true
+            if let pending = pendingSessionPhrasePayload {
+                pendingSessionPhrasePayload = nil
+                sendJSON(pending)
+            }
             startAudio(sampleRate: message["sample_rate"] as? Double ?? 24000)
         case "state":
             switch message["state"] as? String {
@@ -304,7 +436,20 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         case "closed":
             finishSession(message["reason"] as? String ?? "session ended", isError: false)
         default:
-            break
+            switch VoiceMessageParsing.parse(text) {
+            case .card(let card):
+                onCard?(card)
+            case .cardClosed(let id, let outcome):
+                onCardClosed?(id, outcome)
+            case .phraseStatus(let status):
+                clearSessionPhraseTimeout()
+                onPhraseStatus?(status)
+            case .phraseError(let reason):
+                clearSessionPhraseTimeout()
+                onPhraseError?(reason)
+            case .ready, .unknown, .none:
+                break
+            }
         }
     }
 
@@ -376,6 +521,11 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         timeoutWork?.cancel()
         timeoutWork = nil
         ready = false
+        serverReady = false
+        if sessionPhrasePending {
+            clearSessionPhraseTimeout()
+            onPhraseUnknown?("The voice connection reopened before replying.")
+        }
         pendingHello = nil
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
@@ -488,6 +638,11 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         engine = nil
         player = nil
         ready = false
+        serverReady = false
+        if sessionPhrasePending {
+            clearSessionPhraseTimeout()
+            onPhraseUnknown?("The voice connection closed before replying.")
+        }
         pendingHello = nil
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
@@ -699,5 +854,163 @@ final class SpeechGate: @unchecked Sendable {
 
     func secondsLeft() -> Double {
         lock.withLock { max(0, playsUntil - Self.now) }
+    }
+}
+
+/// Short-lived WebSocket used only to read or update the confirmation phrase when no voice
+/// session is open (`"purpose":"settings"`). Never starts audio, mic or wake listening.
+private final class SettingsConnection: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
+    enum Outcome {
+        case status(PhraseStatus)
+        case error(String)
+        case unknown(String?)
+    }
+
+    private let url: URL
+    private var token: String
+    private var payload: [String: Any]
+    private let timeoutSeconds: TimeInterval
+    private var completion: ((Outcome) -> Void)?
+
+    private var session: URLSession?
+    private var socket: URLSessionWebSocketTask?
+    private var timeoutWork: DispatchWorkItem?
+    private var sentPayload = false
+    private var finished = false
+
+    init(
+        url: URL,
+        token: String,
+        payload: [String: Any],
+        timeoutSeconds: TimeInterval,
+        completion: @escaping (Outcome) -> Void
+    ) {
+        self.url = url
+        self.token = token
+        self.payload = payload
+        self.timeoutSeconds = timeoutSeconds
+        self.completion = completion
+    }
+
+    func start() {
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        self.session = session
+        let socket = session.webSocketTask(with: url)
+        self.socket = socket
+
+        let work = DispatchWorkItem { [weak self] in
+            self?.finish(.unknown("No reply from the PC within 10 seconds."))
+        }
+        timeoutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: work)
+
+        socket.resume()
+        receive(socket)
+    }
+
+    func cancel() {
+        guard !finished else { return }
+        finished = true
+        completion = nil
+        cleanup()
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        DispatchQueue.main.async {
+            guard !self.finished, webSocketTask === self.socket else { return }
+            guard let hello = VoiceMessageEncoding.settingsHello(token: self.token) else {
+                self.finish(.unknown("No jorah-voice token in the Keychain."))
+                return
+            }
+            self.token = ""
+            self.sendJSON(hello)
+        }
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                    didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        DispatchQueue.main.async {
+            guard !self.finished, webSocketTask === self.socket else { return }
+            if closeCode.rawValue == 4401 {
+                self.finish(.unknown("The PC refused the voice token."))
+            } else {
+                self.finish(.unknown("The PC closed the voice connection before replying."))
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard error != nil else { return }
+        DispatchQueue.main.async {
+            guard !self.finished, task === self.socket else { return }
+            self.finish(.unknown("Could not reach the voice service on the PC."))
+        }
+    }
+
+    private func receive(_ socket: URLSessionWebSocketTask) {
+        socket.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .failure:
+                DispatchQueue.main.async {
+                    guard !self.finished, socket === self.socket else { return }
+                    self.finish(.unknown("Could not reach the voice service on the PC."))
+                }
+            case .success(.string(let text)):
+                DispatchQueue.main.async {
+                    guard !self.finished, socket === self.socket else { return }
+                    self.handle(text)
+                    if !self.finished { self.receive(socket) }
+                }
+            case .success:
+                DispatchQueue.main.async {
+                    guard !self.finished, socket === self.socket else { return }
+                    self.receive(socket)
+                }
+            }
+        }
+    }
+
+    private func handle(_ text: String) {
+        switch VoiceMessageParsing.parse(text) {
+        case .ready:
+            if !sentPayload {
+                sentPayload = true
+                let outgoing = payload
+                payload = [:]
+                sendJSON(outgoing)
+            }
+        case .phraseStatus(let status):
+            finish(.status(status))
+        case .phraseError(let reason):
+            finish(.error(reason))
+        case .card, .cardClosed, .unknown, .none:
+            break
+        }
+    }
+
+    private func sendJSON(_ object: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        socket?.send(.string(String(decoding: data, as: UTF8.self))) { _ in }
+    }
+
+    private func finish(_ outcome: Outcome) {
+        guard !finished else { return }
+        finished = true
+        let done = completion
+        completion = nil
+        cleanup()
+        done?(outcome)
+    }
+
+    private func cleanup() {
+        timeoutWork?.cancel()
+        timeoutWork = nil
+        token = ""
+        payload = [:]
+        socket?.cancel(with: .normalClosure, reason: nil)
+        socket = nil
+        session?.invalidateAndCancel()
+        session = nil
     }
 }

@@ -471,6 +471,8 @@ def parse_hello(message, expected_token):
     token = hello.get("token")
     if not isinstance(token, str) or not hmac.compare_digest(token, expected_token):
         return None
+    if hello.get("purpose") == "settings":
+        return {"purpose": "settings"}
     rate = hello.get("input_rate", MIC_RATE)
     if rate not in INPUT_RATES:
         return None

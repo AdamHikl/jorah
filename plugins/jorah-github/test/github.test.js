@@ -151,9 +151,17 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   for (const t of Object.values(tools)) assert.equal(t.catalogMode, "direct-only", `${t.name} must be visible directly (2026-11-11)`);
   const direct = await hook({ toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } });
   assert.match(direct.requireApproval.description, /^Push branch jorah\/x from ~\/work\/proj to AdamHikl\/proj\n\(Files not listed: /);
+  assert.equal(direct.requireApproval.severity, "critical");
   assert.deepEqual(direct.requireApproval.allowedDecisions, ["allow-once", "deny"]);
   const pr = await hook({ toolName: "github_open_pr", params: { project: "proj", branch: "jorah/x", title: "T" } });
   assert.match(pr.requireApproval.description, /draft pull request on AdamHikl\/proj/);
+  assert.equal(pr.requireApproval.severity, "critical");
+  const voiced = await hooks.before_tool_call(
+    { toolName: "github_push_branch", params: { project: "proj", branch: "jorah/x" } },
+    { requester: { channel: "voice", senderIsOwner: true } },
+  );
+  assert.equal(voiced.requireApproval.description.split("\n")[0], "Say 'yes, go ahead' or tap here.");
+  assert.equal(voiced.requireApproval.severity, "critical");
   // The wrapper and a search are not calls; the inner tool's own hook run asks for approval.
   assert.equal(await hook({ toolName: "tool_call", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);
   assert.equal(await hook({ toolName: "dispatch_action", params: { id: "github_push_branch", args: { project: "proj", branch: "jorah/x" } } }), undefined);

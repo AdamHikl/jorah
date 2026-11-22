@@ -11,11 +11,15 @@ struct ApprovalsPanel: View {
     @Environment(HUDModel.self) private var model
 
     var body: some View {
+        let voiceCards = model.visibleVoiceCards
         VStack(alignment: .leading, spacing: 8) {
             status
-            if !model.approvals.isEmpty {
+            if !model.approvals.isEmpty || !voiceCards.isEmpty {
                 ScrollView {
                     VStack(spacing: 8) {
+                        ForEach(voiceCards) { card in
+                            VoiceApprovalCardView(card: card)
+                        }
                         ForEach(model.approvals) { card in
                             ApprovalCardView(card: card)
                         }
@@ -68,10 +72,13 @@ struct ApprovalsPanel: View {
             line(error.uppercased() + " · ANSWER IN TELEGRAM", Theme.red)
         } else if model.approvalsAsOf == nil {
             line("CARDS UNKNOWN · CHECKING", Theme.dim)
-        } else if model.approvals.isEmpty {
-            line("NO CARDS WAITING", Theme.dim)
         } else {
-            line("\(model.approvals.count) CARD\(model.approvals.count == 1 ? "" : "S") WAITING FOR YOU", Theme.amber)
+            let total = model.approvals.count + model.visibleVoiceCards.count
+            if total == 0 {
+                line("NO CARDS WAITING", Theme.dim)
+            } else {
+                line("\(total) CARD\(total == 1 ? "" : "S") WAITING FOR YOU", Theme.amber)
+            }
         }
     }
 
@@ -100,7 +107,7 @@ struct ApprovalCardView: View {
                         Text(verbatim: severity.uppercased()).font(Theme.label(8)).foregroundStyle(severityColor)
                     }
                     Spacer()
-                    Text(verbatim: timeLeft(now)).font(Theme.mono(10))
+                    Text(verbatim: formatTimeLeft(card.secondsLeft(at: now))).font(Theme.mono(10))
                         .foregroundStyle(expired ? Theme.red : Theme.dim)
                 }
                 Text(verbatim: card.title)
@@ -172,12 +179,6 @@ struct ApprovalCardView: View {
         return ApprovalRules.mayAnswer(card: card, decision: decision, firstShownAt: shown, now: now)
     }
 
-    private func timeLeft(_ now: Date) -> String {
-        guard let left = card.secondsLeft(at: now) else { return "time left unknown" }
-        if left == 0 { return "expired" }
-        return String(format: "%d:%02d left", left / 60, left % 60)
-    }
-
     private var severityColor: Color {
         switch card.severity {
         case "critical": return Theme.red
@@ -185,4 +186,101 @@ struct ApprovalCardView: View {
         default: return Theme.amber
         }
     }
+}
+
+/// An approval card received over the `jorah-voice` WebSocket (ADR 0010).
+/// Same deliberate-click and plain-text rules as `ApprovalCardView`, but buttons send
+/// `card_decision` over the voice socket and disable if the voice socket closes.
+struct VoiceApprovalCardView: View {
+    @Environment(HUDModel.self) private var model
+    let card: VoiceCard
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { timeline in
+            let now = timeline.date
+            let expired = card.isExpired(at: now)
+            let linkOpen = model.isVoiceLinkOpen
+            let cardColor = card.leavesPC ? Theme.amber : Theme.accent
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: "ASKED BY VOICE").font(Theme.label(9)).foregroundStyle(cardColor)
+                    if card.needsPhrase {
+                        Text(verbatim: card.phraseSet ? "NEEDS PHRASE" : "NO PHRASE SET · TAP TO CONFIRM")
+                            .font(Theme.label(8))
+                            .foregroundStyle(Theme.amber)
+                    }
+                    Spacer()
+                    Text(verbatim: formatTimeLeft(card.secondsLeft(at: now))).font(Theme.mono(10))
+                        .foregroundStyle(expired ? Theme.red : Theme.dim)
+                }
+                Text(verbatim: card.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !card.description.isEmpty {
+                    Text(verbatim: card.description)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.text)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(verbatim: "id").foregroundStyle(Theme.dim).frame(width: 150, alignment: .leading)
+                    Text(verbatim: card.id).foregroundStyle(Theme.dim).textSelection(.enabled)
+                }
+                .font(Theme.mono(10))
+                if !linkOpen {
+                    Text(verbatim: "voice link closed, answer in the HUD's card list or on the iOS app")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let error = model.voiceCardErrors[card.id] {
+                    Text(verbatim: error)
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 10) {
+                    ForEach(card.offeredDecisions, id: \.self) { decision in
+                        Button {
+                            model.answerVoiceCardFromClick(id: card.id, decision: decision)
+                        } label: {
+                            Text(verbatim: decision == "deny" ? "Deny" : "Allow once")
+                                .font(Theme.label(11))
+                                .frame(minWidth: 90)
+                        }
+                        .tint(decision == "deny" ? Theme.red : Theme.green)
+                        .focusable(false)
+                        .disabled(!canClick(decision, now: now, linkOpen: linkOpen))
+                        .accessibilityLabel(decision == "deny" ? "Deny \(card.title)" : "Allow once: \(card.title)")
+                    }
+                    if model.voiceCardBusy.contains(card.id) {
+                        ProgressView().controlSize(.mini)
+                    }
+                    Spacer()
+                    Text(verbatim: "say yes or tap · first answer wins").font(Theme.label(8)).foregroundStyle(Theme.dim)
+                }
+            }
+            .padding(10)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(cardColor.opacity(0.7), lineWidth: 1))
+            .opacity(expired ? 0.5 : 1)
+        }
+    }
+
+    private func canClick(_ decision: String, now: Date, linkOpen: Bool) -> Bool {
+        guard !model.isDemo, linkOpen,
+              !model.voiceCardBusy.contains(card.id),
+              let shown = model.voiceCardFirstShown[card.id]
+        else { return false }
+        return ApprovalRules.mayAnswer(voiceCard: card, decision: decision, firstShownAt: shown, now: now, linkOpen: linkOpen)
+    }
+}
+
+private func formatTimeLeft(_ left: Int?) -> String {
+    guard let left else { return "time left unknown" }
+    if left == 0 { return "expired" }
+    return String(format: "%d:%02d left", left / 60, left % 60)
 }

@@ -84,3 +84,5 @@ wcwidth	MIT
 webcolors	BSD-3-Clause
 wrapt	BSD-2-Clause
 wsproto	MIT
+# Model weights (downloaded at install by jorah_voice/models.py; docs/adr/0001-voice-licences.md)
+nemo_en_titanet_large.onnx	CC-BY-4.0	NVIDIA

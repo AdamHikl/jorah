@@ -17,20 +17,29 @@ STT_DIR = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 # Kokoro v1.0 at full precision on the GPU, because int8 runs slower than fp32 there.
 TTS_DIR = "kokoro-multi-lang-v1_0"
 
+# NeMo TitaNet-Large speaker embeddings on the CPU (docs/plan/12-voice-identity.md 3.1).
+# Claude fills in the SHA-256 at install after Adam's yes. Until then, ensure() refuses to use it.
+SPEAKER_MODEL = "nemo_en_titanet_large.onnx"
+EXPECTED_SHA256 = None
+
 FILES = {
     "vad": ("asr-models/silero_vad_v5.onnx", "6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"),
     "stt": ("asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2", "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf"),
     "tts": ("tts-models/kokoro-multi-lang-v1_0.tar.bz2", "60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4"),
+    "speaker": (f"speaker-recongition-models/{SPEAKER_MODEL}", EXPECTED_SHA256),
 }
 FOLDERS = {"stt": STT_DIR, "tts": TTS_DIR}
 
 
-def _sha256(path):
+def sha256_file(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+_sha256 = sha256_file
 
 
 def _download(url, target, tries=6, wait=30):
@@ -51,22 +60,31 @@ def _download(url, target, tries=6, wait=30):
 
 def _fetch(relative, expected, root):
     target = root / Path(relative).name
-    if target.exists() and expected in (None, _sha256(target)):
+    if expected is None:
+        raise RuntimeError(f"{target.name} has no pinned SHA-256 (refusing unpinned model)")
+    if target.exists() and _sha256(target) == expected:
         return target
     print(f"Downloading {target.name}")
     partial = target.with_suffix(target.suffix + ".part")
     _download(f"{BASE}/{relative}", partial)
     actual = _sha256(partial)
-    if expected is not None and actual != expected:
+    if actual != expected:
         partial.unlink()
         raise RuntimeError(f"{target.name} failed its checksum: got {actual}, expected {expected}")
     partial.rename(target)
     return target
 
 
-def ensure(root=ROOT):
+def ensure(root=ROOT, keys=None):
+    root = Path(root)
+    selected = list(FILES.keys()) if keys is None else list(keys)
+    for key in selected:
+        relative, expected = FILES[key]
+        if expected is None:
+            raise RuntimeError(f"{Path(relative).name} has no pinned SHA-256 (refusing unpinned model)")
     root.mkdir(parents=True, exist_ok=True)
-    for key, (relative, expected) in FILES.items():
+    for key in selected:
+        relative, expected = FILES[key]
         folder = FOLDERS.get(key)
         if folder and (root / folder).exists():
             continue
@@ -77,6 +95,15 @@ def ensure(root=ROOT):
                 tar.extractall(root, filter="data")
             archive.unlink()
     return root
+
+
+def ensure_speech(root=ROOT):
+    return ensure(root, keys=("vad", "stt", "tts"))
+
+
+def ensure_speaker(root=ROOT):
+    ensure(root, keys=("speaker",))
+    return Path(root) / SPEAKER_MODEL
 
 # Jorah's voice everywhere (live voice and Telegram replies): Adam's pick by ear, 2026-11-08.
 DEFAULT_VOICE = "daniel"

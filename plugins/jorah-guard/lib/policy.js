@@ -9,6 +9,7 @@ import { siteDecision } from "./sites.js";
 import { isWrapper, unwrap } from "./wrapper.js";
 
 const CARD_MAX = 500;
+export const VOICE_CARD_HINT = "Say 'yes, go ahead' or tap here.";
 
 // What a consult agent (matrix.consultAgents) may do: read, search, fetch. Nothing that writes,
 // runs a command, reads other chats or starts work.
@@ -120,10 +121,22 @@ function short(text, n) {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 }
 
-function card(title, lines) {
-  let description = lines.filter(Boolean).join("\n");
+function card(title, lines, { voice = false, severity = "warning" } = {}) {
+  const all = voice ? [VOICE_CARD_HINT, ...lines] : lines;
+  let description = all.filter(Boolean).join("\n");
   if (description.length > CARD_MAX) description = `${description.slice(0, CARD_MAX - 1)}…`;
-  return { verdict: "confirm", title: short(title, 78), description };
+  return { verdict: "confirm", title: short(title, 78), description, severity };
+}
+
+export function cardSeverity(cls, params = {}) {
+  if (cls === "github" || cls === "message") return "critical";
+  if (cls === "schedule") {
+    const job = params?.job ?? params;
+    const prompt = textOf(job?.message ?? job?.prompt ?? job?.task ?? job?.payload ?? job);
+    const fetches = urlsIn(job).length > 0 || /\b(fetch|browse|web|search|http)/i.test(prompt);
+    return (!isOneOff(params) || fetches) ? "critical" : "warning";
+  }
+  return "warning";
 }
 
 const cardTitle = (matrix, tool) => matrix.cardTitles?.[tool] ?? `Jorah wants to use ${tool}`;
@@ -289,6 +302,8 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     return { verdict: "block", reason: `${agent} only thinks, reads and searches the web; ${tool} is main's or background's job` };
   }
 
+  const cardOpts = { voice: state.voice, severity: cardSeverity(cls, params) };
+
   switch (cls) {
     case "read":
       return { verdict: "allow" };
@@ -312,7 +327,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       const kind = textOf(params.request?.kind ?? params.kind ?? params.action ?? "");
       if (tool === "browser" && state.tainted && /\b(type|fill|press|select|upload|drag|keyboard)\b/i.test(kind)) {
         const typed = params.request?.text ?? params.text ?? params.value ?? params.values ?? params.request ?? "";
-        return card("Jorah wants to type into a web page", [why(state), `Action: ${short(kind, 30)}`, `Text: ${short(textOf(typed), 300)}`]);
+        return card("Jorah wants to type into a web page", [why(state), `Action: ${short(kind, 30)}`, `Text: ${short(textOf(typed), 300)}`], cardOpts);
       }
       const host = urlsIn(params).map((u) => { try { return new URL(u).hostname; } catch { return "?"; } })[0];
       return { verdict: "allow", taint: `${tool}${host ? ` ${host}` : ""}` };
@@ -323,16 +338,16 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       const paths = targetPaths(tool, params, derivedPaths, settings.workspace);
       const kinds = paths.map((p) => fileKind(p, matrix));
       if (paths.length === 0) {
-        return state.tainted ? card("Jorah wants to change a file", [why(state), `${tool} with no clear target.`]) : { verdict: "allow" };
+        return state.tainted ? card("Jorah wants to change a file", [why(state), `${tool} with no clear target.`], cardOpts) : { verdict: "allow" };
       }
       if (!state.tainted) return { verdict: "allow" };
       const added = addedText(tool, params);
       if (kinds.includes("rules")) {
-        return card("Jorah wants to change its own rules", [why(state), `Files: ${short(paths.join(", "), 120)}`, `Adds: ${short(added, 300)}`]);
+        return card("Jorah wants to change its own rules", [why(state), `Files: ${short(paths.join(", "), 120)}`, `Adds: ${short(added, 300)}`], cardOpts);
       }
       if (kinds.includes("memory")) {
         if (state.typedByOwner && coveredByWords(added, view.wordsOf(key))) return { verdict: "allow", reason: "Adam's own words" };
-        return card("Jorah wants to save to memory", [why(state), `File: ${short(paths.join(", "), 80)}`, `Text: ${short(added, 320)}`]);
+        return card("Jorah wants to save to memory", [why(state), `File: ${short(paths.join(", "), 80)}`, `Text: ${short(added, 320)}`], cardOpts);
       }
       return { verdict: "allow" };
     }
@@ -341,14 +356,14 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       if (!state.tainted || readAction) return { verdict: "allow" };
       const added = addedText(tool, params);
       if (state.typedByOwner && coveredByWords(added, view.wordsOf(key))) return { verdict: "allow", reason: "Adam's own words" };
-      return card("Jorah wants to save to memory", [why(state), `Tool: ${tool}`, `Text: ${short(added, 320)}`]);
+      return card("Jorah wants to save to memory", [why(state), `Tool: ${tool}`, `Text: ${short(added, 320)}`], cardOpts);
     }
 
     case "skill": {
       if (readAction || action === "") return action === "" && state.tainted
-        ? card("Jorah wants to change a skill", [why(state), `skill_workshop with no action.`]) : { verdict: "allow" };
+        ? card("Jorah wants to change a skill", [why(state), `skill_workshop with no action.`], cardOpts) : { verdict: "allow" };
       if (!state.tainted) return { verdict: "allow" };
-      return card("Jorah wants to change a learned skill", [why(state), `${action} ${short(params.name, 60)}`, `Content: ${short(addedText(tool, params), 300)}`]);
+      return card("Jorah wants to change a learned skill", [why(state), `${action} ${short(params.name, 60)}`, `Content: ${short(addedText(tool, params), 300)}`], cardOpts);
     }
 
     case "schedule": {
@@ -359,7 +374,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       if (!state.tainted && isOneOff(params) && !fetches) return { verdict: "allow" };
       const bad = checkUrls(job, state, view, key, matrix);
       if (bad) return { verdict: "block", reason: `Schedule refused: ${bad}.` };
-      return card("Jorah wants to create or change a schedule", [state.tainted ? why(state) : "", `${tool} ${action}`, `Job: ${short(prompt, 330)}`]);
+      return card("Jorah wants to create or change a schedule", [state.tainted ? why(state) : "", `${tool} ${action}`, `Job: ${short(prompt, 330)}`], cardOpts);
     }
 
     case "spawn": {
@@ -368,7 +383,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       const acp = params.runtime === "acp";
       const who = acp ? `Claude Code in ${short(params.cwd ?? "?", 60)}` : `the ${short(params.agentId ?? "?", 20)} agent`;
       if (acp && (state.tainted || view.countAcp(key) > (matrix.acpSpawnsPerHourWithoutConfirm ?? 3))) {
-        return { ...card("Jorah wants to start a coding job", [state.tainted ? why(state) : "More than 3 jobs this hour.", `Who: ${who}`, `Brief: ${short(params.task, 330)}`]), taint: "worker result" };
+        return { ...card("Jorah wants to start a coding job", [state.tainted ? why(state) : "More than 3 jobs this hour.", `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
       }
       // Asking `deep` (Opus) never needs a card (Adam, 2026-11-21: "it doesn't need to ask my
       // permission, just make it work"). It has no shell and no writes (above), so its only ways out
@@ -378,7 +393,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       if (!acp && isConsultAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
       // background has a sandboxed shell with internet access, so a brief written after outside
       // text could carry data out past the URL rule. Show it to Adam first.
-      if (!acp && state.tainted) return { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`]), taint: "worker result" };
+      if (!acp && state.tainted) return { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
       return { verdict: "allow", taint: "worker result" };
     }
 
@@ -401,7 +416,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       }
       const target = params.to ?? params.target ?? params.chatId ?? params.recipient;
       if (target === undefined) return { verdict: "allow" };
-      return card("Jorah wants to send a message", [state.tainted ? why(state) : "", `To: ${short(target, 60)}`, `Text: ${short(params.text ?? params.message ?? params.content, 300)}`]);
+      return card("Jorah wants to send a message", [state.tainted ? why(state) : "", `To: ${short(target, 60)}`, `Text: ${short(params.text ?? params.message ?? params.content, 300)}`], cardOpts);
     }
 
     case "sandboxShell":
@@ -417,11 +432,11 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
 
     // The plugin's own small records (closing a loop): free in a clean chat, a card after outside text.
     case "localWrite":
-      return state.tainted ? card(cardTitle(matrix, tool), [why(state), ...paramLines(params)]) : { verdict: "allow" };
+      return state.tainted ? card(cardTitle(matrix, tool), [why(state), ...paramLines(params)], cardOpts) : { verdict: "allow" };
 
     // Always a card with the exact fields, whoever asks (a loop is saved only on Allow once).
     case "confirmAlways":
-      return card(cardTitle(matrix, tool), [state.tainted ? why(state) : "", ...paramLines(params)]);
+      return card(cardTitle(matrix, tool), [state.tainted ? why(state) : "", ...paramLines(params)], cardOpts);
 
     // The tick drains the outbox; outside its automation the lines would be lost.
     case "cronOnly":

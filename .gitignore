@@ -42,8 +42,10 @@ workspace-voice/memory/
 docs/evidence/**/answers.md
 docs/evidence/**/mango-*.md
 
-# Personal media
+# Personal media and voiceprint
 fixtures/private/
+voiceprint/
+*.voiceprint.json
 *.wav
 *.m4a
 !fixtures/synthetic/**/*.wav

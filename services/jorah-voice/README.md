@@ -66,6 +66,22 @@ Kokoro silently drops any word missing from its word list, and the list lacks na
 
 The mic is open only while `mac-ear` runs, and its terminal shows `● MIC OPEN`. It closes on "goodbye", after 60 s of quiet, at 30 minutes in any case, on Ctrl-C, or if the connection drops.
 
+## Confirming cards by voice
+
+When an action during a voice turn raises an approval card (`plugin.approval.requested` matching this session key, `turnSourceChannel: "voice"`, and the active turn window), `jorah-voice` forwards the card to the HUD over the voice WebSocket (`card`) and speaks the guard's question once Jorah's current reply finishes.
+
+- **What is checked:**
+  - **Speaker (`identity.py`):** NeMo TitaNet-Large (`nemo_en_titanet_large.onnx`) via sherpa-onnx on the CPU runs alongside Parakeet transcription on the turn's held segments. Cosine similarity against enrolled device centroids in `~/.config/jorah-voice/voiceprint/centroids.json` must meet `thresholds.json`'s `high` threshold on at least 1.5 s of speech within 20 s of Jorah asking. If the model, voiceprint, thresholds, or model SHA-256 check fails, the verdict is `unavailable` and the card falls back to a HUD click.
+  - **Leaving the PC (`confirm.py`, `passphrase.py`):** Any card whose severity is not `"warning"` or `"info"` (pushes, pull requests, messages, recurring or web-fetching schedules) also requires Adam's permanent confirmation phrase to appear as a contiguous window in the normalised transcript (matched against a salted scrypt hash in `passphrase.json`). Three wrong phrase attempts in a row lock voice confirmation until Adam answers a card by click in the HUD.
+  - **Refusal (`no`, `cancel`, `deny`, `nie`, `zruš`):** Honoured from anyone without a speaker or phrase check; `"no"` always wins over `"yes"` in the same turn.
+- **What is never stored or logged:** Turn audio, speaker embeddings, exact cosine scores, confirmation transcripts, and the confirmation phrase (plaintext or derived, other than the salted scrypt hash) are never kept or logged. Turn logs record only timing, speaker verdict, and coarse score bucket (`<0.3`, `0.3-0.5`, `0.5-0.7`, `>=0.7`), or `confirm: <outcome>` for confirmation turns. The voiceprint folder is mode 700 and its files (`centroids.json`, `thresholds.json`, `passphrase.json`) are mode 600.
+- **Flags:**
+  - `--voiceprint-dir DIR` — folder holding `centroids.json`, `thresholds.json`, and `passphrase.json` (default `~/.config/jorah-voice/voiceprint`).
+  - `--no-voice-confirm` — disables voice confirmation so every card requires a HUD click (`card` messages are still sent). Voice confirmation also stays off automatically when `centroids.json`, `thresholds.json`, or the pinned speaker model SHA-256 is missing.
+- **Enrolment and calibration:**
+  - `python3 tools/enrol.py --device mac FILE...` (and `--device airpods FILE...`, WAV 16-bit PCM or m4a/mp3 via `ffmpeg`)
+  - `python3 tools/calibrate.py --genuine DIR --impostor DIR [--device NAME] [--write-anyway]`
+
 ## Setup
 
 See `docs/runbooks/jorah-on-pc.md`.

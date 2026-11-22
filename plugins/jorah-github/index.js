@@ -45,7 +45,7 @@ export default {
     }
 
     // Every push and pull request waits for Adam. Fails closed: a hook error blocks the call.
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
       const hit = targetTool(event);
       if (!hit) return undefined;
       // Never ask Adam to approve something the prompt can't describe.
@@ -66,11 +66,16 @@ export default {
         if (files.head) shown.set(key, files.head);
         else shown.delete(key);
       }
+      const base = describeWithFiles(describe(hit.name, hit.params, cfg), files);
+      let description = ctx?.requester?.channel === "voice"
+        ? `Say 'yes, go ahead' or tap here.\n${base}`
+        : base;
+      if (description.length > 512) description = `${description.slice(0, 511)}…`;
       return {
         requireApproval: {
           title: hit.name === "github_open_pr" ? "Jorah wants to open a pull request" : "Jorah wants to push to GitHub",
-          description: describeWithFiles(describe(hit.name, hit.params, cfg), files),
-          severity: "warning",
+          description,
+          severity: "critical",
           allowedDecisions: ["allow-once", "deny"],
           timeoutMs: 10 * 60 * 1000,
           pluginId: "jorah-github",

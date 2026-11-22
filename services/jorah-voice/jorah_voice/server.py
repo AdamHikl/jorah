@@ -8,9 +8,12 @@ from pathlib import Path
 
 from . import models
 from .core import LastFullMessage, TurnEnd, parse_hello
+from .identity import CENTROIDS_FILE, DEFAULT_VOICEPRINT_DIR, THRESHOLDS_FILE, SherpaExtractor, SpeakerCheck
+from .passphrase import PhraseStore
 
 DEFAULT_PORT = 43210
 HELLO_SECONDS = 5
+SETTINGS_IDLE_SECONDS = 30
 # Measured on synthetic speech: docs/evidence/voice-endpointing/README.md.
 EARLY_PAUSE = 0.3
 FINISHED_PAUSE = 0.65
@@ -26,11 +29,72 @@ def read_token(path):
     return token
 
 
+def resolve_voice_confirm(voiceprint_dir, *, voice_confirm_flag=True, expected_sha256=None):
+    """Decide whether voice confirmation starts enabled, and why if not."""
+    if not voice_confirm_flag:
+        return False, "voice confirmation off (--no-voice-confirm); cards require a click"
+    vp_dir = Path(voiceprint_dir)
+    if not (vp_dir / CENTROIDS_FILE).is_file():
+        return False, f"voice confirmation off (no {CENTROIDS_FILE} in {vp_dir}); cards require a click"
+    if not (vp_dir / THRESHOLDS_FILE).is_file():
+        return False, f"voice confirmation off (no {THRESHOLDS_FILE} in {vp_dir}); cards require a click"
+    sha = models.EXPECTED_SHA256 if expected_sha256 is None else expected_sha256
+    if sha is None:
+        return False, "voice confirmation off (speaker model SHA-256 not pinned); cards require a click"
+    return True, None
+
+
+async def handle_phrase_message(msg, phrase_store, send_json):
+    """Handle phrase_status_request, phrase_set, and phrase_clear without ever logging the phrase."""
+    kind = msg.get("type")
+    if kind == "phrase_status_request":
+        await send_json({"type": "phrase_status", **phrase_store.status()})
+        return True
+    if kind == "phrase_set":
+        phrase = msg.get("phrase")
+        if not isinstance(phrase, str):
+            await send_json({"type": "phrase_error", "reason": "Use at least 3 words or 6 digits."})
+            return True
+        try:
+            status = phrase_store.set(phrase)
+        except ValueError as err:
+            await send_json({"type": "phrase_error", "reason": str(err)})
+            return True
+        await send_json({"type": "phrase_status", **status})
+        return True
+    if kind == "phrase_clear":
+        await send_json({"type": "phrase_status", **phrase_store.clear()})
+        return True
+    return False
+
+
+async def run_settings_connection(ws, phrase_store, sample_rate, *, idle_seconds=SETTINGS_IDLE_SECONDS):
+    """Serve a settings-only WebSocket connection (protocol.md)."""
+    async def send_json(message):
+        await ws.send(json.dumps(message))
+
+    await send_json({"type": "ready", "sample_rate": sample_rate})
+    while True:
+        try:
+            raw = await asyncio.wait_for(ws.recv(), idle_seconds)
+        except asyncio.TimeoutError:
+            await ws.close(1000, "settings idle")
+            return
+        if isinstance(raw, bytes):
+            continue
+        try:
+            msg = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(msg, dict):
+            await handle_phrase_message(msg, phrase_store, send_json)
+
+
 async def serve(args):
     from websockets.asyncio.server import serve as ws_serve
     from websockets.exceptions import ConnectionClosed
 
-    from . import models
+    from .approvals import GatewayApprovalsClient
     from .brain import JorahBrain
     from .session import VoiceSession
     from .speech import Ears, Listener, Speaker, warm_up
@@ -39,7 +103,18 @@ async def serve(args):
     if not 0 < args.early_pause <= args.finished_pause <= args.unfinished_pause:
         raise SystemExit("need 0 < --early-pause <= --finished-pause <= --unfinished-pause")
     turn_end = TurnEnd(args.finished_pause, args.unfinished_pause)
-    root = models.ensure()
+
+    voiceprint_dir = Path(args.voiceprint_dir)
+    want_confirm, off_reason = resolve_voice_confirm(
+        voiceprint_dir,
+        voice_confirm_flag=args.voice_confirm,
+    )
+    if want_confirm:
+        root = models.ensure()
+    else:
+        print(off_reason, flush=True)
+        root = models.ensure_speech()
+
     print("Loading speech models", flush=True)
     listener = Listener(root, args.stt_provider)
     speaker = None
@@ -54,6 +129,29 @@ async def serve(args):
         speaker = Speaker(root, args.tts_provider, voice=args.voice, speed=args.speed)
     # The GPU's first run of each model is slow while it picks kernels, so do it before anyone talks.
     warm_up(listener, speaker)
+
+    speaker_check = None
+    voice_confirm = False
+    if want_confirm:
+        try:
+            extractor = SherpaExtractor(
+                root / models.SPEAKER_MODEL,
+                provider="cpu",
+                expected_sha256=models.EXPECTED_SHA256,
+            )
+            check = SpeakerCheck(voiceprint_dir, extractor=extractor, model_path=root / models.SPEAKER_MODEL)
+            if check.is_ready():
+                speaker_check = check
+                voice_confirm = True
+            else:
+                print("voice confirmation off (voiceprint, thresholds, or model hash invalid); cards require a click", flush=True)
+        except Exception as err:
+            print(f"voice confirmation off (speaker check load failed: {type(err).__name__}); cards require a click", flush=True)
+
+    phrase_store = PhraseStore(voiceprint_dir)
+    approvals = GatewayApprovalsClient(args.gateway_url, args.gateway_token_file)
+    approvals.start()
+
     warmer = None
     if args.warm_every > 0:
         from .warm import WARMUP_SESSION, Warmer, gateway_uptime
@@ -74,6 +172,12 @@ async def serve(args):
             print("refused a client: bad hello or token", flush=True)
             await ws.close(4401, "not allowed")
             return
+        if hello.get("purpose") == "settings":
+            try:
+                await run_settings_connection(ws, phrase_store, speaker.sample_rate)
+            except ConnectionClosed:
+                pass
+            return
         if one_at_a_time.locked():
             await ws.close(4409, "another session is open")
             return
@@ -81,9 +185,13 @@ async def serve(args):
             if warmer:
                 # Catches a Gateway that restarted since the last check, while Adam is still talking.
                 warmer.poke()
+
+            async def send_json(message):
+                await ws.send(json.dumps(message))
+
             session = VoiceSession(
                 Ears(root, pauses=(args.early_pause, args.finished_pause, args.unfinished_pause)), listener, speaker, JorahBrain(args.gateway_url, args.gateway_token_file),
-                send_json=lambda message: ws.send(json.dumps(message)),
+                send_json=send_json,
                 send_audio=ws.send,
                 on_close=ws.close,
                 barge_in=hello["barge_in"],
@@ -96,6 +204,10 @@ async def serve(args):
                 stream_speech=args.stream_speech,
                 shows_full=hello["shows_full"],
                 full_store=last_full,
+                speaker_check=speaker_check,
+                phrase_store=phrase_store,
+                approvals=approvals,
+                voice_confirm=voice_confirm,
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())
@@ -104,13 +216,23 @@ async def serve(args):
                 async for message in ws:
                     if isinstance(message, bytes):
                         await session.feed(message)
-                    elif json.loads(message).get("type") == "interrupt":
-                        await session.interrupt()
+                    else:
+                        msg = json.loads(message)
+                        if not isinstance(msg, dict):
+                            continue
+                        kind = msg.get("type")
+                        if kind == "interrupt":
+                            await session.interrupt()
+                        elif kind == "card_decision":
+                            await session.handle_card_decision(msg)
+                        elif await handle_phrase_message(msg, phrase_store, send_json):
+                            session.refresh_pending_phrase_status()
             except (ConnectionClosed, ValueError):
                 pass
             finally:
                 session.closed = True
-                await session.interrupt(quiet=True)
+                approvals.set_handlers()
+                await session._cancel_all_tasks()
                 watcher.cancel()
                 # Timing only. What was said is never logged.
                 print(f"session closed: {json.dumps(session.summary())}", flush=True)
@@ -132,6 +254,10 @@ def main():
     parser.add_argument("--speed", type=float, default=models.DEFAULT_SPEED)
     parser.add_argument("--gateway-url", default="http://127.0.0.1:43181/v1/chat/completions")
     parser.add_argument("--gateway-token-file", default=os.path.expanduser("~/.config/jorah-voice/gateway-token"))
+    parser.add_argument("--voiceprint-dir", default=str(DEFAULT_VOICEPRINT_DIR),
+                        help="folder holding centroids.json, thresholds.json, and passphrase.json")
+    parser.add_argument("--no-voice-confirm", dest="voice_confirm", action="store_false",
+                        help="turn off voice confirmation of approval cards; every card needs a click")
     parser.add_argument("--filler", type=float, default=2.5, help="seconds without reply text before saying 'One moment.' once; 0 turns it off")
     parser.add_argument("--warm-every", type=float, default=20,
                         help="seconds between checks for a Gateway restart, each followed by one short warm-up turn "

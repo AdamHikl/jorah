@@ -123,6 +123,17 @@ final class HUDModel {
     var wakeEnabled = false
     let voice = VoiceEngine()
 
+    // Voice-confirmed cards & confirmation phrase (ADR 0010). The phrase itself is never stored here.
+    var voiceCards: [VoiceCard] = []
+    var voiceCardFirstShown: [String: Date] = [:]
+    var voiceCardBusy: Set<String> = []
+    var voiceCardErrors: [String: String] = [:]
+    var showPhraseSheet = false
+    var phraseState: PhraseState = .unknown
+    var phraseBusy = false
+    var phraseError: String?
+    private var voiceSessionHadReady = false
+
     // Kill switch
     var showPower = false
     var powerBusy = false
@@ -303,6 +314,12 @@ final class HUDModel {
     var canAnswerApprovals: Bool {
         grantedScopes.contains("operator.approvals") || grantedScopes.contains("operator.admin")
     }
+    var isVoiceLinkOpen: Bool {
+        voiceState == .listening || voiceState == .thinking || voiceState == .speaking
+    }
+    var visibleVoiceCards: [VoiceCard] {
+        VoiceCardDedupe.uniqueVoiceCards(voiceCards: voiceCards, gatewayApprovals: approvals)
+    }
 
     var orbState: OrbState {
         // An open voice session speaks for itself, whatever the Gateway link is doing.
@@ -337,6 +354,15 @@ final class HUDModel {
             self.wakeEnabled = self.voice.wakeEnabled
             if state != .waitingForWake { self.wakeHeard = nil }
             if state.isSessionOpen { self.voiceError = nil }
+
+            if self.isVoiceLinkOpen && !self.voiceSessionHadReady {
+                self.voiceSessionHadReady = true
+                self.clearVoiceCards()
+                self.requestVoicePhraseStatus()
+            } else if !state.isSessionOpen {
+                self.voiceSessionHadReady = false
+                self.voiceCardBusy.removeAll()
+            }
         }
         voice.onWakeHeard = { [weak self] text in
             guard let self, self.voiceState == .waitingForWake else { return }
@@ -350,6 +376,25 @@ final class HUDModel {
         voice.onHeard = { [weak self] text in self?.lastHeard = text }
         voice.onReply = { [weak self] text in self?.lastSpoken = text }
         voice.onFullReply = { [weak self] text in self?.fullReply = text }
+        voice.onCard = { [weak self] card in self?.receiveVoiceCard(card) }
+        voice.onCardClosed = { [weak self] id, outcome in self?.closeVoiceCard(id: id, outcome: outcome) }
+        voice.onPhraseStatus = { [weak self] status in
+            guard let self else { return }
+            self.phraseState = PhraseState(status: status)
+            self.phraseBusy = false
+            self.phraseError = nil
+        }
+        voice.onPhraseError = { [weak self] reason in
+            guard let self else { return }
+            self.phraseBusy = false
+            self.phraseError = reason
+        }
+        voice.onPhraseUnknown = { [weak self] reason in
+            guard let self else { return }
+            self.phraseState = .unknown
+            self.phraseBusy = false
+            self.phraseError = reason
+        }
         voice.onError = { [weak self] message in
             guard let self else { return }
             self.voiceError = message
@@ -438,6 +483,27 @@ final class HUDModel {
         voiceError = nil
         wakeEnabled = enabled
         voice.setWake(enabled)
+    }
+
+    func requestVoicePhraseStatus() {
+        guard !isDemo else { return }
+        phraseBusy = true
+        phraseError = nil
+        voice.requestPhraseStatus()
+    }
+
+    func setVoicePhrase(_ phrase: String) {
+        guard !isDemo, !phraseBusy else { return }
+        phraseBusy = true
+        phraseError = nil
+        voice.setPhrase(phrase)
+    }
+
+    func clearVoicePhrase() {
+        guard !isDemo, !phraseBusy else { return }
+        phraseBusy = true
+        phraseError = nil
+        voice.clearPhrase()
     }
 
     // MARK: - Connection
@@ -620,6 +686,7 @@ final class HUDModel {
             approvals = fresh.sorted { ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast) }
             approvalsAsOf = now
             approvalsError = nil
+            if !isVoiceLinkOpen { pruneExpiredVoiceCards(at: now) }
             if !arrived.isEmpty { NSApp.requestUserAttention(.criticalRequest) }
         } catch {
             approvals = []
@@ -681,6 +748,74 @@ final class HUDModel {
                 approvalCardErrors[id] = "Not answered: \(error.localizedDescription)"
             }
             await refreshApprovals()
+        }
+    }
+
+    // MARK: - Voice cards
+
+    private func clearVoiceCards() {
+        voiceCards = []
+        voiceCardFirstShown = [:]
+        voiceCardBusy = []
+        voiceCardErrors = [:]
+    }
+
+    private func pruneExpiredVoiceCards(at now: Date) {
+        let expiredIds = Set(voiceCards.filter { $0.isExpired(at: now) }.map(\.id))
+        guard !expiredIds.isEmpty else { return }
+        voiceCards.removeAll { expiredIds.contains($0.id) }
+        for id in expiredIds {
+            voiceCardFirstShown.removeValue(forKey: id)
+            voiceCardBusy.remove(id)
+            voiceCardErrors.removeValue(forKey: id)
+        }
+    }
+
+    func receiveVoiceCard(_ card: VoiceCard) {
+        let now = Date()
+        if let index = voiceCards.firstIndex(where: { $0.id == card.id }) {
+            voiceCards[index] = card
+        } else {
+            voiceCards.append(card)
+        }
+        if voiceCardFirstShown[card.id] == nil {
+            voiceCardFirstShown[card.id] = now
+            NSApp.requestUserAttention(.criticalRequest)
+        }
+        voiceCardErrors[card.id] = nil
+    }
+
+    func closeVoiceCard(id: String, outcome: String) {
+        let removed = voiceCards.first { $0.id == id }
+        voiceCards.removeAll { $0.id == id }
+        voiceCardFirstShown.removeValue(forKey: id)
+        voiceCardBusy.remove(id)
+        voiceCardErrors.removeValue(forKey: id)
+        if let removed {
+            switch outcome {
+            case "allowed": approvalNote = "Allowed once: \(removed.title)"
+            case "denied": approvalNote = "Denied: \(removed.title)"
+            case "expired": approvalNote = "Expired: \(removed.title)"
+            case "elsewhere": approvalNote = "Already answered elsewhere: \(removed.title)"
+            default: break
+            }
+        }
+    }
+
+    /// Sends Adam's answer to one voice card over the active voice socket, never `plugin.approval.resolve`.
+    /// The only caller is the card's button action in `ApprovalsPanel`.
+    func answerVoiceCardFromClick(id: String, decision: String) {
+        guard !isDemo, isVoiceLinkOpen, !voiceCardBusy.contains(id),
+              let card = voiceCards.first(where: { $0.id == id }),
+              let shown = voiceCardFirstShown[id],
+              ApprovalRules.mayAnswer(voiceCard: card, decision: decision, firstShownAt: shown, now: Date(), linkOpen: isVoiceLinkOpen)
+        else { return }
+        voiceCardErrors[id] = nil
+        if voice.sendCardDecision(id: id, decision: decision) {
+            voiceCardBusy.insert(id)
+            approvalNote = "\(decision == "deny" ? "Denied" : "Allowed once"): \(card.title)"
+        } else {
+            voiceCardErrors[id] = "Not sent: voice link closed."
         }
     }
 
@@ -1018,6 +1153,10 @@ final class HUDModel {
             // Answered here, in Telegram, or timed out: the first answer wins and the card goes.
             if let id = ApprovalParsing.resolvedId(fromEvent: payload.any) {
                 approvals.removeAll { $0.id == id }
+                voiceCards.removeAll { $0.id == id }
+                voiceCardFirstShown.removeValue(forKey: id)
+                voiceCardBusy.remove(id)
+                voiceCardErrors.removeValue(forKey: id)
             }
             scheduleApprovalsRefresh()
         case "device.pair.resolved":

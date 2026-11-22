@@ -18,9 +18,10 @@ STT_DIR = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 TTS_DIR = "kokoro-multi-lang-v1_0"
 
 # NeMo TitaNet-Large speaker embeddings on the CPU (docs/plan/12-voice-identity.md 3.1).
-# Claude fills in the SHA-256 at install after Adam's yes. Until then, ensure() refuses to use it.
+# Downloaded on Adam's yes, 2026-11-22: 101,405,493 bytes, uploaded 2024-10-14 (passes the 7-day rule).
+# The SHA-256 below was measured on the PC and matches the release's checksum.txt (rewritten 2026-11-22).
 SPEAKER_MODEL = "nemo_en_titanet_large.onnx"
-EXPECTED_SHA256 = None
+EXPECTED_SHA256 = "d51abcf31717ef28162f26acb9d44dd4127c3d44c9b8624f699f3425daca8e77"
 
 FILES = {
     "vad": ("asr-models/silero_vad_v5.onnx", "6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"),

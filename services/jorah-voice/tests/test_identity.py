@@ -7,6 +7,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from unittest.mock import patch
 import wave
 
@@ -64,11 +65,16 @@ class ModelPinning(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / models.SPEAKER_MODEL).write_bytes(b"fake-onnx")
-            self.assertIsNone(models.EXPECTED_SHA256)
-            with self.assertRaises(RuntimeError):
-                models.ensure(root)
-            with self.assertRaises(RuntimeError):
-                models.ensure_speaker(root)
+            unpinned = dict(models.FILES, speaker=(models.FILES["speaker"][0], None))
+            with mock.patch.object(models, "FILES", unpinned):
+                with self.assertRaises(RuntimeError):
+                    models.ensure(root)
+                with self.assertRaises(RuntimeError):
+                    models.ensure_speaker(root)
+
+    def test_speaker_model_is_pinned(self):
+        self.assertRegex(models.EXPECTED_SHA256 or "", r"^[0-9a-f]{64}$")
+        self.assertEqual(models.FILES["speaker"][1], models.EXPECTED_SHA256)
 
 
 class IdentityVerdicts(unittest.TestCase):

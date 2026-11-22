@@ -553,7 +553,8 @@ class SettingsAndServerFlags(unittest.IsolatedAsyncioTestCase):
             vp.mkdir()
             (vp / "centroids.json").write_text("{}")
             (vp / "thresholds.json").write_text("{}")
-            ok3, reason3 = resolve_voice_confirm(vp, voice_confirm_flag=True, expected_sha256=None)
+            with mock.patch("jorah_voice.server.models.EXPECTED_SHA256", None):
+                ok3, reason3 = resolve_voice_confirm(vp, voice_confirm_flag=True, expected_sha256=None)
             self.assertFalse(ok3)
             self.assertIn("SHA-256", reason3)
 

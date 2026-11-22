@@ -1,0 +1,22 @@
+// `deep` gets a read-only browser (issue #15, 2026-11-22): some Slovak shops load prices and
+// shipping with JavaScript, so `web_fetch` sees none. jorah-guard (lib/policy.js) lets a consult
+// agent use only open, navigate, snapshot, text, screenshot, tabs, focus, close, status and start,
+// in Jorah's own headless profile in its sandbox: no act (click, type, select), emulate, requests,
+// signed-in or host profiles, nodes or dashboards. Page JavaScript evaluation stays off for every
+// agent (p5-fixes.patch.json5, browser.evaluateEnabled false).
+//
+// Apply only on Adam's yes, after the guard change is deployed (the guard must come first, or
+// deep's browser would get main's rules, which let it click). The live list is read and "browser"
+// appended, the way scripts/pc/install-errands.sh does for price_compare; never replace the list.
+//   openclaw --profile jorah config get agents.entries.deep.tools.sandbox.tools.alsoAllow
+//   (append "browser", then config set with the full list)
+// Undo: config set the list without "browser".
+{
+  agents: {
+    entries: {
+      deep: {
+        tools: { sandbox: { tools: { alsoAllow: ["<the live list>", "browser"] } } },
+      },
+    },
+  },
+}

@@ -28,6 +28,47 @@ def chain_ok(rows_raw):
     return 0
 
 
+def chain_report(rows_raw):
+    """Tell a second writer's fork from an edit (P5.5 review fix 3). Returns (edited, forks, orphans):
+    lines whose own hash doesn't match, lines that continue an earlier line other than the one just
+    before, and lines whose predecessor is in no line (an edit or a removed line)."""
+    seen, edited, forks, orphans = {}, [], [], []
+    prev_hash = "genesis"
+    for i, line in enumerate(rows_raw, 1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            edited.append(i)
+            prev_hash = None
+            continue
+        h = row.pop("hash", None)
+        body = json.dumps(row, separators=(",", ":"), ensure_ascii=False)
+        if hashlib.sha256(body.encode()).hexdigest() != h:
+            edited.append(i)
+        p = row.get("prev")
+        if p != prev_hash:
+            if p in seen or (p == "genesis" and i > 1):
+                forks.append(i)
+            elif p != "genesis":
+                orphans.append(i)
+        if h:
+            seen[h] = i
+        prev_hash = h
+    return edited, forks, orphans
+
+
+def who_of(r):
+    """(class, channel) for the report: heartbeat and cron runs are their own class, and a row
+    counts as Telegram only when a user started the turn (P5.5 review fix 4)."""
+    trigger = r.get("trigger")
+    if trigger in ("heartbeat", "cron"):
+        return (trigger, r.get("channel") or "-")
+    f = r.get("from") or "?"
+    if r.get("channel") == "telegram" and trigger != "user":
+        return (f, "telegram (not a user turn)")
+    return (f, r.get("channel") or "-")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--log", default=str(Path.home() / ".jorah-guard/decisions.jsonl"))
@@ -50,7 +91,20 @@ def main():
             continue
 
     print(f"jorah-guard log: {path}, last {a.days:g} days, {len(rows)} decisions of {len(raw)} in all")
-    print(f"Hash chain: {'intact' if broken == 0 else f'BROKEN at line {broken}'}")
+    if broken == 0:
+        print("Hash chain: intact")
+    else:
+        edited, forks, orphans = chain_report(raw)
+        print(f"Hash chain: BROKEN at line {broken}")
+        if forks and not edited and not orphans:
+            print(f"  forked by a second writer at line(s) {', '.join(map(str, forks[:10]))}; no line edited, none missing")
+        else:
+            if edited:
+                print(f"  line(s) {', '.join(map(str, edited[:10]))} edited (their own hash doesn't match)")
+            if orphans:
+                print(f"  line(s) {', '.join(map(str, orphans[:10]))} follow a line that isn't there (removed or edited)")
+            if forks:
+                print(f"  second writer at line(s) {', '.join(map(str, forks[:10]))}")
     if not rows:
         return 0
     print(f"From {rows[0]['t'][:16]} to {rows[-1]['t'][:16]} UTC\n")
@@ -61,7 +115,7 @@ def main():
     days = collections.Counter(r["t"][:10] for r in rows)
     print("Per day:", ", ".join(f"{d} {n}" for d, n in sorted(days.items())))
 
-    who = collections.Counter((r.get("from") or "?", r.get("channel") or "-") for r in rows if r.get("tool") not in ("before_reset", "message_sending"))
+    who = collections.Counter(who_of(r) for r in rows if r.get("tool") not in ("before_reset", "message_sending"))
     print("\nWho asked (class, channel):")
     for (f, c), n in who.most_common():
         print(f"  {n:5}  {f:11} {c}")

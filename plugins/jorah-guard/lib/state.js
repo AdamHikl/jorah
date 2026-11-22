@@ -124,12 +124,26 @@ export class GuardState {
     return this.data.sessions[sessionKey]?.readRepos ?? [];
   }
 
+  // The child gets the parent's seen URLs, merged with any it already gathered (its first calls
+  // can finish before the spawn's own result arrives).
   linkChild(childKey, parentKey) {
     if (!childKey || !parentKey) return;
     this.data.parents[childKey] = parentKey;
     const seen = this.seen.get(parentKey);
-    if (seen) this.seen.set(childKey, new Map(seen));
+    if (seen) {
+      const merged = new Map(seen);
+      for (const [u, s] of this.seen.get(childKey) ?? []) if (!merged.has(u)) merged.set(u, s);
+      this.seen.set(childKey, merged);
+    }
     this.persist();
+  }
+
+  // URLs this session gathered from outside readers' results itself, not copied from a parent or
+  // typed by Adam. Only these may go up from a consult child to its parent (issue #13).
+  ownOutsideSeen(sessionKey) {
+    const parent = this.data.parents[sessionKey];
+    const inherited = parent ? this.seen.get(parent) : null;
+    return [...(this.seen.get(sessionKey) ?? [])].filter(([u, s]) => s === "outside" && !inherited?.has(u)).map(([u]) => u);
   }
 
   parentOf(childKey) {

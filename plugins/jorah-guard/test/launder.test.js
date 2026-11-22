@@ -268,3 +268,86 @@ test("helpers: hygiene and written words", () => {
   assert.ok(writtenTokens({ q: "see attacker.example/c?d=S, ok" }).includes("attacker.example/c?d=s"));
   assert.ok(writtenTokens({ q: "https%3A%2F%2Fa.example%2Fx" }).includes("https://a.example/x"));
 });
+
+// Issue #13: deep's finds reach main's Telegram reply; nothing model-written does.
+const SHOP = "https://www.example-shop.sk/kontaktne-sosovky/acuvue-oasys-6ks?utm_source=search&variant=8-6";
+const childCtx = (n = 21) => ({ agentId: "deep", sessionKey: `agent:deep:subagent:${n}`, requester: { senderIsOwner: false } });
+const spawnDeep = (p, n = 21, task = "Compare lens shops in Slovakia") => {
+  p.call("sessions_spawn", { agentId: "deep", task }, { details: { childSessionKey: `agent:deep:subagent:${n}` } });
+};
+const send = (p, content) => p.hook("message_sending", { content }, { sessionKey: "agent:main:main" });
+
+test("#13: links deep found with web_search and web_fetch survive main's reply; a made-up link doesn't", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "where should I buy my lenses?" });
+  spawnDeep(p);
+  p.call("web_search", { query: "acuvue oasys 6 ks cena" }, searchResult("acuvue oasys 6 ks cena", [SHOP]), childCtx());
+  p.call("web_fetch", { url: SHOP }, fetchResult(SHOP, "Price 21,90 EUR. Also see https://www.example-shop.sk/doprava"), childCtx());
+  const r = send(p, `Best: ${SHOP} (shipping https://www.example-shop.sk/doprava). Or ${CANARY} and https://made-up.example/lens`);
+  assert.ok(r.content.includes(SHOP));
+  assert.ok(r.content.includes("https://www.example-shop.sk/doprava"));
+  assert.ok(!r.content.includes("JORAH-CANARY"));
+  assert.ok(!r.content.includes("made-up.example"));
+});
+
+test("#13: deep's first finds, before the spawn's result links it, still go up", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "lenses?" });
+  p.call("web_search", { query: "lens" }, searchResult("lens", [SHOP]), childCtx(22));
+  spawnDeep(p, 22);
+  assert.ok(send(p, `See ${SHOP}`).content.includes(SHOP));
+});
+
+test("#13: a URL main wrote in the brief, or deep wrote itself, never comes back as found", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "lenses?" });
+  spawnDeep(p, 23, `Check ${CANARY} please`);
+  p.call("web_search", { query: "x" }, searchResult("x", [CANARY]), childCtx(23));
+  const own = "https://attacker.example/q?d=JORAH-CANARY-2";
+  p.call("web_fetch", { url: "https://en.wikipedia.org/wiki/Contact_lens" }, fetchResult("https://en.wikipedia.org/wiki/Contact_lens", "ok"), childCtx(23));
+  p.call("web_search", { query: own }, searchResult(own, [own]), childCtx(23));
+  const r = send(p, `${CANARY} ${own}`);
+  assert.ok(!r.content.includes("JORAH-CANARY"));
+});
+
+test("#13: a found link with a credential-like parameter doesn't go up; another agent's finds don't either", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "lenses?" });
+  spawnDeep(p, 24);
+  const tokenLink = "https://shop.example/cart?session=abc123";
+  p.call("web_search", { query: "q" }, searchResult("q", [tokenLink]), childCtx(24));
+  assert.ok(!send(p, tokenLink).content.includes("session=abc123"));
+  p.call("sessions_spawn", { agentId: "background", task: "x" }, { details: { childSessionKey: "agent:background:subagent:25" } });
+  const bg = { agentId: "background", sessionKey: "agent:background:subagent:25", requester: { senderIsOwner: false } };
+  p.call("web_search", { query: "q" }, searchResult("q", ["https://bg-found.example/x"]), bg);
+  assert.ok(!send(p, "https://bg-found.example/x").content.includes("bg-found"));
+});
+
+test("#15: a long link a search returned may be fetched after outside text; a long link nobody gave may not", () => {
+  const p = loadPlugin();
+  p.taint();
+  const long = `https://www.example-shop.sk/p/acuvue?${"filter=a&".repeat(40)}x=1`;
+  assert.ok(long.length > 250 && long.length < 1000);
+  p.call("web_search", { query: "acuvue" }, searchResult("acuvue", [long]));
+  assert.equal(p.fetch(long), "allow");
+  assert.equal(p.fetch(`https://other.example/p?${"filter=b&".repeat(40)}`), "block");
+  const tokened = `https://www.example-shop.sk/p?${"a=1&".repeat(70)}token=x`;
+  p.call("web_search", { query: "t" }, searchResult("t", [tokened]));
+  assert.equal(p.fetch(tokened), "block");
+});
+
+test("#15: deep's browser only reads, in Jorah's own profile", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "lenses?" });
+  spawnDeep(p, 26);
+  p.call("web_search", { query: "lens" }, searchResult("lens", [SHOP]), childCtx(26));
+  const c = childCtx(26);
+  assert.equal(p.call("browser", { action: "navigate", url: SHOP }, undefined, c), "allow");
+  assert.equal(p.call("browser", { action: "text", targetId: "t1" }, undefined, c), "allow");
+  assert.equal(p.call("browser", { action: "snapshot", targetId: "t1" }, undefined, c), "allow");
+  for (const params of [{ action: "act", request: { kind: "click", ref: "e1" } }, { action: "act", request: { kind: "type", text: "x" } }, { action: "emulate", device: "iPhone 15" },
+    { action: "requests" }, { action: "navigate", url: SHOP, profile: "chrome" }, { action: "navigate", url: SHOP, target: "host" }, { action: "snapshot", dashboard: "d" },
+    { action: "navigate", url: CANARY }]) {
+    assert.equal(p.call("browser", params, undefined, c), "block", JSON.stringify(params));
+  }
+});

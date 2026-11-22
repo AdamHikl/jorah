@@ -14,7 +14,7 @@ export const VOICE_CARD_HINT = "Say 'yes, go ahead' or tap here.";
 // What a consult agent (matrix.consultAgents) may do: read, search, fetch. Nothing that writes,
 // runs a command, reads other chats or starts work.
 const CONSULT_CLASSES = new Set(["read", "search", "url"]);
-const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
+export const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
 
 export function classify(matrix, tool) {
   for (const cls of ["read", "taintRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
@@ -222,11 +222,15 @@ export function checkUrls(value, state, view, sessionKey, matrix, tool = "") {
     if (!state.tainted) continue;
     const n = normalise(raw, { keepHash: tool !== "web_fetch" });
     if (!n) return `${short(raw, 60)}: not a valid URL`;
+    const seen = view.hasSeen(sessionKey, n);
     if (!view.typedSeen?.(sessionKey, n)) {
-      const dirty = linkHygiene(raw, { maxChars: matrix.urlMaxChars ?? 250, credentialParams: matrix.urlCredentialParams });
+      // A link an outside reader returned (and the model didn't write, resultSeeds) may be longer:
+      // search-result shop links carry query parameters (issue #15). The credential checks stay.
+      const maxChars = seen ? (matrix.urlSeenMaxChars ?? 1000) : (matrix.urlMaxChars ?? 250);
+      const dirty = linkHygiene(raw, { maxChars, credentialParams: matrix.urlCredentialParams });
       if (dirty) return `${short(raw, 60)}: ${dirty}, and this chat has read outside text`;
     }
-    if (view.hasSeen(sessionKey, n) || onSiteAllowlist(n, matrix.siteAllowlist)) continue;
+    if (seen || onSiteAllowlist(n, matrix.siteAllowlist)) continue;
     return `${short(raw, 60)} wasn't in your message or an earlier result, and this chat has read outside text`;
   }
   return null;
@@ -304,6 +308,16 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
   // (config/pc/deep-consult.patch.json5); this holds even if the config drifts.
   if (isConsultAgent(matrix, agent) && !CONSULT_CLASSES.has(cls)) {
     return { verdict: "block", reason: `${agent} only thinks, reads and searches the web; ${tool} is main's or background's job` };
+  }
+  // A consult agent's browser only reads (issue #15: shops that render prices with JavaScript):
+  // open, navigate, snapshot, text and screenshot in Jorah's own headless profile. No clicking,
+  // typing, page settings or network log, no signed-in or host profile, no dashboards.
+  if (isConsultAgent(matrix, agent) && tool === "browser") {
+    const act = textOf(params.action ?? params.request?.action ?? "");
+    const allowed = matrix.consultBrowserActions ?? ["status", "start", "tabs", "open", "focus", "close", "navigate", "snapshot", "text", "screenshot"];
+    if (!allowed.includes(act)) return { verdict: "block", reason: `${agent}'s browser only reads pages (open, navigate, snapshot, text, screenshot); "${short(act, 20)}" isn't one` };
+    if (params.profile !== undefined && params.profile !== (matrix.consultBrowserProfile ?? "openclaw")) return { verdict: "block", reason: `${agent} may use only Jorah's own browser profile` };
+    if ((params.target !== undefined && params.target !== "sandbox") || params.node !== undefined || params.dashboard !== undefined) return { verdict: "block", reason: `${agent}'s browser stays in its sandbox` };
   }
 
   const cardOpts = { voice: state.voice, severity: cardSeverity(cls, params) };

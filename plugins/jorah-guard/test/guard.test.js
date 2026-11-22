@@ -440,3 +440,16 @@ test("subagents (list, wait, cancel) is a read; the log says how the sender was 
   assert.equal(last.channel, "telegram");
   assert.ok(!JSON.stringify(last).includes("owner-id"));
 });
+
+test("audit: two processes writing the same log extend one chain (P5.5 review fix 2)", async () => {
+  const { AuditLog, verifyChain } = await import("../lib/audit.js");
+  const { mkdtempSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const file = join(mkdtempSync(join(tmpdir(), "jorah-audit-")), "decisions.jsonl");
+  const a = new AuditLog(file);
+  const b = new AuditLog(file);
+  for (let i = 0; i < 10; i++) (i % 3 ? a : b).write({ tool: "t", verdict: "allow", n: i });
+  assert.equal(verifyChain(readFileSync(file, "utf8")), 0);
+  assert.equal(readFileSync(file, "utf8").trim().split("\n").length, 10);
+});

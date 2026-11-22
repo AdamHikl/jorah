@@ -8,11 +8,15 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, resultSeeds, sessionState, speaker, typedByOwner } from "./lib/policy.js";
-import { findUrls, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, writtenTokens } from "./lib/urls.js";
+import { decide, isConsultAgent, resultSeeds, sessionState, speaker, typedByOwner } from "./lib/policy.js";
+import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
 const PRIORITY = 1000;
+
+// Hygiene for a link going up from a consult child: verified finds may be long (search-result shop
+// links carry parameters), never carry a credential-like parameter or token.
+const upHygienic = (u, matrix) => linkHygiene(u, { maxChars: matrix.urlSeenMaxChars ?? 1000, credentialParams: matrix.urlCredentialParams }) === null;
 const REMOVED = "[link removed: not from a source you gave me]";
 
 function promptText(prompt) {
@@ -157,7 +161,10 @@ export default {
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
         // What the model writes after outside text may come back in a later result (a page that
         // echoes a search, the shared browser): remember it so it is never taken as seen.
-        if (taintedBefore && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
+        // A brief to a consult agent is recorded whatever the taint: what the child finds may go up
+        // to this chat (issue #13), so a URL main wrote in the brief must never come back as found.
+        const brief = tool === "sessions_spawn" && !!matrix && isConsultAgent(matrix, event?.params?.agentId);
+        if ((taintedBefore || brief) && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings, run);
@@ -192,10 +199,19 @@ export default {
         if (!matrix) matrix = loadMatrix(matrixFile);
         if (!refused && matrix) {
           const urls = resultSeeds({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, matrix, wrote: (cores) => state.wrote(key, cores) });
-          state.addSeen(key, urls.flatMap(seenForms));
+          const forms = urls.flatMap(seenForms);
+          state.addSeen(key, forms);
+          // A consult child's (deep's) own finds count as seen in the chat that asked it, so the
+          // shop and source links it reports survive the reply rule there (issue #13). Only links
+          // that pass link hygiene go up; deep's own written words were already left out above.
+          const parent = state.parentOf(key);
+          if (parent && isConsultAgent(matrix, ctx?.agentId)) state.addSeen(parent, forms.filter((u) => upHygienic(u, matrix)));
         }
         const child = event?.result?.details?.childSessionKey;
-        if (event?.toolName === "sessions_spawn" && typeof child === "string") state.linkChild(child, key);
+        if (event?.toolName === "sessions_spawn" && typeof child === "string") {
+          state.linkChild(child, key);
+          if (matrix && isConsultAgent(matrix, event?.params?.agentId)) state.addSeen(key, state.ownOutsideSeen(child).filter((u) => upHygienic(u, matrix)));
+        }
       } catch (e) {
         api.logger.warn(`jorah-guard: after_tool_call: ${e?.message}`);
       }

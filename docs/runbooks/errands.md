@@ -13,6 +13,8 @@ So the pieces are general. Lenses are the first use.
 | Research rules | `workspace-deep/AGENTS.md`, "Shopping research" | Shops that deliver to Slovakia, each page read the same day, sums through `price_compare`, product facts from the maker's page, a fitting or prescription said plainly |
 | Guard rules | `config/permission-matrix.json`, `errands` | The four reads are free; `supply_save` is free in Adam's clean typed chat and a card after outside text or by voice; `supply_forget` is always a card |
 
+**2026-11-22, issues #13 and #15 (source and unit tests only, not deployed):** links `deep` finds with `web_search`, `web_fetch` or its browser now count as seen in the chat that asked it, so shop links reach Telegram instead of "[link removed]" (still only links that pass link hygiene, never one the model wrote). A link a search returned may be up to 1000 characters after outside text (`urlSeenMaxChars`); a link nobody gave keeps the 250 limit. `deep` may use a read-only browser for shops that load prices with JavaScript (open, navigate, snapshot, text, screenshot; no clicking or typing): the guard rule ships with the guard, and `config/pc/deep-browser.patch.json5` adds `browser` to `deep`'s tools on Adam's yes, after the guard. Main saves to the supplies record before asking `deep`, so a clean chat needs no card for it.
+
 `lib/dates.js`, `lib/reminder.js` and `lib/prices.js` don't depend on OpenClaw or on supplies, so a later feature (a warranty or passport reminder, a subscription renewal, the calendar at M4) can reuse them as they are.
 
 ## How the dates work

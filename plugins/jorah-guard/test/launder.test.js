@@ -277,6 +277,8 @@ test("helpers: hygiene and written words", () => {
 
 // Issue #13: deep's finds reach main's Telegram reply; nothing model-written does.
 const SHOP = "https://www.example-shop.sk/kontaktne-sosovky/acuvue-oasys-6ks?utm_source=search&variant=8-6";
+// How it reaches Adam: the reply rule keeps it, and the tracking parameter is cut out.
+const SHOP_SENT = "https://www.example-shop.sk/kontaktne-sosovky/acuvue-oasys-6ks?variant=8-6";
 const childCtx = (n = 21) => ({ agentId: "deep", sessionKey: `agent:deep:subagent:${n}`, requester: { senderIsOwner: false } });
 const spawnDeep = (p, n = 21, task = "Compare lens shops in Slovakia") => {
   p.call("sessions_spawn", { agentId: "deep", task }, { details: { childSessionKey: `agent:deep:subagent:${n}` } });
@@ -291,7 +293,7 @@ test("#13: links deep found with web_search and web_fetch survive main's reply; 
   p.call("web_search", { query: "acuvue oasys 6 ks cena" }, searchResult("acuvue oasys 6 ks cena", [SHOP]), childCtx());
   p.call("web_fetch", { url: SHOP }, fetchResult(SHOP, "Price 21,90 EUR. Also see https://www.example-shop.sk/doprava"), childCtx());
   const r = send(p, `Best: ${SHOP} (shipping https://www.example-shop.sk/doprava). Or ${CANARY} and https://made-up.example/lens`);
-  assert.ok(r.content.includes(SHOP));
+  assert.ok(r.content.includes(SHOP_SENT));
   assert.ok(r.content.includes("https://www.example-shop.sk/doprava"));
   assert.ok(!r.content.includes("JORAH-CANARY"));
   assert.ok(!r.content.includes("made-up.example"));
@@ -302,7 +304,7 @@ test("#13: deep's first finds, before the spawn's result links it, still go up",
   p.hook("before_agent_run", { prompt: "lenses?" });
   p.call("web_search", { query: "lens" }, searchResult("lens", [SHOP]), childCtx(22));
   spawnDeep(p, 22);
-  assert.ok(send(p, `See ${SHOP}`).content.includes(SHOP));
+  assert.ok(send(p, `See ${SHOP}`).content.includes(SHOP_SENT));
 });
 
 test("#13: a URL main wrote in the brief, or deep wrote itself, never comes back as found", () => {

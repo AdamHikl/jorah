@@ -223,6 +223,18 @@ Expected:
 4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
    done and `~/work/.toolbox/notes/uv.md` exists.
 
+2026-11-22, later: Jorah then searched himself but couldn't raise a card for cowsay, an Ubuntu
+package, because the request needed its version, date and licence and he couldn't read them off
+web pages. For `kind: "apt"`, `toolbox_propose` now fills them in from Ubuntu's own records, the way
+it does from GitHub: Launchpad's publishing record for each binary package on the configured series
+and amd64 (newest published pocket; the epoch dropped from `version`; `released` is the newest
+publish date, so the 7-day rule uses Ubuntu's date) and the licence from the `Files: *` paragraph of
+that exact version's `debian/copyright` on changelogs.ubuntu.com (else "see Ubuntu's copyright
+file", with the link). Checked against the live services: cowsay 3.03+dfsg2-8 (COWSAY), ffmpeg
+6.1.1-3ubuntu5 (LGPL-2.1+), libxcb-cursor0 (MIT/X); openjdk-21-jre-headless's update of 2026-11-19
+was refused until 2026-11-26 by the 7-day rule. Run-written apt requests (the runner, in Python)
+don't have this lookup yet: they still need the fields.
+
 2026-11-22: asked to install video tools, Jorah asked Adam for an ffmpeg link instead of searching
 (the guard's log shows no search and nothing blocked). His rules now say to search for the
 publisher's release page himself, never ask Adam for a link, and use `kind: "apt"` for Ubuntu

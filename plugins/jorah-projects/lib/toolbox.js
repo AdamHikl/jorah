@@ -225,11 +225,116 @@ export function githubAsset(url) {
   return { owner, repo, tag, asset: unquote(match[4]), path: `/repos/${owner}/${repo}/releases/tags/${quote(tag)}`, list: `/repos/${owner}/${repo}/releases?per_page=10` };
 }
 
-/** checkManifest for a request as Jorah writes it: for a GitHub release asset, the fields GitHub fills in may be missing. */
+/** checkManifest for a request as Jorah writes it: for a GitHub release asset, the fields GitHub
+ * fills in may be missing; for Ubuntu packages, the fields Ubuntu's own records fill in. */
 export function checkRequest(m, today) {
+  if (isObj(m) && m.kind === "apt") {
+    // Check the rest with stand-ins for what Ubuntu's record fills in; applyUbuntu then sets them.
+    const standIn = { version: "0", released: "2000-01-01", release_page: "https://launchpad.net/", homepage: "https://launchpad.net/",
+      licence: "stand-in", licence_source: "stand-in" };
+    const probe = { ...m };
+    for (const k of UBUNTU_FILLS) if (!(k in probe)) probe[k] = standIn[k];
+    return checkManifest(probe, today);
+  }
   const url = isObj(m) && m.kind === "archive" ? m.url : null;
   return checkManifest(m, today, githubAsset(url) ? GITHUB_FILLS : []);
 }
+
+// ---- Ubuntu packages: Launchpad's publishing record and the package's own copyright file ------
+// For kind "apt" (2026-11-22, after Jorah couldn't read cowsay's version, date and licence off web
+// pages): Launchpad, Ubuntu's archive, says which version of each binary package is published for
+// the series on amd64 and when; changelogs.ubuntu.com serves that exact version's debian/copyright.
+export const LAUNCHPAD = "https://api.launchpad.net/1.0";
+export const UBUNTU_CHANGELOGS = "https://changelogs.ubuntu.com/changelogs/pool";
+export const UBUNTU_FILLS = ["version", "released", "release_page", "homepage", "licence", "licence_source"];
+const SERIES = /^[a-z]{3,20}$/;
+const COMPONENT = /^(main|restricted|universe|multiverse)$/;
+const DEB_VERSION = /^(?:\d+:)?[A-Za-z0-9][A-Za-z0-9.+~-]{0,79}$/;
+const SOURCE = /^[a-z0-9][a-z0-9+.-]{1,62}$/;
+export const noEpoch = (v) => String(v).replace(/^\d+:/, "");
+
+export function launchpadBinaries(series, pkg) {
+  const arch = `${LAUNCHPAD}/ubuntu/${series}/amd64`;
+  return `${LAUNCHPAD}/ubuntu/+archive/primary?ws.op=getPublishedBinaries&binary_name=${encodeURIComponent(pkg)}&exact_match=true`
+    + `&distro_arch_series=${encodeURIComponent(arch)}&status=Published`;
+}
+
+/** The newest published version of one binary package from Launchpad's answer, or null. */
+export function newestBinary(answer, pkg) {
+  const entries = (isObj(answer) && Array.isArray(answer.entries) ? answer.entries : []).filter((e) => isObj(e)
+    && e.binary_package_name === pkg && e.status === "Published" && typeof e.binary_package_version === "string" && DEB_VERSION.test(e.binary_package_version)
+    && typeof e.date_published === "string" && !Number.isNaN(Date.parse(e.date_published))
+    && typeof e.source_package_name === "string" && SOURCE.test(e.source_package_name)
+    && typeof e.source_package_version === "string" && DEB_VERSION.test(e.source_package_version)
+    && typeof e.component_name === "string" && COMPONENT.test(e.component_name));
+  if (!entries.length) return null;
+  const e = entries.sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published))[0];
+  return { name: pkg, version: e.binary_package_version, published: new Date(Date.parse(e.date_published)).toISOString(), pocket: String(e.pocket ?? ""),
+    component: e.component_name, source: e.source_package_name, sourceVersion: e.source_package_version };
+}
+
+export function copyrightUrl(b) {
+  const prefix = b.source.startsWith("lib") ? b.source.slice(0, 4) : b.source[0];
+  return `${UBUNTU_CHANGELOGS}/${b.component}/${prefix}/${b.source}/${b.source}_${noEpoch(b.sourceVersion)}/copyright`;
+}
+
+/** The licence of a machine-readable (DEP-5) copyright file's "Files: *" paragraph, or null. */
+export function dep5Licence(text) {
+  if (typeof text !== "string" || !/^Format:\s*https?:\/\/\S*copyright-format/m.test(text)) return null;
+  for (const para of text.replace(/\r/g, "").split(/\n\s*\n/)) {
+    if (!/^Files:\s*\*\s*$/m.test(para)) continue;
+    const m = /^License:[ \t]*(\S[^\n]*)$/m.exec(para);
+    if (!m) return null;
+    const v = m[1].replace(/\s+/g, " ").trim();
+    if (control(v)) return null;
+    return v.length > MAX_LICENCE ? `${v.slice(0, MAX_LICENCE - 1)}…` : v;
+  }
+  return null;
+}
+
+/** Ubuntu's record fills in and checks an apt request: {manifest, record, problems}. `found` has one
+ * newestBinary (or null) per package, in order; `copyright` is {url, text} for the first. */
+export function applyUbuntu(m, series, found, copyright) {
+  const problems = [];
+  const out = { ...m };
+  const record = { series, packages: [], copyright: copyright?.url ?? null, filled: [] };
+  (m.packages ?? []).forEach((pkg, i) => {
+    const b = found[i];
+    if (!b) problems.push(`packages: Ubuntu ${series} publishes no package named ${String(pkg).slice(0, 63)} for amd64 (check the binary package's exact name)`);
+    else record.packages.push({ name: b.name, version: b.version, pocket: b.pocket, published: b.published });
+  });
+  if (problems.length) return { manifest: out, record, problems };
+  const main = found[0];
+  const version = noEpoch(main.version);
+  if (!("version" in m)) {
+    out.version = version.slice(0, 30);
+    record.filled.push("version");
+  } else if (m.version !== version && m.version !== main.version) {
+    problems.push(`version: Ubuntu ${series} publishes ${main.name} ${main.version}, which apt installs; leave version out and it is filled in`);
+  }
+  const day = found.map((b) => b.published.slice(0, 10)).sort().pop();
+  if (!("released" in m)) {
+    out.released = day;
+    record.filled.push("released");
+  } else if (m.released !== day) {
+    problems.push(`released: Ubuntu published the newest of these packages on ${day}, not ${m.released}; leave released out and it is filled in`);
+  }
+  const page = `https://launchpad.net/ubuntu/+source/${main.source}/${encodeURIComponent(main.sourceVersion)}`;
+  for (const k of ["release_page", "homepage"]) {
+    if (!(k in m)) {
+      out[k] = page;
+      record.filled.push(k);
+    }
+  }
+  // The licence Adam accepts is the package's own, from Ubuntu's copy of its copyright file.
+  const licence = dep5Licence(copyright?.text);
+  out.licence = licence ?? "see Ubuntu's copyright file";
+  out.licence_source = copyright?.url ?? copyrightUrl(main);
+  record.filled.push("licence", "licence_source");
+  record.licenceFrom = licence ? "the package's copyright file" : "not machine-readable; see the copyright file";
+  return { manifest: out, record, problems };
+}
+export const isSeries = (s) => typeof s === "string" && SERIES.test(s);
 
 export const downloadCap = (mb) => Math.trunc(mb * 1.1 * MIB) + 5 * MIB;
 

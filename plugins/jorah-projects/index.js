@@ -34,7 +34,7 @@ import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUES
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
 import { applyGithub, fillSizes, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
-  readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
+  applyUbuntu, copyrightUrl, isSeries, launchpadBinaries, newestBinary, readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
 import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
@@ -66,6 +66,7 @@ export function settings(cfg = {}) {
     newRepoScript: cfg.newRepoScript ?? "scripts/github/new-project-repo.sh",
     toolboxDir: cfg.toolboxDir ?? "/opt/jorah-toolbox",
     toolboxVar: cfg.toolboxVar ?? "/var/lib/jorah-toolbox",
+    ubuntuSeries: isSeries(cfg.ubuntuSeries) ? cfg.ubuntuSeries : "noble", // the PC's distro (Ubuntu 24.04)
   };
 }
 
@@ -99,6 +100,41 @@ const POLL_MS = 2_000;
 const CLOCK_SLACK_MS = 5_000;
 const GITHUB_MAX_BYTES = 4 << 20;
 const GITHUB_CACHE_MS = 10 * 60_000;
+
+/** Ubuntu's record for an apt request: {ok: true, found, copyright} or {ok: false, reason}. One
+ * Launchpad lookup per package (at most 8), then the first package's copyright file. A missing
+ * copyright file isn't fatal: the card then points at it. */
+export async function ubuntuRecord(fetchImpl, series, packages) {
+  const get = async (url, max) => {
+    const res = await fetchImpl(url, { headers: { "user-agent": "jorah-toolbox/1", accept: "application/json, text/plain" }, redirect: "follow", signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) });
+    if (res.status !== 200) return { status: res.status, text: null };
+    const text = await res.text();
+    return { status: 200, text: text.length > max ? null : text };
+  };
+  const found = [];
+  for (const pkg of packages.slice(0, 8)) {
+    let answer;
+    try {
+      const r = await get(launchpadBinaries(series, pkg), GITHUB_MAX_BYTES);
+      if (r.status !== 200 || r.text === null) return { ok: false, reason: `Launchpad answered ${r.status} for ${pkg}; try again later` };
+      answer = JSON.parse(r.text);
+    } catch (e) {
+      return { ok: false, reason: `Launchpad (Ubuntu's archive) didn't answer (${e?.name ?? "error"}); try again in a few minutes` };
+    }
+    found.push(newestBinary(answer, pkg));
+  }
+  let copyright = null;
+  if (found[0]) {
+    const url = copyrightUrl(found[0]);
+    try {
+      const r = await get(url, 1 << 20);
+      copyright = { url, text: r.text };
+    } catch {
+      copyright = { url, text: null };
+    }
+  }
+  return { ok: true, found, copyright };
+}
 
 /** GitHub's answer for a release (or, with `path` = where.list, its list of releases): {ok: true,
  * release, at} or {ok: false, final, reason}. `final`: the request itself is wrong (no such
@@ -747,7 +783,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   api.registerTool({
     name: "toolbox_propose",
     label: "Propose a tool for the toolbox",
-    description: "Propose one tool for Jorah's toolbox. manifest, contract jorah-tool-v1: contract \"jorah-tool-v1\"; name (lower-case, dashes); title; version (released at least 7 days ago); kind \"archive\" or \"apt\"; purpose (what you will do with it, a sentence Adam can read; the learning run's task); homepage; release_page; licence (SPDX if there is one) and licence_source (the publisher's page stating it); released (YYYY-MM-DD); sandbox {\"network\": []} (tools run offline); smoke (a command line as a list, starting with one of its commands, e.g. [\"uv\", \"--version\"]); optional smoke_expect (text its output contains) and for_project. An archive also has url (https, the x86_64 Linux file), sha256 (the publisher's checksum), format (tar, zip, appimage or file), commands ({command: its path after strip removes the leading folders; for an archive holding uv-x86_64-unknown-linux-gnu/uv with strip 1, {\"uv\": \"uv\"}; an AppImage is unpacked, so point each command at its program inside the image, usually usr/bin/<program> (FreeCAD's headless one is usr/bin/freecadcmd); never at the AppImage's file name, and not at AppRun, which starts the image's main program, often a window that can't open here}), optional strip (leading folders to drop, 0-3) and env. An apt request has packages (Ubuntu package names) instead. Never estimate sizes: leave installed_mb out and a limit is set from the download size. For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) also leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256 and release date; give download_mb only if the publisher states it, otherwise the installer measures it (up to 1024 MB). A refusal names each field to fix. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
+    description: "Propose one tool for Jorah's toolbox. manifest, contract jorah-tool-v1: contract \"jorah-tool-v1\"; name (lower-case, dashes); title; version (released at least 7 days ago); kind \"archive\" or \"apt\"; purpose (what you will do with it, a sentence Adam can read; the learning run's task); homepage; release_page; licence (SPDX if there is one) and licence_source (the publisher's page stating it); released (YYYY-MM-DD); sandbox {\"network\": []} (tools run offline); smoke (a command line as a list, starting with one of its commands, e.g. [\"uv\", \"--version\"]); optional smoke_expect (text its output contains) and for_project. An archive also has url (https, the x86_64 Linux file), sha256 (the publisher's checksum), format (tar, zip, appimage or file), commands ({command: its path after strip removes the leading folders; for an archive holding uv-x86_64-unknown-linux-gnu/uv with strip 1, {\"uv\": \"uv\"}; an AppImage is unpacked, so point each command at its program inside the image, usually usr/bin/<program> (FreeCAD's headless one is usr/bin/freecadcmd); never at the AppImage's file name, and not at AppRun, which starts the image's main program, often a window that can't open here}), optional strip (leading folders to drop, 0-3) and env. An apt request has packages (Ubuntu package names) instead, and leaves version, released, release_page, homepage, licence and licence_source out: this tool reads them from Ubuntu's archive (Launchpad) and the package's own copyright file, so never look them up or ask Adam for them. Never estimate sizes: leave installed_mb out and a limit is set from the download size. For a GitHub release asset URL (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>) also leave sha256, released and download_mb out: this tool reads them from GitHub's API itself and refuses drafts, pre-releases and missing assets. Don't look for checksum pages. For any other host, give the publisher's SHA-256 and release date; give download_mb only if the publisher states it, otherwise the installer measures it (up to 1024 MB). A refusal names each field to fix. Writes an inert proposal; nothing installs until Adam approves the card toolbox_install shows. Returns the exact fields to pass to toolbox_install. Prefer a project run for research-heavy requests: it writes the same request in ~/work/.toolbox/requests/.",
     parameters: { type: "object", additionalProperties: false, required: ["manifest"], properties: { manifest: { type: "object", description: "The jorah-tool-v1 request" } } },
     async execute(id, p) {
       if (frozen(s.guardStateDir)) return refuse("Jorah is frozen (/jorah-freeze), so no tool is proposed until Adam clears it");
@@ -760,7 +796,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       const dir = join(s.toolboxVar, "proposals");
       if (!existsSync(dir)) return unavailable("the toolbox isn't installed on this machine yet (scripts/pc/install-toolbox.sh)");
       const have = readToolbox(s).installed[request.name];
-      if (have?.version === request.version && !smokeFailed(request.name, have.id)) return refuse(`${request.name} ${request.version} is installed already: see toolbox_list`);
+      if (have && have.version === request.version && !smokeFailed(request.name, have.id)) return refuse(`${request.name} ${request.version} is installed already: see toolbox_list`);
       let m = request;
       let github = null;
       if (where) {
@@ -770,6 +806,17 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         if (r.problems.length) return refuse("GitHub's record of the release doesn't fit the request", { problems: r.problems, ...(await older(where, r.problems)) });
         m = r.manifest;
         github = { ...r.record, checkedAt: got.at };
+      }
+      let ubuntu = null;
+      if (request.kind === "apt") {
+        const got = await ubuntuRecord(fetchImpl, s.ubuntuSeries, request.packages ?? []);
+        if (!got.ok) return unavailable(got.reason);
+        const r = applyUbuntu(m, s.ubuntuSeries, got.found, got.copyright);
+        if (r.problems.length) return refuse("Ubuntu's record of the packages doesn't fit the request", { problems: r.problems });
+        m = r.manifest;
+        ubuntu = { ...r.record, checkedAt: now().toISOString() };
+        const have = readToolbox(s).installed[m.name];
+        if (have && have.version === m.version && !smokeFailed(m.name, have.id)) return refuse(`${m.name} ${m.version} is installed already: see toolbox_list`);
       }
       const sized = fillSizes(m);
       m = sized.manifest;
@@ -785,7 +832,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       let fresh;
       try {
         fresh = writeFresh(dir, `${pid}.json`, { v: 1, id: pid, at: now().toISOString(), from: { via: caller(id).via }, manifest: m, digest: digest(m), card: fields,
-          ...(github ? { github } : {}) });
+          ...(github ? { github } : {}), ...(ubuntu ? { ubuntu } : {}) });
       } catch (e) {
         return unavailable(`the proposal couldn't be written: ${firstLine(e)}`);
       }
@@ -799,10 +846,13 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         github: { filled_in: github.filled, published_at: github.publishedAt, asset_bytes: github.assetBytes, digest: github.digest ? "GitHub's own" : "none on GitHub: the hash is the one you gave",
           immutable: github.immutable },
       } : {};
+      const fromUbuntu = ubuntu ? {
+        ubuntu: { series: ubuntu.series, filled_in: ubuntu.filled, packages: ubuntu.packages, licence_from: ubuntu.licenceFrom },
+      } : {};
       return reply({
-        status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub, ...limits,
+        status: fresh ? "proposed" : "already proposed", id: pid, card: fields, ...fromGithub, ...fromUbuntu, ...limits,
         ...(replaced.length ? { replaced, replaced_note: "older proposals of this tool and version that waited for a card are gone; this one replaces them" } : {}),
-        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""} In a turn Adam started (typed or by voice), call toolbox_install with exactly these card fields now, in this same turn, whether he asked for the tool or you or a run need it for his work: the card is his yes, so don't wait for a typed one. From a heartbeat or an automation, don't: nobody is there to answer the card; mention it at his next message.`,
+        next: `Tell Adam what it is, why, its licence and size, and that it runs offline.${github ? ` Say the hash and the date are GitHub's own record of the release${github.immutable ? ", which GitHub marks immutable (its files can't be replaced)" : ""}.` : ""}${ubuntu ? " Say the version, the date and the licence are Ubuntu's own record (Launchpad and the package's copyright file), and that the install ends with one root command Adam runs." : ""} In a turn Adam started (typed or by voice), call toolbox_install with exactly these card fields now, in this same turn, whether he asked for the tool or you or a run need it for his work: the card is his yes, so don't wait for a typed one. From a heartbeat or an automation, don't: nobody is there to answer the card; mention it at his next message.`,
       });
     },
   });

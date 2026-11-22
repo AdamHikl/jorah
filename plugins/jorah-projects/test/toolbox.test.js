@@ -167,7 +167,8 @@ test("toolbox_list: installed tools with smoke test and learning, waiting propos
   } }));
   writeFileSync(join(fx.var, "tested", "uv.json"), JSON.stringify({ name: "uv", id: "tb-aaaaaaaaaa", ok: true, exit: 0, output: "uv 0.9.18", learn: { run: "r1", outcome: "ok", notes: true } }));
   const java = example("good", "java.json");
-  const { id: javaId } = await call("toolbox_propose", { manifest: java });
+  const javaId = proposalId(java); // as a run writes it: no Launchpad lookup in this test
+  writeFileSync(join(fx.var, "proposals", `${javaId}.json`), JSON.stringify({ v: 1, id: javaId, from: { via: "run" }, manifest: java }));
   const { id: orcaId } = await call("toolbox_propose", { manifest: example("good", "orca-slicer.json") });
   writeFileSync(join(fx.var, "results", `${javaId}.json`), JSON.stringify({ id: javaId, name: "java", version: java.version, action: "install", status: "needs-root",
     at: "2026-11-17T10:00:00+00:00", rootCommand: `bash /opt/jorah/scripts/pc/toolbox-apt.sh ${javaId}` }));
@@ -453,4 +454,75 @@ test("toolbox_install: no result in time is still approved, with a note; a faile
   assert.equal(again.status, "proposed", JSON.stringify(again));
   writeJson(join(fx.var, "tested", "uv.json"), { id, ok: true });
   assert.equal((await call("toolbox_propose", { manifest: { ...m, commands: { uv: "uv2" } } })).status, "refused");
+});
+
+// ---- Ubuntu packages: Launchpad and the copyright file fill the request in (2026-11-22) ----------
+const COWSAY_COPYRIGHT = `Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: cowsay
+
+Files: *
+Copyright: 1999-2000 Tony Monroe
+License: COWSAY
+
+Files: debian/*
+Copyright: 2019 Someone
+License: GPL
+`;
+function fakeUbuntu({ entries, copyright = COWSAY_COPYRIGHT, status = 200 } = {}) {
+  const calls = [];
+  const fn = async (url) => {
+    calls.push(url);
+    if (url.startsWith("https://api.launchpad.net/")) {
+      const name = new URL(url).searchParams.get("binary_name");
+      const body = { entries: (entries ?? {})[name] ?? [] };
+      return { status, url, headers: new Headers(), text: async () => JSON.stringify(body) };
+    }
+    if (url.startsWith("https://changelogs.ubuntu.com/") && copyright !== null) return { status: 200, url, headers: new Headers(), text: async () => copyright };
+    return { status: 404, url, headers: new Headers(), text: async () => "" };
+  };
+  fn.calls = calls;
+  return fn;
+}
+const cowsayEntry = (over = {}) => ({ binary_package_name: "cowsay", binary_package_version: "3.03+dfsg2-8", status: "Published", pocket: "Release",
+  component_name: "universe", date_published: "2023-10-23T22:30:24.014979+00:00", source_package_name: "cowsay", source_package_version: "3.03+dfsg2-8", ...over });
+const cowsayRequest = () => ({ contract: "jorah-tool-v1", name: "cowsay", title: "cowsay (talking cow)", kind: "apt", purpose: "A tiny Ubuntu package to test the toolbox's apt path.",
+  packages: ["cowsay"], sandbox: { network: [] }, smoke: ["cowsay", "moo"] });
+
+test("toolbox_propose fills an Ubuntu package's version, date and licence from Launchpad and its copyright file", async () => {
+  const fx = fixture();
+  const fetch = fakeUbuntu({ entries: { cowsay: [cowsayEntry({ pocket: "Release" })] } });
+  const call = load(fx, { fetch });
+  const r = await call("toolbox_propose", { manifest: cowsayRequest() });
+  assert.equal(r.status, "proposed", JSON.stringify(r));
+  assert.equal(r.card.version, "3.03+dfsg2-8");
+  assert.equal(r.card.released, "2023-10-23");
+  assert.equal(r.card.licence, "COWSAY");
+  assert.equal(r.card.source, "Ubuntu archive: cowsay");
+  assert.deepEqual(r.ubuntu.filled_in, ["version", "released", "release_page", "homepage", "licence", "licence_source"]);
+  const saved = JSON.parse(readFileSync(join(fx.var, "proposals", `${r.id}.json`), "utf8"));
+  assert.equal(saved.manifest.licence_source, "https://changelogs.ubuntu.com/changelogs/pool/universe/c/cowsay/cowsay_3.03+dfsg2-8/copyright");
+  assert.equal(saved.manifest.release_page, "https://launchpad.net/ubuntu/+source/cowsay/3.03%2Bdfsg2-8");
+  assert.ok(fetch.calls[0].includes("distro_arch_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fnoble%2Famd64"), fetch.calls[0]);
+  assert.match(r.next, /Ubuntu's own record/);
+});
+
+test("toolbox_propose for Ubuntu: the newest pocket wins, an epoch is dropped, and an unknown package or a too-new one is refused", async () => {
+  const newer = cowsayEntry({ binary_package_version: "1:3.03+dfsg2-8ubuntu1", pocket: "Updates", date_published: "2026-11-01T10:00:00Z" });
+  let call = load(fixture(), { fetch: fakeUbuntu({ entries: { cowsay: [cowsayEntry(), newer] } }) });
+  const r = await call("toolbox_propose", { manifest: cowsayRequest() });
+  assert.equal(r.card.version, "3.03+dfsg2-8ubuntu1");
+  assert.equal(r.card.released, "2026-11-01");
+  call = load(fixture(), { fetch: fakeUbuntu({ entries: {} }) });
+  const none = await call("toolbox_propose", { manifest: cowsayRequest() });
+  assert.equal(none.status, "refused");
+  assert.match(none.problems.join(" "), /publishes no package named cowsay/);
+  call = load(fixture(), { fetch: fakeUbuntu({ entries: { cowsay: [cowsayEntry({ date_published: "2026-11-15T10:00:00Z" })] } }) });
+  const fresh = await call("toolbox_propose", { manifest: cowsayRequest() });
+  assert.equal(fresh.status, "refused");
+  assert.match(fresh.problems.join(" "), /less than 7 days ago/);
+  call = load(fixture(), { fetch: fakeUbuntu({ entries: { cowsay: [cowsayEntry()] }, copyright: "no machine-readable format here" }) });
+  const plain = await call("toolbox_propose", { manifest: cowsayRequest() });
+  assert.equal(plain.card.licence, "see Ubuntu's copyright file");
+  call = load(fixture(), { fetch: fakeUbuntu({ status: 503 }) });
+  assert.equal((await call("toolbox_propose", { manifest: cowsayRequest() })).status, "unavailable");
 });

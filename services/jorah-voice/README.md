@@ -66,6 +66,15 @@ Kokoro silently drops any word missing from its word list, and the list lacks na
 
 The mic is open only while `mac-ear` runs, and its terminal shows `● MIC OPEN`. It closes on "goodbye", after 60 s of quiet, at 30 minutes in any case, on Ctrl-C, or if the connection drops.
 
+## Session
+
+By default, spoken turns go to `agent:main:main` (the same session Telegram uses), so clients that send no `session_key` (`mac-ear`, the iPhone path, older HUDs) behave unchanged.
+
+- A client may pass `"session_key"` in `hello` or switch mid-session with `{"type":"session","session_key":S}` (answered with `{"type":"session","session_key":S,"ok":B}`).
+- Allowed keys are `agent:main:main` and `agent:main:dashboard:<uuid>` (lower-case hex UUID with dashes, exact match). Anything else or a missing key in `hello` defaults to `agent:main:main`; a disallowed key in `session` is refused (`ok: false`) and the current key stays unchanged.
+- A turn already running keeps the key it started with (both for the Gateway request and approval-card matching), and the Gateway warm-up always uses `agent:main:voice-warmup`.
+- Session key UUIDs are never logged (logs only say `session: main`, `session: hud-conversation`, or `session: refused`).
+
 ## Confirming cards by voice
 
 When an action during a voice turn raises an approval card (`plugin.approval.requested` matching this session key, `turnSourceChannel: "voice"`, and the active turn window), `jorah-voice` forwards the card to the HUD over the voice WebSocket (`card`) and speaks the guard's question once Jorah's current reply finishes.

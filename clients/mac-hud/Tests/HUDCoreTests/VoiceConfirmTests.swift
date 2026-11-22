@@ -83,6 +83,17 @@ final class VoiceConfirmTests: XCTestCase {
         XCTAssertNil(VoiceMessageParsing.parse(#"{"type":"phrase_status","set":1,"words":3,"locked":false}"#))
         XCTAssertEqual(VoiceMessageParsing.parse(#"{"type":"something_new","x":1}"#), .unknown)
         XCTAssertNil(VoiceMessageParsing.parse("not json"))
+
+        // Session switch reply parsing.
+        XCTAssertEqual(
+            VoiceMessageParsing.parse(#"{"type":"session","session_key":"agent:main:main","ok":true}"#),
+            .session(ok: true)
+        )
+        XCTAssertEqual(
+            VoiceMessageParsing.parse(#"{"type":"session","session_key":null,"ok":false}"#),
+            .session(ok: false)
+        )
+        XCTAssertNil(VoiceMessageParsing.parse(#"{"type":"session","session_key":"agent:main:main","ok":"yes"}"#))
     }
 
     func testPhraseStateSummaryVariants() {
@@ -130,6 +141,23 @@ final class VoiceConfirmTests: XCTestCase {
         XCTAssertNil(VoiceMessageEncoding.phraseSet(phrase: "   "))
         XCTAssertEqual(VoiceMessageEncoding.phraseStatusRequest()["type"] as? String, "phrase_status_request")
         XCTAssertEqual(VoiceMessageEncoding.phraseClear()["type"] as? String, "phrase_clear")
+
+        let dash = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+        let voiceHelloWithKey = VoiceMessageEncoding.hello(token: "tok", bargeIn: false, followUp: true, sessionKey: dash)
+        XCTAssertEqual(voiceHelloWithKey?["type"] as? String, "hello")
+        XCTAssertEqual(voiceHelloWithKey?["token"] as? String, "tok")
+        XCTAssertEqual(voiceHelloWithKey?["barge_in"] as? Bool, false)
+        XCTAssertEqual(voiceHelloWithKey?["follow_up"] as? Bool, true)
+        XCTAssertEqual(voiceHelloWithKey?["session_key"] as? String, dash)
+
+        let voiceHelloNoKey = VoiceMessageEncoding.hello(token: "tok", bargeIn: false, followUp: false, sessionKey: nil)
+        XCTAssertNil(voiceHelloNoKey?["session_key"])
+        XCTAssertNil(VoiceMessageEncoding.hello(token: "", bargeIn: false, followUp: false, sessionKey: dash))
+
+        let sessionMsg = VoiceMessageEncoding.session(key: dash)
+        XCTAssertEqual(sessionMsg?["type"] as? String, "session")
+        XCTAssertEqual(sessionMsg?["session_key"] as? String, dash)
+        XCTAssertNil(VoiceMessageEncoding.session(key: ""))
     }
 
     func testDedupeWithGatewayList() {

@@ -8,6 +8,8 @@ import sys
 import time
 from array import array
 
+from .brain import SESSION_KEY
+
 STOP_SPEECH = {"stop", "stop it", "be quiet", "quiet", "enough"}
 CANCEL = {"cancel", "cancel that", "never mind", "nevermind"}
 END_SESSION = {"goodbye", "goodbye jorah", "bye jorah", "stop listening", "go to sleep"}
@@ -458,6 +460,24 @@ def percentile(values, share):
     return ordered[max(0, math.ceil(share * len(ordered)) - 1)]
 
 
+_DASHBOARD_SESSION_RE = re.compile(
+    r"agent:main:dashboard:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+
+
+def resolve_session_key(key):
+    """Return `key` if it is `agent:main:main` or `agent:main:dashboard:<uuid>` (lower-case hex),
+    otherwise `agent:main:main`."""
+    if isinstance(key, str) and (key == SESSION_KEY or _DASHBOARD_SESSION_RE.fullmatch(key)):
+        return key
+    return SESSION_KEY
+
+
+def session_log_label(key):
+    """Safe log label for a resolved session key; never includes any UUID."""
+    return "main" if key == SESSION_KEY else "hud-conversation"
+
+
 def parse_hello(message, expected_token):
     """Check a client's first message. Returns its options, or None if it isn't allowed in."""
     if not isinstance(message, str):
@@ -487,4 +507,5 @@ def parse_hello(message, expected_token):
         # session closed from here for a dropped line, retries, then falls back to Apple speech
         # and the system voice (2026-11-11). Windows and goodbyes put it on standby instead.
         "client_ends": hello.get("client_ends") is True,
+        "session_key": resolve_session_key(hello.get("session_key")),
     }

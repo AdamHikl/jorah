@@ -128,6 +128,7 @@ public enum VoiceServerMessage: Equatable, Sendable {
     case cardClosed(id: String, outcome: String)
     case phraseStatus(PhraseStatus)
     case phraseError(reason: String)
+    case session(ok: Bool)
     case unknown
 }
 
@@ -186,6 +187,10 @@ public enum VoiceMessageParsing {
             guard !reason.isEmpty else { return nil }
             return .phraseError(reason: reason)
 
+        case "session":
+            guard let ok = bool(dictionary["ok"]) else { return nil }
+            return .session(ok: ok)
+
         default:
             return .unknown
         }
@@ -239,6 +244,30 @@ public enum VoiceMessageEncoding {
     public static func settingsHello(token: String) -> [String: Any]? {
         guard !token.isEmpty else { return nil }
         return ["type": "hello", "token": token, "purpose": "settings"]
+    }
+
+    public static func hello(
+        token: String,
+        bargeIn: Bool,
+        followUp: Bool,
+        sessionKey: String? = nil
+    ) -> [String: Any]? {
+        guard !token.isEmpty else { return nil }
+        var payload: [String: Any] = [
+            "type": "hello",
+            "token": token,
+            "barge_in": bargeIn,
+            "follow_up": followUp,
+        ]
+        if let sessionKey, !sessionKey.isEmpty {
+            payload["session_key"] = sessionKey
+        }
+        return payload
+    }
+
+    public static func session(key: String) -> [String: Any]? {
+        guard !key.isEmpty else { return nil }
+        return ["type": "session", "session_key": key]
     }
 }
 

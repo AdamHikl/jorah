@@ -12,7 +12,7 @@ from .approvals import ALLOWED_DECISIONS, ApprovalsError
 from .brain import BrainError, SESSION_KEY
 from .core import (FollowUp, IdleClock, LastFullMessage, MIC_RATE, OverviewSplit, Resampler,
                    SentenceChunker, TurnEnd, clean_for_speech, classify, join_waiting, percentile,
-                   speakable_sentences)
+                   resolve_session_key, session_log_label, speakable_sentences)
 from .identity import Verdict
 
 BLOCK_SECONDS = 0.1
@@ -147,10 +147,11 @@ class VoiceSession:
         self._phrase_store = phrase_store
         self._approvals = approvals
         self._voice_confirm = bool(voice_confirm)
-        self._session_key = session_key
+        self._session_key = resolve_session_key(session_key)
         self._wall_clock = wall_clock
 
         self._turn_in_flight = False
+        self._turn_session_key = None
         self._turn_started_ms = None
         self._turn_ended_ms = None
         self._pending_card = None
@@ -388,7 +389,7 @@ class VoiceSession:
         req = record.get("request")
         if not isinstance(req, dict):
             return False
-        if req.get("sessionKey") != self._session_key:
+        if self._turn_session_key is None or req.get("sessionKey") != self._turn_session_key:
             return False
         if req.get("turnSourceChannel") != "voice":
             return False
@@ -497,6 +498,18 @@ class VoiceSession:
             await self._state("listening")
         except asyncio.CancelledError:
             pass
+
+    async def handle_session_message(self, msg):
+        if self.closed:
+            return
+        raw_key = msg.get("session_key")
+        if isinstance(raw_key, str) and resolve_session_key(raw_key) == raw_key:
+            self._session_key = raw_key
+            self._log(f"session: {session_log_label(raw_key)}")
+            await self._send_json({"type": "session", "session_key": raw_key, "ok": True})
+        else:
+            self._log("session: refused")
+            await self._send_json({"type": "session", "session_key": raw_key, "ok": False})
 
     async def handle_card_decision(self, msg):
         card_id = msg.get("id")
@@ -705,6 +718,7 @@ class VoiceSession:
         self._turn = asyncio.create_task(self._run_turn(text, marks, verdict=verdict, phrase_state=phrase_state))
 
     async def _run_turn(self, text, marks=None, *, verdict=None, phrase_state="none"):
+        turn_key = self._session_key
         await self._state("thinking")
         heard_at = self._clock()
         if phrase_state == "error":
@@ -757,10 +771,11 @@ class VoiceSession:
             if verdict.bucket is not None:
                 marks["bucket"] = verdict.bucket
         self._turn_in_flight = True
+        self._turn_session_key = turn_key
         self._turn_started_ms = self._wall_clock() * 1000.0
         self._turn_ended_ms = None
         try:
-            reply = await self._reply(text, heard_at, marks)
+            reply = await self._reply(text, heard_at, marks, session_key=turn_key)
         finally:
             self._turn_in_flight = False
             self._turn_ended_ms = self._wall_clock() * 1000.0
@@ -799,7 +814,7 @@ class VoiceSession:
         self._replied("")
         await self._state("listening")
 
-    async def _reply(self, text, heard_at, marks=None):
+    async def _reply(self, text, heard_at, marks=None, *, session_key=None):
         """Stream Jorah's answer and speak it. Fills `marks` with seconds from `heard_at`."""
         marks = {} if marks is None else marks
         sentences = asyncio.Queue()
@@ -836,7 +851,7 @@ class VoiceSession:
         waiting = asyncio.create_task(filler()) if self._filler_seconds else None
         try:
             first_token = None
-            async for delta in self._stream(text):
+            async for delta in self._stream(text, session_key=session_key):
                 if first_token is None:
                     got_text.set()
                     if waiting:
@@ -888,14 +903,15 @@ class VoiceSession:
             await asyncio.gather(speaking, return_exceptions=True)
             raise
 
-    async def _stream(self, text):
+    async def _stream(self, text, *, session_key=None):
         """Run the blocking brain call on a thread and hand its text to this loop."""
         loop = asyncio.get_running_loop()
         items = asyncio.Queue()
+        key = self._session_key if session_key is None else session_key
 
         def pump():
             try:
-                for delta in self._brain.stream(text):
+                for delta in self._brain.stream(text, session_key=key):
                     loop.call_soon_threadsafe(items.put_nowait, ("text", delta))
                 loop.call_soon_threadsafe(items.put_nowait, ("end", None))
             except Exception as error:

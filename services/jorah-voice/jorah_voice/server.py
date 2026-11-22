@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from . import models
-from .core import LastFullMessage, TurnEnd, parse_hello
+from .core import LastFullMessage, TurnEnd, parse_hello, session_log_label
 from .identity import CENTROIDS_FILE, DEFAULT_VOICEPRINT_DIR, THRESHOLDS_FILE, SherpaExtractor, SpeakerCheck
 from .passphrase import PhraseStore
 
@@ -208,10 +208,11 @@ async def serve(args):
                 phrase_store=phrase_store,
                 approvals=approvals,
                 voice_confirm=voice_confirm,
+                session_key=hello["session_key"],
             )
             await ws.send(json.dumps({"type": "ready", "sample_rate": speaker.sample_rate}))
             watcher = asyncio.create_task(session.watch())
-            print("session open", flush=True)
+            print(f"session open (session: {session_log_label(hello['session_key'])})", flush=True)
             try:
                 async for message in ws:
                     if isinstance(message, bytes):
@@ -225,6 +226,8 @@ async def serve(args):
                             await session.interrupt()
                         elif kind == "card_decision":
                             await session.handle_card_decision(msg)
+                        elif kind == "session":
+                            await session.handle_session_message(msg)
                         elif await handle_phrase_message(msg, phrase_store, send_json):
                             session.refresh_pending_phrase_status()
             except (ConnectionClosed, ValueError):

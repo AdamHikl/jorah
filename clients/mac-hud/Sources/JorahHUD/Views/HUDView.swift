@@ -521,7 +521,7 @@ struct SessionBar: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !model.isViewingMain {
-                Text("Voice and Telegram still talk to Main.")
+                Text("Voice talks to this conversation. Telegram talks to Main.")
                     .font(Theme.label(9)).foregroundStyle(Theme.dim)
             }
             if let error = model.sessionError {

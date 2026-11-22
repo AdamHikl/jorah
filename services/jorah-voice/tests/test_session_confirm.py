@@ -67,10 +67,12 @@ class FakeBrain:
         self.deltas = list(deltas)
         self.gate = gate
         self.prompts = []
+        self.session_keys = []
         self.cancelled = False
 
-    def stream(self, prompt):
+    def stream(self, prompt, session_key=None):
         self.prompts.append(prompt)
+        self.session_keys.append(session_key)
         if self.gate:
             self.gate.wait(5)
         for delta in self.deltas:
@@ -160,7 +162,8 @@ class ConfirmSessionFlow(unittest.IsolatedAsyncioTestCase):
         self.tmp.cleanup()
 
     def build(self, *, text="Save that plant needs water.", deltas=("Saving it.",), gate=None,
-              speaker_verdict=Verdict("adam", 2.0, ">=0.7"), approvals=None, voice_confirm=True):
+              speaker_verdict=Verdict("adam", 2.0, ">=0.7"), approvals=None, voice_confirm=True,
+              session_key="agent:main:main"):
         self.sent = []
         self.logs = []
         self.now = [10.0]
@@ -195,6 +198,7 @@ class ConfirmSessionFlow(unittest.IsolatedAsyncioTestCase):
             phrase_store=self.phrases,
             approvals=self.approvals,
             voice_confirm=voice_confirm,
+            session_key=session_key,
         )
         return self.session
 
@@ -462,6 +466,29 @@ class ConfirmSessionFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.brain.prompts, ["What is the weather in Bratislava?"])
         self.assertIn({"type": "heard", "text": "What is the weather in Bratislava?"}, self.sent)
         self.assertEqual(self.speaker.lines, ["Saving it."])
+
+    async def test_card_matching_uses_the_turns_actual_session_key(self):
+        dash1 = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+        dash2 = "agent:main:dashboard:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        self.build(session_key=dash1)
+        await self.say("Save that.")
+        await self.settle()
+        self.assertEqual(self.brain.session_keys, [dash1])
+
+        # Switch to dash2 before the card for turn 1 arrives (still within the 5s post-turn window).
+        await self.session.handle_session_message({"type": "session", "session_key": dash2})
+
+        # Cards for main or the new key (dash2) must not match turn 1, which actually used dash1.
+        await self.approvals.push_request(make_card(card_id="wrong-main", session_key="agent:main:main", created_at_ms=1000500))
+        await self.approvals.push_request(make_card(card_id="wrong-next", session_key=dash2, created_at_ms=1000500))
+        await self.settle()
+        self.assertEqual([m for m in self.sent if m["type"] == "card"], [])
+
+        # Card for dash1 (the key turn 1 actually used) matches.
+        await self.approvals.push_request(make_card(card_id="plugin:dash1", session_key=dash1, created_at_ms=1000500))
+        await self.settle()
+        cards = [m for m in self.sent if m["type"] == "card"]
+        self.assertEqual([c["id"] for c in cards], ["plugin:dash1"])
 
 
 class FakeSettingsWS:

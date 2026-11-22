@@ -117,6 +117,21 @@ class Streaming(unittest.TestCase):
         finally:
             gateway.close()
 
+    def test_stream_uses_per_call_session_key_and_keeps_default(self):
+        dash = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+        gateway = FakeGateway([chunk("Hi"), "data: [DONE]"])
+        try:
+            brain = JorahBrain(gateway.url, self.token)
+            self.assertEqual(list(brain.stream("One", session_key=dash)), ["Hi"])
+            self.assertEqual(list(brain.stream("Two")), ["Hi"])
+            warm = JorahBrain(gateway.url, self.token, session_key="agent:main:voice-warmup")
+            self.assertEqual(list(warm.stream("Warm")), ["Hi"])
+            self.assertEqual(gateway.requests[0][0]["x-openclaw-session-key"], dash)
+            self.assertEqual(gateway.requests[1][0]["x-openclaw-session-key"], "agent:main:main")
+            self.assertEqual(gateway.requests[2][0]["x-openclaw-session-key"], "agent:main:voice-warmup")
+        finally:
+            gateway.close()
+
     def test_a_refusal_is_an_error(self):
         gateway = FakeGateway([], status=401)
         try:

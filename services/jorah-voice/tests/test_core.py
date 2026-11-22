@@ -4,7 +4,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from jorah_voice.core import IdleClock, SentenceChunker, TurnEnd, classify, clean_for_speech, percentile, sounds_finished
+from jorah_voice.core import (IdleClock, SentenceChunker, TurnEnd, classify, clean_for_speech, percentile,
+                             resolve_session_key, session_log_label, sounds_finished)
 
 
 class Classify(unittest.TestCase):
@@ -244,3 +245,42 @@ class ReadAll(unittest.TestCase):
         self.assertEqual(store.get(), "All of it.")
         now[0] = 1801
         self.assertIsNone(store.get())
+
+
+class SessionKey(unittest.TestCase):
+    def test_allows_main_and_lowercase_dashboard_uuid_only(self):
+        dash1 = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+        dash2 = "agent:main:dashboard:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        self.assertEqual(resolve_session_key("agent:main:main"), "agent:main:main")
+        self.assertEqual(resolve_session_key(dash1), dash1)
+        self.assertEqual(resolve_session_key(dash2), dash2)
+        self.assertEqual(session_log_label("agent:main:main"), "main")
+        self.assertEqual(session_log_label(dash1), "hud-conversation")
+
+        bad = (
+            None,
+            "",
+            123,
+            {},
+            True,
+            "agent:main:dashboard:x",
+            "agent:main:dashboard:",
+            "agent:main:dashboard:0123456789abcdef0123456789abcdef",
+            "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcde",
+            "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef0",
+            "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdeg",
+            "agent:main:dashboard:01234567-89AB-CDEF-0123-456789ABCDEF",
+            "AGENT:main:main",
+            "agent:other:main",
+            "agent:other:dashboard:01234567-89ab-cdef-0123-456789abcdef",
+            "agent:main:subagent:01234567-89ab-cdef-0123-456789abcdef",
+            "agent:main:telegram:123",
+            dash1 + "-extra",
+            dash1 + " ",
+            dash1 + "\n",
+            " " + dash1,
+            "agent:main:main\n",
+            "agent:main:main:extra",
+        )
+        for candidate in bad:
+            self.assertEqual(resolve_session_key(candidate), "agent:main:main", repr(candidate))

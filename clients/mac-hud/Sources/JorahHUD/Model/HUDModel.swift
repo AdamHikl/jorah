@@ -241,7 +241,7 @@ final class HUDModel {
     var lastTickAt: Date?
 
     // Conversation
-    /// The Gateway's main session, the one Telegram and voice use.
+    /// The Gateway's main session, the one Telegram uses (and voice uses by default).
     var mainSessionKey: String?
     /// The session the HUD is showing and typing into. Starts as the main one.
     var currentSessionKey: String?
@@ -344,11 +344,11 @@ final class HUDModel {
         voice.configure(url: URL(string: voiceURLText))
         voice.onState = { [weak self] state in
             guard let self else { return }
-            // A spoken turn runs on the PC (jorah-voice → the Gateway's main session), not through
+            // A spoken turn runs on the PC (jorah-voice → the conversation open here), not through
             // this HUD, so its transcript is fetched when Jorah starts speaking and when he's done.
             let wasBusy = self.voiceState == .thinking || self.voiceState == .speaking
             if state == .speaking || (wasBusy && !state.isSessionOpen) || (wasBusy && state == .listening) {
-                self.scheduleHistoryRefresh(onlyForSession: self.mainSessionKey)
+                self.scheduleHistoryRefresh(onlyForSession: self.currentSessionKey)
             }
             self.voiceState = state
             self.wakeEnabled = self.voice.wakeEnabled
@@ -616,6 +616,7 @@ final class HUDModel {
         healthOK = nil; healthAsOf = nil; sessionsAsOf = nil; cronAsOf = nil; presenceAsOf = nil
         serverVersion = nil; grantedScopes = []; connectedAt = nil; gatewayUptimeAtHello = nil
         currentSessionKey = nil; mainSessionId = nil; sessionError = nil
+        voice.setSessionKey(nil)
         models = []; modelsAsOf = nil; currentModel = nil; currentModelSource = nil; defaultModel = nil
         subagents = []; subagentsAsOf = nil
         clearApprovals()
@@ -632,6 +633,7 @@ final class HUDModel {
         applyHealth(snapshot["health"], at: now)
         mainSessionKey = snapshot["sessionDefaults"]["mainSessionKey"].string ?? mainSessionKey
         if currentSessionKey == nil { currentSessionKey = mainSessionKey }
+        voice.setSessionKey(currentSessionKey)
         guard !isDemo else { return }
         Task { await bootstrap() }
     }
@@ -939,6 +941,7 @@ final class HUDModel {
         guard !isDemo, phase == .connected, key != currentSessionKey else { return }
         let previous = currentSessionKey
         currentSessionKey = key
+        voice.switchSession(to: key)
         mainSessionId = nil
         lines = []
         activity = []

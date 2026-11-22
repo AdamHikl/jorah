@@ -58,10 +58,12 @@ class FakeBrain:
     def __init__(self, deltas=(), error=None, hold=None):
         self.deltas, self.error, self.hold = deltas, error, hold
         self.prompts = []
+        self.session_keys = []
         self.cancelled = False
 
-    def stream(self, prompt):
+    def stream(self, prompt, session_key=None):
         self.prompts.append(prompt)
+        self.session_keys.append(session_key)
         if self.error:
             raise self.error
         for delta in self.deltas:
@@ -324,10 +326,10 @@ class SlowBrain(FakeBrain):
         super().__init__(deltas)
         self.delay = delay
 
-    def stream(self, prompt):
+    def stream(self, prompt, session_key=None):
         import time
         time.sleep(self.delay)
-        yield from super().stream(prompt)
+        yield from super().stream(prompt, session_key=session_key)
 
 
 async def short_sleep(seconds):
@@ -541,13 +543,39 @@ class Hello(unittest.TestCase):
         return json.dumps({"type": "hello", **fields})
 
     def test_right_token(self):
-        plain = {"barge_in": False, "input_rate": 16000, "follow_up": False, "client_ends": False, "shows_full": False}
+        plain = {
+            "barge_in": False,
+            "input_rate": 16000,
+            "follow_up": False,
+            "client_ends": False,
+            "shows_full": False,
+            "session_key": "agent:main:main",
+        }
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN), self.TOKEN), plain)
         self.assertEqual(parse_hello(self.hello(token=self.TOKEN, barge_in=True), self.TOKEN), {**plain, "barge_in": True})
 
     def test_the_talk_relay_options(self):
         hello = parse_hello(self.hello(token=self.TOKEN, input_rate=24000, client_ends=True), self.TOKEN)
-        self.assertEqual(hello, {"barge_in": False, "input_rate": 24000, "follow_up": False, "client_ends": True, "shows_full": False})
+        self.assertEqual(
+            hello,
+            {
+                "barge_in": False,
+                "input_rate": 24000,
+                "follow_up": False,
+                "client_ends": True,
+                "shows_full": False,
+                "session_key": "agent:main:main",
+            },
+        )
+
+    def test_session_key_in_hello(self):
+        dash = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+        self.assertEqual(parse_hello(self.hello(token=self.TOKEN, session_key=dash), self.TOKEN)["session_key"], dash)
+        for bad in ("agent:other:main", "agent:main:dashboard:x", dash.upper(), 123, None):
+            self.assertEqual(
+                parse_hello(self.hello(token=self.TOKEN, session_key=bad), self.TOKEN)["session_key"],
+                "agent:main:main",
+            )
 
     def test_a_client_with_a_screen_says_so(self):
         hello = parse_hello(self.hello(token=self.TOKEN, shows_full=True), self.TOKEN)
@@ -790,3 +818,69 @@ class PlayOut(unittest.IsolatedAsyncioTestCase):
         h.session._turn = asyncio.create_task(asyncio.sleep(10))
         await h.session.interrupt()
         self.assertLessEqual(h.session._plays_until, self.now[0])
+
+
+class SessionSwitching(unittest.IsolatedAsyncioTestCase):
+    DASH1 = "agent:main:dashboard:01234567-89ab-cdef-0123-456789abcdef"
+    DASH2 = "agent:main:dashboard:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    async def test_session_uses_hello_key_and_switches_for_next_turn(self):
+        logs = []
+        h = Harness(session_key=self.DASH1, log=logs.append)
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.session_keys, [self.DASH1])
+
+        await h.session.handle_session_message({"type": "session", "session_key": self.DASH2})
+        self.assertEqual(h.sent[-1], {"type": "session", "session_key": self.DASH2, "ok": True})
+        self.assertIn("session: hud-conversation", logs)
+        self.assertFalse(any("aaaaaaaa" in line for line in logs))
+
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.session_keys, [self.DASH1, self.DASH2])
+
+        await h.session.handle_session_message({"type": "session", "session_key": "agent:main:main"})
+        self.assertEqual(h.sent[-1], {"type": "session", "session_key": "agent:main:main", "ok": True})
+        self.assertIn("session: main", logs)
+
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.session_keys, [self.DASH1, self.DASH2, "agent:main:main"])
+
+    async def test_refused_switch_leaves_current_key_and_never_logs_key(self):
+        logs = []
+        h = Harness(session_key=self.DASH1, log=logs.append)
+        for bad in ("agent:other:main", "agent:main:dashboard:x", self.DASH2.upper(), None, 42):
+            await h.session.handle_session_message({"type": "session", "session_key": bad})
+            self.assertEqual(h.sent[-1], {"type": "session", "session_key": bad, "ok": False})
+        self.assertIn("session: refused", logs)
+        self.assertFalse(any("other" in line or "dashboard:x" in line or "AAAAAAAA" in line for line in logs))
+
+        await h.say()
+        await h.settle()
+        self.assertEqual(h.brain.session_keys, [self.DASH1])
+
+    async def test_switch_while_turn_is_running_keeps_running_turns_key(self):
+        import threading
+
+        gate = threading.Event()
+        brain = FakeBrain(["Working. "], hold=gate)
+        h = Harness(brain=brain, session_key=self.DASH1)
+        await h.say()
+        for _ in range(100):
+            if h.session._turn_in_flight:
+                break
+            await asyncio.sleep(0.005)
+        self.assertTrue(h.session._turn_in_flight)
+
+        await h.session.handle_session_message({"type": "session", "session_key": self.DASH2})
+        self.assertEqual(h.sent[-1], {"type": "session", "session_key": self.DASH2, "ok": True})
+        gate.set()
+        await h.settle()
+        self.assertEqual(brain.session_keys, [self.DASH1])
+
+        brain.hold = None
+        await h.say()
+        await h.settle()
+        self.assertEqual(brain.session_keys, [self.DASH1, self.DASH2])

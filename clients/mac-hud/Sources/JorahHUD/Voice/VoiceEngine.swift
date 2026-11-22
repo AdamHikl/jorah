@@ -74,6 +74,8 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
     private var sessionPhrasePending = false
     private var pendingSessionPhrasePayload: [String: Any]?
     private var sessionPhraseTimeout: DispatchWorkItem?
+    private var sessionKey: String?
+    private var pendingSessionSwitchPayload: [String: Any]?
     /// Without echo cancellation, the mic sends silence while Jorah's speech is still playing here.
     /// The PC can say "listening" seconds before the Mac has played everything it was sent, and
     /// the open mic then hands Jorah his own last words as Adam's next turn (2026-11-20).
@@ -154,6 +156,32 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
     // MARK: - Public controls
 
     func configure(url: URL?) { self.url = url }
+
+    /// Updates the HUD's open conversation key for future voice sessions without sending a switch frame.
+    func setSessionKey(_ key: String?) {
+        sessionKey = key
+        guard pendingHello != nil else { return }
+        if let key, !key.isEmpty {
+            pendingHello?["session_key"] = key
+        } else {
+            pendingHello?.removeValue(forKey: "session_key")
+        }
+    }
+
+    /// Updates the HUD's open conversation key and notifies an active voice session for future turns.
+    func switchSession(to key: String) {
+        sessionKey = key
+        guard state.isSessionOpen, let payload = VoiceMessageEncoding.session(key: key) else { return }
+        if pendingHello != nil {
+            pendingHello?["session_key"] = key
+            return
+        }
+        if serverReady, socket != nil {
+            sendJSON(payload)
+        } else {
+            pendingSessionSwitchPayload = payload
+        }
+    }
 
     /// Turns wake-word listening on or off. It only listens while no session is open.
     func setWake(_ enabled: Bool) {
@@ -333,7 +361,12 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         let socket = session.webSocketTask(with: url)
         self.socket = socket
         // Talking over Jorah needs echo cancellation, or he would hear himself and stop.
-        pendingHello = ["type": "hello", "token": token, "barge_in": echoCancellation, "follow_up": wakeEnabled]
+        pendingHello = VoiceMessageEncoding.hello(
+            token: token,
+            bargeIn: echoCancellation,
+            followUp: wakeEnabled,
+            sessionKey: sessionKey
+        )
         socket.resume()
         receive(socket, generation)
         let timeout = DispatchWorkItem { [weak self] in
@@ -405,6 +438,10 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         switch type {
         case "ready":
             serverReady = true
+            if let pending = pendingSessionSwitchPayload {
+                pendingSessionSwitchPayload = nil
+                sendJSON(pending)
+            }
             if let pending = pendingSessionPhrasePayload {
                 pendingSessionPhrasePayload = nil
                 sendJSON(pending)
@@ -447,6 +484,10 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
             case .phraseError(let reason):
                 clearSessionPhraseTimeout()
                 onPhraseError?(reason)
+            case .session(let ok):
+                if !ok {
+                    Self.log.warning("voice session switch refused by PC")
+                }
             case .ready, .unknown, .none:
                 break
             }
@@ -522,6 +563,7 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         timeoutWork = nil
         ready = false
         serverReady = false
+        pendingSessionSwitchPayload = nil
         if sessionPhrasePending {
             clearSessionPhraseTimeout()
             onPhraseUnknown?("The voice connection reopened before replying.")
@@ -639,6 +681,7 @@ final class VoiceEngine: NSObject, URLSessionWebSocketDelegate {
         player = nil
         ready = false
         serverReady = false
+        pendingSessionSwitchPayload = nil
         if sessionPhrasePending {
             clearSessionPhraseTimeout()
             onPhraseUnknown?("The voice connection closed before replying.")
@@ -984,7 +1027,7 @@ private final class SettingsConnection: NSObject, URLSessionWebSocketDelegate, U
             finish(.status(status))
         case .phraseError(let reason):
             finish(.error(reason))
-        case .card, .cardClosed, .unknown, .none:
+        case .card, .cardClosed, .session, .unknown, .none:
             break
         }
     }

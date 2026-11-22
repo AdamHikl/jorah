@@ -98,9 +98,10 @@ class JorahBrain:
         self._lock = threading.Lock()
         self._cancelled = False
 
-    def stream(self, text):
+    def stream(self, text, session_key=None):
         """Yield Jorah's reply as it arrives. Closing the connection stops the run on the Gateway."""
-        headers, body = build_request(text, read_gateway_token(self._token_file), self._session_key)
+        key = self._session_key if session_key is None else session_key
+        headers, body = build_request(text, read_gateway_token(self._token_file), key)
         connection = http.client.HTTPConnection(self._url.hostname, self._url.port or 80,
                                                 timeout=self._connect_seconds)
         self._cancelled = False

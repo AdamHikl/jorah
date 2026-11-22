@@ -133,6 +133,17 @@ final class HUDModel {
     }
     let power = PowerControl()
 
+    // Max plan / API key switch (docs/adr/0009-hud-brain-switch.md). The PC is the truth: the lane
+    // is what the last run read there, with its time, and unknown until one has.
+    var showBrain = false
+    var brainBusy = false
+    var brainLog: [String] = []
+    var brainLane: BrainLane = .unknown
+    var brainCheckedAt: Date?
+    /// The route the last test turn took ("api", "max", "failed", "unknown"), and when.
+    var brainProbe: (route: String, at: Date)?
+    let brain = BrainControl()
+
     // PC stats (docs/adr/0008-hud-pc-stats.md). Read straight from the PC's reader over Serve, not
     // through the Gateway, so they keep coming while Jorah is paused. Polled only while the PC
     // panel is on screen and the HUD window is visible.
@@ -377,6 +388,40 @@ final class HUDModel {
                 }
             case .status:
                 break
+            }
+        })
+    }
+
+    // MARK: - Max plan / API key
+
+    /// Reads the lane on the PC, or switches it. Switches come only from the buttons in BrainView.
+    func runBrain(_ action: BrainControl.Action) {
+        guard !isDemo, !brainBusy else { return }
+        // A paused distro would be started by `wsl -d jorah`; the script refuses too, this saves the trip.
+        guard pausedAt == nil else {
+            brainLog = ["Jorah is paused from this Mac. Resume it first."]
+            brainLane = .unknown
+            brainCheckedAt = nil
+            return
+        }
+        brainBusy = true
+        brainLog = []
+        brain.run(action, onLine: { [weak self] line in
+            self?.brainLog.append(line)
+        }, onFinish: { [weak self] ok in
+            guard let self else { return }
+            self.brainBusy = false
+            self.brainLane = BrainLaneParsing.lane(in: self.brainLog)
+            self.brainCheckedAt = self.brainLane == .unknown ? nil : Date()
+            if let route = BrainLaneParsing.probe(in: self.brainLog) {
+                self.brainProbe = (route, Date())
+            }
+            if let target = action.target {
+                // A test turn from before the switch is not evidence of the new route.
+                self.brainProbe = nil
+                if !ok || self.brainLane != target {
+                    self.brainLog.append("The switch did not finish. The lane above is what the PC has now.")
+                }
             }
         })
     }

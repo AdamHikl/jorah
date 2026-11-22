@@ -10,7 +10,7 @@
 // deep: max-lane.patch.json5 repins its own Opus 5.5 entry to claude-cli, so this pins it back
 // (2026-11-21, Adam: "switch jorah to api now"). Its tools are unchanged on either runtime
 // (deep-consult.patch.json5 denies the shell).
-// Alongside it, main's and deep's own auth orders go back to anthropic:jorah-store (see the runbook).
+// Alongside it, main's and deep's own auth orders go back to anthropic:jorah-store (scripts/pc/brain-lane.sh does both).
 {
   auth: { order: { anthropic: ["anthropic:jorah-store"] } },
   agents: {

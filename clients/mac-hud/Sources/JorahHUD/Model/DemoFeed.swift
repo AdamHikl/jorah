@@ -32,6 +32,8 @@ enum DemoFeed {
         ]
         model.sessionsAsOf = Date()
         model.currentModel = "demo/model"
+        model.brainLane = .api
+        model.brainCheckedAt = Date()
         var running = SessionRow(key: "demo:sub1", title: "Demo: search the changelog", updatedAt: Date(), active: true, model: "demo/small", totalTokens: nil)
         running.status = "running"
         running.startedAt = Date().addingTimeInterval(-42)

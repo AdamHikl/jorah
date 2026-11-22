@@ -1078,6 +1078,15 @@ from the journal times].
 **Undo:** `install-cron-watch.sh --undo` removes `jorah-cron-watch.service`, and the watchdog stops
 watching cron. The `Wants=` left in the watchdog's unit is ignored while the unit is gone.
 
+## Back on the API key, and a switch in the HUD, 2026-11-21
+
+Adam: "switch jorah to api now, also make it possible for me to switch between the max plan and the api back and forth inside the jorah hud". Design: `docs/adr/0009-hud-brain-switch.md`.
+
+- **Applied by Claude, 2026-11-21** [measured]: `api-lane.patch.json5` now also pins deep back to the embedded runtime (`3ccf2eb`), deployed with `deploy_reviewed.py`. Dry run: 13 updates. Backup `openclaw.json.pre-api-lane-2026-11-21`. Applied by hot reload, then main's and deep's key order set to `anthropic:jorah-store`. `config validate` passes. Audit clean. 0 models on `claude-cli`.
+- **Test turns** in throwaway sessions, deleted and forgotten afterwards: main (Haiku 5.5) and deep (Opus 5.5) both replied `PROBE-OK` with `runner: embedded` and `credential: profile`.
+- **HUD switch:** a `BILLS` button in the top bar runs `scripts/pc/jorah-brain.sh`, which runs `/opt/jorah/scripts/pc/brain-lane.sh` over the setup key. The same works from a Mac Terminal: `scripts/pc/jorah-brain.sh status`, `api`, `max`, or `status --probe`.
+- **Not checked yet:** the HUD's buttons, and `max` through the script, are Adam's test. The main chat may keep Max until `/new`.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

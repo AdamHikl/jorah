@@ -72,6 +72,7 @@ mac-hud:
     cp build/mac-hud-spm/release/JorahHUD build/JorahHUD.app/Contents/MacOS/JorahHUD
     mkdir -p build/JorahHUD.app/Contents/Resources
     cp scripts/pc/jorah-power.sh build/JorahHUD.app/Contents/Resources/jorah-power.sh
+    cp scripts/pc/jorah-brain.sh build/JorahHUD.app/Contents/Resources/jorah-brain.sh
     id="${JORAH_SIGN_ID:-$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2; exit}')}"; \
       if [ -n "$id" ]; then codesign --force --sign "$id" build/JorahHUD.app; else echo "No Apple Development certificate: signing ad hoc"; codesign --force --sign - build/JorahHUD.app; fi
     codesign -d -r- build/JorahHUD.app 2>&1 | tail -1

@@ -69,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             model.startIfPaired()
+            // Read-only: which lane the PC is on, for the ROUTE button. Skipped while paused.
+            if model.pausedAt == nil { model.runBrain(.status) }
         }
     }
 

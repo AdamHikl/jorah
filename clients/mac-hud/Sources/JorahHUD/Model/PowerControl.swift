@@ -1,72 +1,62 @@
 import Foundation
+import HUDCore
 
 /// The kill switch. It runs `scripts/pc/jorah-power.sh`, copied into the app at build time,
 /// which pauses or resumes Jorah on the PC over SSH with Adam's setup key.
-/// The app holds no key: `ssh` reads it from `~/.ssh`, as it does in Terminal.
 /// Nothing here runs without Adam pressing the button and confirming.
 final class PowerControl {
     enum Action: String {
         case pause, resume, status
     }
 
-    static var scriptURL: URL? {
-        Bundle.main.url(forResource: "jorah-power", withExtension: "sh")
-    }
+    private let script = BundledScript(resource: "jorah-power")
 
-    private var process: Process?
-
-    var isRunning: Bool { process?.isRunning == true }
+    var isRunning: Bool { script.isRunning }
 
     /// Runs the script. `onLine` and `onFinish` arrive on the main queue.
     func run(_ action: Action, backup: Bool = true,
              onLine: @escaping (String) -> Void,
              onFinish: @escaping (Bool) -> Void) {
-        guard !isRunning else { return }
-        guard let script = Self.scriptURL else {
-            onLine("FAILED: the power script is not in this build. Build with `just mac-hud`.")
-            onFinish(false)
-            return
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        var arguments = [script.path, action.rawValue]
+        var arguments = [action.rawValue]
         if action == .pause, !backup { arguments.append("--no-backup") }
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        process.standardInput = FileHandle.nullDevice
+        script.run(arguments, onLine: onLine, onFinish: onFinish)
+    }
+}
 
-        var buffer = Data()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            DispatchQueue.main.async {
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let line = String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    if !line.isEmpty { onLine(line) }
-                }
+/// The Max plan / API key switch (docs/adr/0009-hud-brain-switch.md). It runs
+/// `scripts/pc/jorah-brain.sh`, copied into the app at build time, which runs the fixed
+/// `brain-lane.sh` on the PC over SSH with Adam's setup key. A switch runs only from its button
+/// in the switch sheet; the status reads change nothing.
+final class BrainControl {
+    enum Action {
+        case status, probe, api, max
+
+        var arguments: [String] {
+            switch self {
+            case .status: return ["status"]
+            case .probe: return ["status", "--probe"]
+            case .api: return ["api"]
+            case .max: return ["max"]
             }
         }
-        process.terminationHandler = { finished in
-            pipe.fileHandleForReading.readabilityHandler = nil
-            let rest = pipe.fileHandleForReading.readDataToEndOfFile()
-            DispatchQueue.main.async {
-                buffer.append(rest)
-                let tail = String(decoding: buffer, as: UTF8.self)
-                for line in tail.split(separator: "\n") where !line.isEmpty { onLine(String(line)) }
-                self.process = nil
-                onFinish(finished.terminationStatus == 0)
+
+        /// The lane a switch is meant to reach; nil for the reads.
+        var target: BrainLane? {
+            switch self {
+            case .api: return .api
+            case .max: return .max
+            case .status, .probe: return nil
             }
         }
-        do {
-            try process.run()
-            self.process = process
-        } catch {
-            onLine("FAILED: could not start the script: \(error.localizedDescription)")
-            onFinish(false)
-        }
+    }
+
+    private let script = BundledScript(resource: "jorah-brain")
+
+    var isRunning: Bool { script.isRunning }
+
+    func run(_ action: Action,
+             onLine: @escaping (String) -> Void,
+             onFinish: @escaping (Bool) -> Void) {
+        script.run(action.arguments, onLine: onLine, onFinish: onFinish)
     }
 }

@@ -41,6 +41,9 @@ struct HUDView: View {
         .sheet(isPresented: $model.showPower) {
             PowerView().environment(model)
         }
+        .sheet(isPresented: $model.showBrain) {
+            BrainView().environment(model)
+        }
     }
 }
 
@@ -73,6 +76,17 @@ struct TopBar: View {
                 }
             }
             Button {
+                model.showBrain = true
+            } label: {
+                HStack(spacing: 5) {
+                    Text("BILLS").font(Theme.label(9)).foregroundStyle(Theme.dim)
+                    Text(brainLabel).font(Theme.label(10))
+                }
+            }
+            .disabled(model.isDemo)
+            .help("Switch Jorah between your Max plan and the API key")
+            .accessibilityLabel("Jorah bills: \(brainLabel)")
+            Button {
                 model.showPower = true
             } label: {
                 Text(model.pausedAt == nil ? "KILL SWITCH" : "RESUME").font(Theme.label(10))
@@ -94,6 +108,16 @@ struct TopBar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .accessibilityLabel("Connection settings")
+        }
+    }
+
+    private var brainLabel: String {
+        if model.brainBusy { return "…" }
+        switch model.brainLane {
+        case .api: return "API KEY"
+        case .max: return "MAX PLAN"
+        case .mixed: return "MIXED"
+        case .unknown: return "UNKNOWN"
         }
     }
 

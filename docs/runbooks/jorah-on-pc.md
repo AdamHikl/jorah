@@ -904,7 +904,38 @@ Run each of these against the live Gateway from the start of the upgrade. A chec
   - a Telegram turn;
   - the matrix line, which reaches live with the guard's next deploy.
 
-### Target 2026.11.5 or 11.6 instead of 10.33 (proposed 2026-11-22, waits for Adam)
+### Target 2026.11.6 instead of 10.33 (Adam's choice 2026-11-22: "11.6 (from 11-26)")
+
+**Decision:** the upgrade goes to `openclaw@2026.11.6` and the matching `@openclaw/acpx` and `@openclaw/duckduckgo-plugin`. This replaces the 10.33 target and its 2026-11-19 exception, which lapses unused. The steps in "Before the live upgrade" and "After the live upgrade, check" above apply, with 11.6 in place of 10.33, plus: a main turn on claude-cli that asks `deep` hands back without `cli_live_session_changed` on the canary **without** the transcript link.
+
+**Exception to the 7-day rule (Adam, 2026-11-22: "make it an exeption, install it now"):**
+- **Covers:** `openclaw@2026.11.6` (npm 2026-11-19T16:52Z), `@openclaw/acpx@2026.11.6` (14:29Z), `@openclaw/duckduckgo-plugin@2026.11.6` (14:31Z) and `@openclaw/ai@2026.11.6` (15:46Z), 3 days old on the day.
+- **Why:** 11.6 carries exec-approval security fixes (#187884, #190024, 266a72e, 58997e1) and the Claude CLI transcript fix behind the `deep` hand-back failure. The 11.5 and 11.6 notes were read for what touches Jorah (record above).
+- **Checks instead of the wait:** npm provenance and registry signatures, tarball integrity against the registry, the canary on `jorah-dev` first.
+- **How:** `--min-release-age=7` with `--min-release-age-exclude` for the four names only. Any other package under 7 days old, including what `doctor --fix` pulls in for the plugins, is listed from the canary and goes to Adam before the live install.
+
+**Canary on `jorah-dev`, 2026-11-22 17:39–18:00** [measured]:
+- **Restore:** `jorah-dev` was still migrated to 10.33. That copy was moved, not deleted, to `~/backups/removed/jorah-dev-1033-migrated-20261122T1739`, and `~/backups/jorah-dev-pre-1033-20261119T1805.tar.gz` was extracted (10.9 state, like live).
+- **Install:** `npm install -g --prefix ~/.jorah-canary/2026.11.6 openclaw@2026.11.6 --min-release-age=7 --min-release-age-exclude=openclaw --min-release-age-exclude=@openclaw/ai`: 361 packages; `npm audit signatures`: 517 registry signatures and 158 attestations verified. Under 7 days old in the tree: only `openclaw` and `@openclaw/ai`.
+- **`doctor --fix --non-interactive`** (log `~/scratch-dev/canary/doctor-fix-1106.log`):
+  - agent databases v25 → v38, with backups;
+  - **retires `agents.defaults.heartbeat`**: it becomes the automation `heartbeat-main`. Heartbeat duplicate suppression and no-route skipping are gone, so repeated updates can be delivered. `heartbeat-main` keeps legacy sender-policy resolution, and loses `sessions_yield` and the unscoped automations tool;
+  - updates `duckduckgo` and `acpx` to 2026.11.6 and removes the stale `jorah-github-standin` entry.
+- **Fresh plugin dependencies** pulled in by doctor's installer, which ignores the 7-day rule, all under acpx: `@babel/runtime@7.29.15`, `bare-buffer@3.7.3`, `bare-fs@4.8.5`, `bare-url@2.5.8`, `express-rate-limit@8.7.5`, `hono@4.13.20` (published 2026-11-22), `jose@6.2.18`, `object-inspect@1.14.0`, `pkce-challenge@5.0.2`, `router@2.3.0`, `standardwebhooks@1.3.0`. These are not covered by the exception above. `npm audit signatures` can't run on that tree: it stops on OpenClaw's `@nolyfill/domexception` alias.
+- **Config:** canary patch `~/scratch-dev/canary/canary-1106.patch.json5` (deny `openclaw`, cron off, plugins from `main` in `~/scratch-dev/canary/src-main`), then `config/pc/max-lane.patch.json5`. Config valid.
+- **Start:** with `CLAUDE_CONFIG_DIR=~/.claude-jorah`, ready in 13 s, 11 plugins, `jorah-guard: matrix loaded; state ok`. Warnings at startup: "Deferred restart resume failed … Session database target changed outside captured discovery custody", once per agent.
+- **`deep` hand-back without the link:** `~/.claude/projects` has no link for `-home-jorah-scratch-dev-workspace`. At 17:48:08, main (Haiku, claude-cli) called `sessions_spawn` to `deep` and ended its turn. `deep` (Opus, claude-cli) answered at 17:48:21. At 17:48:22 the result reached the same main Claude session in a fresh process ("Deep answered the canary: 17 × 23 = 391"). No `cli_live_session_changed`, no error.
+- **Guard:**
+  - claude-cli tool calls now log as `adam-typed`, where 10.9 logged `none`. Main found its tools through Claude Code's own `ToolSearch`, and the guard saw `tool_search`, then `sessions_spawn`.
+  - On the embedded runtime, `background` (Sonnet 5.5) ran under **Code Mode**: `exec` running JavaScript, with the inner `web_search` checked under its own name.
+  - A `web_fetch` to an unseen URL was blocked with the expected text.
+- **Guard bug found, older than the upgrade:** a URL Adam typed in the message was blocked too. `before_agent_run` gets no `requester` in its context, on 10.9 (`buildAgentHookContext`, same call in `cli-runner`) as on 11.6. The owner fields are on the event (`channelId`, `senderId`, `senderIsOwner`). So the guard never records URLs Adam typed as seen. Follow-up for the guard's owner.
+- **Audit:** 0 critical, 4 warnings, the same as the 10.33 canary.
+- **Code Mode:** with `tools.codeMode` unset, 11.6 turns it on for models it marks as preferred ("auto"). Live has it unset.
+- **apply_patch:** live has `tools.fs.workspaceOnly: true`, which contains `apply_patch` regardless of the new `tools.exec.applyPatch.workspaceOnly` default.
+- **State after:** the canary Gateway is stopped; `jorah-dev` is migrated to 11.6. A throwaway probe plugin `~/scratch-dev/canary/ctx-probe` is in its config. Restore `jorah-dev` from the backup when the upgrade is done.
+
+Findings that led here:
 
 Source tier only. Full record: `docs/evidence/oc-upgrade-11.5-2026-11-22/README.md`.
 

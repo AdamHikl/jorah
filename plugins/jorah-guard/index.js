@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { decide, isConsultAgent, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
-import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, writtenTokens } from "./lib/urls.js";
+import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
 const PRIORITY = 1000;
@@ -263,22 +263,32 @@ export default {
     });
 
     // Telegram replies only (G-S3): in a chat that has read outside text, strip links nobody gave.
+    // A link that passes goes out without common tracking parameters (utm_*, gclid, fbclid, ...):
+    // they are only cut out, nothing is added, and the link is checked as it was seen.
     api.on("message_sending", (event, ctx) => {
       try {
         const key = ctx?.sessionKey;
         // Delivery hooks carry no requester, so use the recorded taint; an unknown chat counts as tainted.
         const tainted = !key || state.taintOf(key)?.tainted === true;
         if (!tainted || typeof event?.content !== "string") return undefined;
-        let changed = false;
+        let removed = false;
+        let tidied = false;
         const content = event.content.replace(/\bhttps?:[^\s"'<>`\\]+/gi, (raw) => {
-          const n = normalise(raw.replace(/[),.;:!?\]}>]+$/, ""), { keepHash: true });
+          const core = raw.replace(/[),.;:!?\]}>]+$/, "");
+          const n = normalise(core, { keepHash: true });
           const ok = n && ((key ? state.hasSeen(key, n) : state.anySeen(n)) || onSiteAllowlist(n, matrix?.siteAllowlist ?? []));
-          if (ok) return raw;
-          changed = true;
-          return REMOVED;
+          if (!ok) {
+            removed = true;
+            return REMOVED;
+          }
+          const clean = withoutTracking(core);
+          if (clean === core) return raw;
+          tidied = true;
+          return `${clean}${raw.slice(core.length)}`;
         });
-        if (changed) log({ session: key ?? null, tool: "message_sending", verdict: "rewrite", reason: "unseen link removed" });
-        return changed ? { content } : undefined;
+        if (removed) log({ session: key ?? null, tool: "message_sending", verdict: "rewrite", reason: "unseen link removed" });
+        if (tidied) log({ session: key ?? null, tool: "message_sending", verdict: "tidy", reason: "tracking parameters removed" });
+        return removed || tidied ? { content } : undefined;
       } catch (e) {
         api.logger.warn(`jorah-guard: message_sending: ${e?.message}`);
         return undefined;

@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { linkHygiene, ownTypedText, writtenTokens } from "../lib/urls.js";
+import { linkHygiene, ownTypedText, withoutTracking, writtenTokens } from "../lib/urls.js";
 import { resultSeeds } from "../lib/policy.js";
 import plugin from "../index.js";
 
@@ -357,4 +357,55 @@ test("#15: deep's browser only reads, in Jorah's own profile", () => {
     { action: "navigate", url: CANARY }]) {
     assert.equal(p.call("browser", params, undefined, c), "block", JSON.stringify(params));
   }
+});
+
+// Tracking parameters (2026-11-22): a link that passes the reply rule goes out without utm_*,
+// gclid, fbclid, msclkid, mc_eid and _ga. They are only cut out; the link is checked as it was seen.
+test("tracking: a seen shop link with utm_source goes out without it; an unseen link is still removed", () => {
+  const p = loadPlugin();
+  p.taint();
+  const seen = "https://www.example-shop.sk/sosovky/acuvue-oasys?variant=6&utm_source=search&utm_medium=cpc";
+  p.call("web_search", { query: "acuvue oasys 6 ks" }, searchResult("acuvue oasys 6 ks", [seen]));
+  const r = send(p, `Best price: ${seen}. Not this one: ${CANARY}`);
+  assert.equal(r.content, "Best price: https://www.example-shop.sk/sosovky/acuvue-oasys?variant=6. Not this one: [link removed: not from a source you gave me]");
+  assert.ok(!r.content.includes("utm_"));
+  assert.ok(!r.content.includes("JORAH-CANARY"));
+  const rows = readFileSync(join(p.dir, "decisions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.ok(rows.some((x) => x.verdict === "tidy" && x.reason === "tracking parameters removed"));
+  assert.equal(rows.filter((x) => x.verdict === "rewrite").length, 1, "only the unseen link counts as removed");
+});
+
+test("tracking: every listed parameter goes, others stay, nothing is added or re-encoded", () => {
+  const cases = [
+    ["https://s.example/p?id=7&utm_campaign=x&gclid=G&fbclid=F&msclkid=M&mc_eid=E&_ga=1.2&q=a%20b#reviews", "https://s.example/p?id=7&q=a%20b#reviews"],
+    ["https://s.example/?utm_source=x", "https://s.example/"],
+    ["https://s.example/p?gclid=1", "https://s.example/p"],
+    ["https://s.example/p?UTM_Source=x&%75tm_term=y&b=2", "https://s.example/p?b=2"],
+    ["https://s.example/p?_gac=1&utmx=2&gclid_x=3", "https://s.example/p?_gac=1&utmx=2&gclid_x=3"],
+    ["https://s.example/p#utm_source=x", "https://s.example/p#utm_source=x"],
+    ["https://s.example/p?a=%E2%82%AC&utm_source=x", "https://s.example/p?a=%E2%82%AC"],
+  ];
+  for (const [input, want] of cases) {
+    const got = withoutTracking(input);
+    assert.equal(got, want, input);
+    // Only removal: every character of the result appears in order in the input.
+    let i = 0;
+    for (const c of got) { i = input.indexOf(c, i); assert.ok(i >= 0, `${input}: ${c} wasn't there`); i += 1; }
+  }
+});
+
+test("tracking: removing parameters never makes an unseen link pass", () => {
+  const p = loadPlugin();
+  p.taint();
+  p.call("web_search", { query: "q" }, searchResult("q", ["https://www.example-shop.sk/p?id=7"]));
+  // The model adds a parameter to a seen link: that link was never seen, so it goes whole.
+  const r = send(p, "https://www.example-shop.sk/p?id=7&utm_source=JORAH-CANARY and https://www.example-shop.sk/p?id=7");
+  assert.equal(r.content, "[link removed: not from a source you gave me] and https://www.example-shop.sk/p?id=7");
+});
+
+test("tracking: a link on Adam's site list loses them too; a clean link is sent as written", () => {
+  const p = loadPlugin();
+  p.taint();
+  assert.equal(send(p, "Weather: https://wttr.in/Bratislava?utm_source=x&format=3.").content, "Weather: https://wttr.in/Bratislava?format=3.");
+  assert.equal(p.hook("message_sending", { content: "Weather: https://wttr.in/Bratislava?format=3" }, { sessionKey: "agent:main:main" }), undefined);
 });

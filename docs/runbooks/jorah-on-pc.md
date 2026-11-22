@@ -412,6 +412,7 @@ Adam's call of 2026-11-13: run the guard on live, **enforcing**, log every decis
   - starting a Claude Code job,
   - typing into a web page.
 - **Addresses nobody gave are refused.** Local and home-network addresses are refused always.
+- **Links in Telegram replies lose their tracking parameters** after the chat reads outside text (from 2026-11-22, in source): `utm_*`, `gclid`, `fbclid`, `msclkid`, `mc_eid` and `_ga`. They are only cut out, never added to, and the link is checked as it was found. The log calls this `tidy`, apart from `rewrite` (an unseen link removed).
 - **Pushes are refused** to Jorah's own repo, and to one repo after reading another. Ordinary pushes keep jorah-github's card as now.
 - **Voice counts as voice:** a job, memory line or schedule asked for by voice waits for a Telegram tap. Voice confirmation comes after the voiceprint test (G-S8).
 - **Freeze and status:** `/jorah-freeze` in Telegram stops everything except reading, and `/jorah-status` shows the state. Unfreeze at a terminal with `scripts/pc/guard-unfreeze.sh`.

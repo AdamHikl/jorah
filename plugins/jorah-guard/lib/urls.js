@@ -41,6 +41,30 @@ export function normalise(raw, { keepHash = false } = {}) {
   }
 }
 
+// Common tracking parameters, taken out of links in Telegram replies that pass the reply rule.
+const TRACKING = /^(?:utm_[a-z0-9_]*|gclid|fbclid|msclkid|mc_eid|_ga)$/i;
+
+// The link with tracking parameters removed, and nothing else changed: the result is the input
+// with whole `name=value` parts (and a `?` left with nothing after it) cut out, never re-encoded
+// and never with anything added. A link with none comes back as it was.
+export function withoutTracking(link) {
+  const s = String(link);
+  const hashAt = s.indexOf("#");
+  const head = hashAt < 0 ? s : s.slice(0, hashAt);
+  const hash = hashAt < 0 ? "" : s.slice(hashAt);
+  const q = head.indexOf("?");
+  if (q < 0) return s;
+  const parts = head.slice(q + 1).split("&");
+  const name = (part) => {
+    const raw = part.split("=")[0];
+    try { return decodeURIComponent(raw.replace(/\+/g, " ")); } catch { return raw; }
+  };
+  const kept = parts.filter((part) => !TRACKING.test(name(part)));
+  if (kept.length === parts.length) return s;
+  const query = kept.join("&");
+  return `${head.slice(0, q)}${query ? `?${query}` : ""}${hash}`;
+}
+
 // Addresses that must never be fetched: Jorah's own loopback services, the LAN, link-local,
 // the tailnet, and non-web schemes.
 export function forbidden(raw) {

@@ -13,7 +13,7 @@ patch="$(mktemp "$HOME/.cache/jorah/approvals.XXXXXX.json5")"
 trap 'rm -f "$patch"' EXIT
 sed "s/TELEGRAM_CHAT_ID/$id/" /opt/jorah/config/pc/approvals.patch.json5 > "$patch"
 if [ "${1:-}" = "--apply" ]; then
-  cp -p "$HOME/.openclaw-jorah/openclaw.json" "$HOME/.openclaw-jorah/openclaw.json.pre-approvals"
+  cp -p "$HOME/.openclaw-jorah/openclaw.json" "$HOME/.openclaw-jorah/openclaw.json.pre-approvals-$(date +%Y%m%d-%H%M%S)"
   "${OC[@]}" config patch --file "$patch"
   "${OC[@]}" config get approvals.plugin --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("approvals.plugin:", d["enabled"], d["mode"], d["agentFilter"], [t["channel"] for t in d["targets"]])'
 else

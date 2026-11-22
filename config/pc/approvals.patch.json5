@@ -1,14 +1,21 @@
-// Sends every plugin approval for main (today: Jorah's GitHub push and pull request) to Adam's
-// Telegram chat, wherever the request started: voice, the command line or a chat. Without it, a
-// push asked for by voice has nowhere to show its approval and times out (2026-11-09).
-// Adam's yes, 2026-11-10. TELEGRAM_CHAT_ID is filled in on the PC from channels.telegram.allowFrom
-// by scripts/pc/apply-approvals.sh, so the chat ID never enters this public repo.
-// Undo: approvals.plugin.enabled false.
+// Sends main's plugin approval cards back to where the request was made (mode "session"), instead
+// of every card to Adam's Telegram chat (mode "targets", Adam's yes of 2026-11-10).
+// Adam, 2026-11-22: "make it so that the hud requests don't go to telegram". By OpenClaw
+// 2026.10.9's source (resolveForwardTargets, resolveSessionDeliveryTarget):
+// - typed in the Mac HUD or the Control UI ("webchat"): no chat to forward to, so the card shows
+//   only on the Gateway's approval clients: the HUD that asked, and admin clients (the iOS app);
+// - Telegram: the card goes to that Telegram chat;
+// - voice ("voice" is not a deliverable channel): falls back to the session's last chat, Telegram,
+//   until ADR 0010's voice confirmation is built. Checked live after the switch.
+// targets stays filled, so the undo is mode "targets" alone. It is ignored in mode "session".
+// TELEGRAM_CHAT_ID is filled in on the PC from channels.telegram.allowFrom by
+// scripts/pc/apply-approvals.sh, so the chat ID never enters this public repo.
+// Undo: mode "targets" (every card to Telegram again), or approvals.plugin.enabled false.
 {
   approvals: {
     plugin: {
       enabled: true,
-      mode: "targets",
+      mode: "session",
       agentFilter: ["main"],
       targets: [{ channel: "telegram", to: "TELEGRAM_CHAT_ID" }],
     },

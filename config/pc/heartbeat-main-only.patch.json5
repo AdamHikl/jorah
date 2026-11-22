@@ -1,0 +1,19 @@
+// Only main runs hourly heartbeats, 2026-11-22, on Adam's yes. agents.defaults.heartbeat (every 1h,
+// Haiku 5.5, isolated session) gave every agent a heartbeat: heartbeat-background and
+// heartbeat-deep woke their idle main sessions every hour, had no task list and nobody to report
+// to, cost Max (deep) and API credits (background), and leaked an MCP shim per run. Spawned jobs
+// don't need them: sessions_spawn starts a child at once and its result comes back to main.
+// "0m" stops only the recurring cadence; event wakes (a background exec finishing) still run
+// (docs/gateway/heartbeat.md). Main needs its own block: once any agent has one, only agents with
+// a block run heartbeats. Main's merges over the defaults, so it is unchanged. The cron watch
+// needs one heartbeat, main's.
+// Undo: config unset agents.entries.{main,background,deep}.heartbeat
+{
+  agents: {
+    entries: {
+      main: { heartbeat: { every: "1h" } },
+      background: { heartbeat: { every: "0m" } },
+      deep: { heartbeat: { every: "0m" } },
+    },
+  },
+}

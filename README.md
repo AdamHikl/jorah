@@ -2,7 +2,7 @@
 
 A personal "Jarvis": one central agent you talk to, which sees, listens, speaks and acts through a fleet of devices.
 
-- **Gateway / organizer:** [OpenClaw](https://docs.openclaw.ai) (pinned `2026.10.9`), profile `jorah` (state in `~/.openclaw-jorah`).
+- **Gateway / organizer:** [OpenClaw](https://docs.openclaw.ai) (pinned `2026.11.6`, see `config/versions.env`), profile `jorah` (state in `~/.openclaw-jorah`).
 - **Brain model:** Claude through Jorah's own Claude Code login (`~/.claude-jorah`), separate from `~/.claude`. A manual switch moves it to an API key and back: see `docs/switch-brain.md`.
 - **Specialist:** Claude Code, launched by Jorah through ACP (`@openclaw/acpx`), using the same login.
 - **First channel:** Telegram.
@@ -80,7 +80,7 @@ Check Claude Code delegation from chat with `/acp doctor`, then `/acp spawn clau
 
 `scripts/setup-continuity.sh` (`configure.sh` calls it on a new profile) does two things:
 
-- Links `~/.claude/projects/<workspace key>` to `~/.claude-jorah/projects/<workspace key>`. OpenClaw 2026.10.9 only looks for Claude transcripts under `~/.claude`, so without the link Jorah loses the conversation when its Claude process exits.
+- Links `~/.claude/projects/<workspace key>` to `~/.claude-jorah/projects/<workspace key>`. OpenClaw 2026.10.9 only looked for Claude transcripts under `~/.claude`, so without the link Jorah lost the conversation when its Claude process exited. 2026.11.6 follows `CLAUDE_CONFIG_DIR` and doesn't need it; the link is harmless. On the PC the link was made by hand on 2026-11-22 (the script derives the key from the repo's `workspace/`, not `/home/jorah/workspace`).
 - On a new profile, or with `--set-heartbeat`, sets `agents.defaults.heartbeat` to hourly, `anthropic/claude-haiku-5-5`, `isolatedSession: true`, so heartbeats run in `agent:main:main:heartbeat` and leave the main chat alone.
 
 Side effect of the link: `claude --resume` run from `workspace/` under your own `~/.claude` lists Jorah's transcripts.

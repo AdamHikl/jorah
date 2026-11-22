@@ -9,7 +9,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PINNED_VERSION="2026.10.9"
+PINNED_VERSION="$(sed -n 's/^OPENCLAW_VERSION=//p' "$REPO/config/versions.env")"
+[ -n "$PINNED_VERSION" ] || { echo "No OPENCLAW_VERSION in $REPO/config/versions.env" >&2; exit 1; }
 PROFILE="${JORAH_PROFILE:-jorah}"
 export JORAH_PROFILE="$PROFILE"
 

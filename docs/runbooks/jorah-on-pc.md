@@ -912,6 +912,43 @@ Run each of these against the live Gateway from the start of the upgrade. A chec
 - **Covers:** `openclaw@2026.11.6` (npm 2026-11-19T16:52Z), `@openclaw/acpx@2026.11.6` (14:29Z), `@openclaw/duckduckgo-plugin@2026.11.6` (14:31Z) and `@openclaw/ai@2026.11.6` (15:46Z), 3 days old on the day.
 - **Why:** 11.6 carries exec-approval security fixes (#187884, #190024, 266a72e, 58997e1) and the Claude CLI transcript fix behind the `deep` hand-back failure. The 11.5 and 11.6 notes were read for what touches Jorah (record above).
 - **Checks instead of the wait:** npm provenance and registry signatures, tarball integrity against the registry, the canary on `jorah-dev` first.
+- **Extended to the 11 fresh plugin dependencies** listed in the canary record below, on Adam's "Yes, upgrade live" to a preview that named them (2026-11-22).
+
+### Live upgrade to 2026.11.6, 2026-11-22 (Adam: "Yes, upgrade live")
+
+- **18:00:43:** `/readyz` ready; nothing in progress. **18:00:55:** Gateway stopped.
+- **Backup:** `~/backups/jorah-pre-1106-20261122T1800.tar.gz` (`.openclaw-jorah` and `.jorah-guard`, 673 MB, mode 600, 11,922 entries) and `~/.openclaw-jorah/openclaw.json.pre-1106-20261122T1800`. Doctor also kept pre-migration SQLite backups (`*.pre-startup-migration-7a750381-….bak`).
+- **Install (root):** `npm install -g openclaw@2026.11.6 --min-release-age=7 --min-release-age-exclude=openclaw --min-release-age-exclude=@openclaw/ai`. `npm audit signatures`: 517 registry signatures, 158 attestations verified.
+- **`doctor --fix --non-interactive`** (as `jorah`, log `~/backups/doctor-fix-1106-live.log`, mode 600):
+  - agent databases v25 → v38;
+  - heartbeat settings retired into automations: config keys `agents.defaults.heartbeat` and the three per-agent ones are gone. The jobs keep id, name and receipts; `payload_kind` changed from `heartbeat` to `agentTurn`;
+  - `acpx` and `duckduckgo` updated to 2026.11.6;
+  - config: `channels.telegram.groupAllowFrom` added, equal to `allowFrom`; explicit entries for the bundled `browser` and `tts-local-cli`, the latter also added to `plugins.allow`.
+  - **Exit 1, not blocking:** "Plugin llama-cpp … Install dir is missing: /Users/adam/.openclaw-jorah/extensions/llama-cpp", a Mac-era install record for a plugin live doesn't allow. Also listed: skill-workshop availability notes, and a stale local CLI device token ("predates the gateway rotation").
+- **Settings with the upgrade** (`~/backups/upgrade-1106-settings.patch.json5`, dry run 2 updates): `tools.codeMode: false`, `gateway.controlUi.experimental.customPlugins: false`.
+- **18:04:54 start, ready 18:05:11** (16 s). Down about 4 minutes.
+- **Checked after** [measured]:
+  - `/readyz` `ready:true`, `failing:[]`; health ok;
+  - 16 plugins: the 15 from before plus `tts-local-cli`; `jorah-guard: matrix loaded; state ok`;
+  - audit 0 critical. Warnings: live's 4 from 10.9 plus `plugins.installs_unpinned_npm_specs`;
+  - `tools.deny` still ends with `openclaw`; `bootstrapMaxChars` 40000; no truncation line;
+  - `jorah-voice` "warmed the Gateway in 7.1s, 20s after it started"; watchdog: gateway ok, runner ok.
+  - The live guard, projects, errands and matrix in `/opt/jorah` already matched `main`, so the `dispatch_action` unwrap was loaded.
+- **Two Jorah tools broke on 11.6 and were fixed the same evening:**
+  - `brain-lane.sh status` read `LANE: unknown`: 11.6 runs `models auth order get` and `models auth list` only with the Gateway stopped. The script now asks the running Gateway (`gateway call models.authStatus`: `profileOrder`, `profiles`). Commit `df8db3b`, deployed. It now reads **`LANE: max`**, with main and deep "none" and background on the key. **Not tested on 11.6:** a lane switch (`order set` / `clear`), so try the HUD's brain switch once before relying on it.
+  - The cron watch counted only `payload_kind = 'heartbeat'`, which after the migration matched only a stale Mac-era `heartbeat-main` (last run 2026-11-05). It would have reported cron down about 2.5 h after the restart. It now also counts `agentTurn` jobs named `heartbeat-*`. Commit `9630464`, deployed. Report: `ok`, newest heartbeat 17:22.
+- **Interim transcript link** (`~/.claude/projects/-home-jorah-workspace`) stays. It's harmless on 11.6, which follows `CLAUDE_CONFIG_DIR`.
+- **Rollback:** stop the Gateway, `npm install -g openclaw@2026.10.9` as root, restore the backup tarball over `~/.openclaw-jorah` and `~/.jorah-guard`, then start. 11.6 moves pairing credentials out of the shared database, so the HUD and the iPhone may need pairing again after a rollback.
+- **Open, for Adam:**
+  - a Telegram turn;
+  - a main turn that asks `deep`, which should come back on its own;
+  - the HUD connecting, with its approvals and `/new`;
+  - whether hourly heartbeats now repeat on Telegram: 11.6 removed their duplicate suppression.
+- **Open, for a build session:**
+  - the guard's typed-URL rule, which never fires (canary record);
+  - restoring `jorah-dev` from its backup;
+  - the `llama-cpp` install record;
+  - the stale CLI device token.
 - **How:** `--min-release-age=7` with `--min-release-age-exclude` for the four names only. Any other package under 7 days old, including what `doctor --fix` pulls in for the plugins, is listed from the canary and goes to Adam before the live install.
 
 **Canary on `jorah-dev`, 2026-11-22 17:39–18:00** [measured]:

@@ -384,7 +384,7 @@ Each session works in its own worktree, writes source and unit tests only, never
 
 ### Later, each on its own yes
 
-- **WS5 level 2 standing grant** (`jorah-github`, the guard), after the P5 review and a week at level 1.
+- **WS5 level 2 standing grant** (`jorah-github`, the guard), after the P5 review and a week at level 1. **Source built 2026-11-22 (issue #19), off:** `standingGrant` in jorah-github's config is false until Adam's written yes. When on, a push of a level-2 project's `jorah/line` skips the card only if Jorah isn't frozen, the repo isn't in `selfRepos`, the project isn't paused, the runner's push block is clear, the head is the one its gitleaks scan passed (`cleanHead`), no changed file is under `.github/` and none is over 5 MB. The live ruleset check still runs before every push. Every push, carded or not, goes to `<state>/<project>/pushes.jsonl` for the digest.
 - **WS6 Gmail drafts** (`jorah-google`), after M3's gate.
 - **WS7 long recordings into a project** (the phone layer's share route), when the first interview is due.
 - **WS8 bench rig**, with `08-robotics.md`'s safety bench.

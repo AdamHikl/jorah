@@ -2,7 +2,7 @@
 // clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
 // build or install.
 
-import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, prFlow, projectPushBlock, pushFlow, settings, syncFlow } from "./github.js";
+import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, logProjectPush, prFlow, projectPushBlock, pushFlow, settings, standingGrant, syncFlow } from "./github.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -30,6 +30,9 @@ export default {
 
     // The commit each push card showed, so the push sends exactly that (project + branch -> head).
     const shown = new Map();
+    // Pushes let through by level 2's standing grant (project + branch -> files), for the digest.
+    const granted = new Map();
+    const listed = new Map(); // project + branch -> the card's file list, for the push log
 
     // The card lists the files the branch changes. Listing is best effort: if it fails, the card
     // says why and still asks. Never longer than LIST_MS, so a slow disk can't stall the turn.
@@ -65,6 +68,16 @@ export default {
       if (hit.name === "github_push_branch") {
         if (files.head) shown.set(key, files.head);
         else shown.delete(key);
+        if (files.head) listed.set(key, files);
+        // Level 2 (WS5): no card when every invariant holds now; the push sends exactly this head.
+        let grant = { ok: false };
+        try { grant = await standingGrant(cfg, check(cfg, hit.params), files); } catch { grant = { ok: false }; }
+        if (grant.ok) {
+          granted.set(key, true);
+          api.logger.info(`jorah-github: ${grant.project} pushes ${hit.params.branch} under the standing grant`);
+          return undefined;
+        }
+        granted.delete(key);
       }
       const base = describeWithFiles(describe(hit.name, hit.params, cfg), files);
       let description = ctx?.requester?.channel === "voice"
@@ -152,8 +165,18 @@ export default {
           const key = `${p?.project}\0${p?.branch}`;
           const approvedHead = shown.get(key);
           shown.delete(key);
-          const { target, mirrored, result } = await pushFlow(config(), p, { approvedHead });
+          const byGrant = granted.get(key) === true;
+          granted.delete(key);
+          const files = listed.get(key);
+          listed.delete(key);
+          const cfg = config();
+          const { target, mirrored, result } = await pushFlow(cfg, p, { approvedHead });
           api.logger.info(`jorah-github: pushed ${result.pushed} at ${mirrored.head.slice(0, 7)}`);
+          try {
+            logProjectPush(cfg, target, { head: mirrored.head, base: files?.base, files: files?.files ?? [], by: byGrant ? "standing grant" : "Adam's card" });
+          } catch (error) {
+            api.logger.warn(`jorah-github: push log not written: ${firstLine(error)}`);
+          }
           return text(`Pushed ${target.branch} to ${target.repo} (${mirrored.head.slice(0, 7)}). Commits:\n${mirrored.log}`, { ok: true, ...result });
         } catch (error) {
           api.logger.warn(`jorah-github: push refused or failed: ${firstLine(error)}`);

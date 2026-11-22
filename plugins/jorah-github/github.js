@@ -16,7 +16,7 @@
 
 import { execFile } from "node:child_process";
 import { createSign } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -30,6 +30,11 @@ export const DEFAULTS = Object.freeze({
   // gitleaks finding or a scan that couldn't run; pushes and pull requests refuse until it's cleared.
   projectsRegistry: "/home/jorah/.config/jorah-projects/projects.json",
   projectsStateDir: "/home/jorah/.jorah-projects",
+  // Level 2's standing push grant (docs/plan/11-project-mode.md section 6, WS5, issue #19). Off
+  // until Adam's written yes after the P5 guard review and a week at level 1 without incident.
+  standingGrant: false,
+  guardStateDir: "/home/jorah/.jorah-guard",
+  selfRepos: ["jorah"],
 });
 
 const BRANCH = /^jorah\/[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
@@ -54,6 +59,9 @@ export function settings(pluginConfig = {}) {
     mirrorDir: pluginConfig.mirrorDir ?? DEFAULTS.mirrorDir,
     projectsRegistry: pluginConfig.projectsRegistry ?? DEFAULTS.projectsRegistry,
     projectsStateDir: pluginConfig.projectsStateDir ?? DEFAULTS.projectsStateDir,
+    standingGrant: pluginConfig.standingGrant === true,
+    guardStateDir: pluginConfig.guardStateDir ?? DEFAULTS.guardStateDir,
+    selfRepos: Array.isArray(pluginConfig.selfRepos) ? pluginConfig.selfRepos.map((r) => String(r).toLowerCase()) : DEFAULTS.selfRepos,
     owner,
     repos,
   };
@@ -450,6 +458,76 @@ export function projectPushBlock(config, { project, source }) {
     }
   }
   return null;
+}
+
+export const GRANT_MAX_FILE = 5 * 1024 * 1024;
+const GRANT_MAX_FILES = 300;
+
+// The registry entry and runner state for the project in this folder, or a reason why not.
+function projectOf(config, source) {
+  let registry;
+  try { registry = JSON.parse(readFileSync(config.projectsRegistry, "utf8")); } catch { return { why: "the project registry can't be read" }; }
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) return { why: "the project registry can't be read" };
+  const found = Object.entries(registry).filter(([, e]) => {
+    try { return typeof e?.workDir === "string" && realpathSync(e.workDir) === source; } catch { return false; }
+  });
+  if (found.length !== 1) return { why: found.length ? "two projects share this folder" : "this folder isn't a project" };
+  const [name, entry] = found[0];
+  if (!PROJECT.test(name)) return { why: "the project's name isn't plain" };
+  let state;
+  try { state = JSON.parse(readFileSync(join(config.projectsStateDir, name, "state.json"), "utf8")); } catch { return { why: `the runner's state for ${name} can't be read` }; }
+  if (!state || typeof state !== "object") return { why: `the runner's state for ${name} can't be read` };
+  return { name, entry, state };
+}
+
+/**
+ * Level 2's standing push grant (WS5): may this push go without Adam's card? Every invariant must
+ * hold, read now; anything unreadable means no. pushFlow still checks the repo's jorah/** ruleset
+ * live and refuses without it, and pushes exactly the head checked here.
+ * Returns { ok: true, project } or { ok: false, why }.
+ */
+export async function standingGrant(config, target, listing, { gitImpl = git } = {}) {
+  const no = (why) => ({ ok: false, why });
+  if (config.standingGrant !== true) return no("the standing push grant is off");
+  const repoName = String(target.repo ?? "").split("/").pop().toLowerCase();
+  if ((config.selfRepos ?? []).includes(repoName)) return no("Jorah's own repo always asks");
+  try {
+    if (existsSync(join(config.guardStateDir, "FROZEN"))) return no("Jorah is frozen");
+  } catch {
+    return no("the freeze can't be checked");
+  }
+  const p = projectOf(config, target.source);
+  if (!p.entry) return no(p.why);
+  const { name, entry, state } = p;
+  if (entry.level !== 2) return no(`${name} is at level ${entry.level}, not 2`);
+  if (entry.paused === true || state.paused === true) return no(`${name} is paused`);
+  if (typeof entry.repo !== "string" || entry.repo.toLowerCase() !== String(target.repo).toLowerCase()) return no(`${name}'s registry repo isn't ${target.repo}`);
+  if (target.branch !== (entry.branch ?? "jorah/line")) return no(`only ${entry.branch ?? "jorah/line"} goes without a card`);
+  if (state.pushBlocked !== false) return no("the runner's push block isn't clear");
+  if (!listing || listing.error || typeof listing.head !== "string" || !Array.isArray(listing.files)) return no(`the changed files can't be listed${listing?.error ? `: ${oneLine(listing.error)}` : ""}`);
+  if (typeof state.cleanHead !== "string" || state.cleanHead !== listing.head) return no("this head isn't the one the runner's secret scan passed");
+  if (listing.files.length > GRANT_MAX_FILES) return no(`more than ${GRANT_MAX_FILES} files change`);
+  for (const f of listing.files) {
+    for (const path of [f.path, f.from]) if (typeof path === "string" && (path === ".github" || path.startsWith(".github/"))) return no(`${oneLine(path).slice(0, 60)} is under .github/`);
+  }
+  const mirror = join(config.mirrorDir, `${target.project}.git`);
+  for (const f of listing.files) {
+    if (f.status === "deleted") continue;
+    let size;
+    try { size = Number(await gitImpl(["--git-dir", mirror, "cat-file", "-s", `${listing.head}:${f.path}`])); } catch { return no(`${oneLine(f.path).slice(0, 60)}'s size can't be read`); }
+    if (!Number.isFinite(size) || size > GRANT_MAX_FILE) return no(`${oneLine(f.path).slice(0, 60)} is over 5 MB`);
+  }
+  return { ok: true, project: name };
+}
+
+/** Every push of a project's branch, for its digest (append only, one JSON line each). */
+export function logProjectPush(config, target, { head, base, files, by, at = new Date() }) {
+  const p = projectOf(config, target.source);
+  if (!p.entry) return false;
+  const line = { v: 1, at: at.toISOString(), repo: target.repo, branch: target.branch, head, base: base ?? null, by,
+    files: (files ?? []).slice(0, 200).map((f) => ({ status: f.status, path: f.path })), more: Math.max(0, (files ?? []).length - 200) };
+  appendFileSync(join(config.projectsStateDir, p.name, "pushes.jsonl"), `${JSON.stringify(line)}\n`, { mode: 0o600 });
+  return true;
 }
 
 /** check() plus project mode's push block, for the push and pull request flows. */

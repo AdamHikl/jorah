@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Read-only: watch the live Gateway's pending plugin approval cards for a while and print, for each
 # new card, the routing facts OpenClaw recorded (where the turn came from, who asked, the reviewers).
-# It never answers a card. Titles are clipped; no other card text is printed.
+# It never answers a card. It sees only cards visible to the CLI's own connection: on 2026-11-22 it
+# missed a card typed in the HUD, which only the HUD and admin clients see. Titles are clipped; no other card text is printed.
 # From the Mac (seconds to watch, default 180):
 #   ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 \
 #     "wsl -d jorah -u jorah -- bash -s 180" < scripts/pc/card-watch.sh

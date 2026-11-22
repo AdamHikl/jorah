@@ -452,7 +452,7 @@ struct SessionBar: View {
                         Button("Main") { model.switchSession(to: main) }
                         Divider()
                     }
-                    ForEach(model.sessions.filter { $0.key != model.mainSessionKey }.prefix(25)) { row in
+                    ForEach(model.sessions.filter { $0.key != model.mainSessionKey && !model.isHomeSession($0) }.prefix(25)) { row in
                         Button(row.active ? "\(row.title)  (running)" : row.title) {
                             model.switchSession(to: row.key)
                         }
@@ -721,16 +721,20 @@ struct ActivityRow: View {
 struct SessionsPanel: View {
     @Environment(HUDModel.self) private var model
 
+    private var visibleSessions: [SessionRow] {
+        model.sessions.filter { !model.isHomeSession($0) }
+    }
+
     var body: some View {
         HUDPanel(title: "Sessions", asOf: model.sessionsAsOf, isDemo: model.isDemo) {
             if model.sessionsAsOf == nil {
                 UnknownText()
-            } else if model.sessions.isEmpty {
+            } else if visibleSessions.isEmpty {
                 UnknownText(text: "none")
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 5) {
-                        ForEach(model.sessions.prefix(12)) { row in
+                        ForEach(visibleSessions.prefix(12)) { row in
                             Button {
                                 model.switchSession(to: row.key)
                             } label: {

@@ -37,6 +37,7 @@ struct SessionRow: Identifiable, Equatable {
     var overrideSource: String? = nil
     /// The parent session's key, when this session is a sub-agent.
     var spawnedBy: String? = nil
+    var label: String? = nil
     var status: String? = nil
     var startedAt: Date? = nil
     var endedAt: Date? = nil
@@ -247,6 +248,17 @@ final class HUDModel {
     var currentSessionKey: String?
     var mainSessionId: String?
     var sessionError: String?
+    /// Unused parent for HUD-created conversations so talking in them does not wake Main (or Telegram).
+    var homeSessionKey: String? = HUDProfile.defaults.string(forKey: HomeSessionRules.defaultsKey) {
+        didSet {
+            if let homeSessionKey {
+                HUDProfile.defaults.set(homeSessionKey, forKey: HomeSessionRules.defaultsKey)
+                sessions.removeAll { isHomeSession($0) }
+            } else {
+                HUDProfile.defaults.removeObject(forKey: HomeSessionRules.defaultsKey)
+            }
+        }
+    }
 
     // Model of the session on screen. Nil means unknown.
     var models: [ModelChoice] = []
@@ -615,7 +627,7 @@ final class HUDModel {
         lines = []; activity = []; activeRuns = []; sessions = []; cron = []; presence = []
         healthOK = nil; healthAsOf = nil; sessionsAsOf = nil; cronAsOf = nil; presenceAsOf = nil
         serverVersion = nil; grantedScopes = []; connectedAt = nil; gatewayUptimeAtHello = nil
-        currentSessionKey = nil; mainSessionId = nil; sessionError = nil
+        currentSessionKey = nil; mainSessionId = nil; sessionError = nil; homeSessionKey = nil
         voice.setSessionKey(nil)
         models = []; modelsAsOf = nil; currentModel = nil; currentModelSource = nil; defaultModel = nil
         subagents = []; subagentsAsOf = nil
@@ -936,9 +948,18 @@ final class HUDModel {
         return sessions.first(where: { $0.key == key })?.title ?? key
     }
 
+    func isHomeSession(_ row: SessionRow) -> Bool {
+        HomeSessionRules.isHomeSession(key: row.key, label: row.label, homeSessionKey: homeSessionKey)
+    }
+
+    func isHomeSession(key: String) -> Bool {
+        let label = sessions.first(where: { $0.key == key })?.label
+        return HomeSessionRules.isHomeSession(key: key, label: label, homeSessionKey: homeSessionKey)
+    }
+
     /// Shows another session: its transcript, its live replies and its tool calls.
     func switchSession(to key: String) {
-        guard !isDemo, phase == .connected, key != currentSessionKey else { return }
+        guard !isDemo, phase == .connected, key != currentSessionKey, !isHomeSession(key: key) else { return }
         let previous = currentSessionKey
         currentSessionKey = key
         voice.switchSession(to: key)
@@ -974,24 +995,105 @@ final class HUDModel {
         guard !isDemo, phase == .connected, canWrite else { return }
         sessionError = nil
         Task {
+            // New conversations sit under an unused home session instead of Main so OpenClaw
+            // does not wake Main (and Telegram) whenever Adam types or speaks in one.
+            let parentKey = await ensureHomeSessionKey()
+            let create = HomeSessionRules.conversationCreateParams(
+                idempotencyKey: UUID().uuidString,
+                homeSessionKey: parentKey
+            )
             do {
-                let result = try await client.request("sessions.create", .object([
-                    "idempotencyKey": .string(UUID().uuidString),
-                ]))
-                guard let key = result["key"].string ?? result["session"]["key"].string
-                    ?? result["sessionKey"].string
-                else {
+                let result = try await client.request(
+                    "sessions.create",
+                    .object(create.params.mapValues { .string($0) })
+                )
+                guard let key = HomeSessionRules.sessionKey(fromCreateResult: result.any) else {
                     sessionError = "The Gateway created a session but did not say which. Pick it from the list."
+                    return
+                }
+                guard !isHomeSession(key: key) else {
+                    sessionError = "Could not start a new conversation: the Gateway returned the HUD home session."
                     return
                 }
                 if let row = Self.sessionRow(from: result["session"]) ?? Self.sessionRow(from: result) {
                     merge(session: row)
                 }
                 switchSession(to: key)
+                if !create.hasParent {
+                    sessionError = HomeSessionRules.fallbackWarning
+                }
             } catch {
                 sessionError = "Could not start a new conversation: \(error.localizedDescription)"
             }
         }
+    }
+
+    /// Ensures the hidden `jorah-hud-home` session exists on the Gateway and returns its key.
+    private func ensureHomeSessionKey() async -> String? {
+        if let stored = HomeSessionRules.usableKey(homeSessionKey) {
+            if let existing = await verifySessionExists(key: stored) {
+                if existing != homeSessionKey { homeSessionKey = existing }
+                return existing
+            }
+            // The remembered home session is gone on the Gateway; clear it and recreate below.
+            homeSessionKey = nil
+        }
+
+        do {
+            let params = HomeSessionRules.homeCreateParams(idempotencyKey: UUID().uuidString)
+            let result = try await client.request("sessions.create", .object(params.mapValues { .string($0) }))
+            if let createdKey = HomeSessionRules.sessionKey(fromCreateResult: result.any) {
+                homeSessionKey = createdKey
+                return createdKey
+            }
+        } catch {
+            let message = (error as? GatewayClient.RequestError)?.message ?? error.localizedDescription
+            if HomeSessionRules.isLabelAlreadyInUseError(message) ||
+                HomeSessionRules.isLabelAlreadyInUseError(error.localizedDescription) {
+                if let found = await findHomeSessionByLabel() {
+                    homeSessionKey = found
+                    return found
+                }
+            }
+        }
+        return nil
+    }
+
+    private func verifySessionExists(key: String) async -> String? {
+        do {
+            let result = try await client.request("sessions.resolve", .object([
+                "key": .string(key),
+                "allowMissing": .bool(true),
+            ]))
+            return HomeSessionRules.resolvedKey(fromResolveResult: result.any)
+        } catch {
+            if let list = try? await client.request("sessions.list", .object([
+                "limit": .number(100),
+                "excludeSubagents": .bool(true),
+            ])),
+               let byLabel = HomeSessionRules.findSessionKey(withLabel: HomeSessionRules.label, inSessionsList: list.any) {
+                return byLabel
+            }
+            return nil
+        }
+    }
+
+    private func findHomeSessionByLabel() async -> String? {
+        if let resolved = try? await client.request("sessions.resolve", .object([
+            "label": .string(HomeSessionRules.label),
+            "allowMissing": .bool(true),
+        ])),
+           let key = HomeSessionRules.resolvedKey(fromResolveResult: resolved.any) {
+            return key
+        }
+        if let list = try? await client.request("sessions.list", .object([
+            "limit": .number(100),
+            "excludeSubagents": .bool(true),
+        ])),
+           let key = HomeSessionRules.findSessionKey(withLabel: HomeSessionRules.label, inSessionsList: list.any) {
+            return key
+        }
+        return nil
     }
 
     /// Reloads the transcript half a second after the last change, if `key` is the session on
@@ -1067,6 +1169,10 @@ final class HUDModel {
     func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, canWrite, let key = currentSessionKey else { return }
+        guard !isHomeSession(key: key) else {
+            sendError = "Not sent: cannot message the HUD home session."
+            return
+        }
         draft = ""
         sendError = nil
         let idempotencyKey = UUID().uuidString
@@ -1135,6 +1241,11 @@ final class HUDModel {
                 if let parent = row.spawnedBy {
                     // Sub-agents stay out of the roster and go to their own panel.
                     if parent == currentSessionKey { scheduleSubagentsRefresh() }
+                    break
+                }
+                if isHomeSession(row) {
+                    if homeSessionKey == nil { homeSessionKey = row.key }
+                    sessions.removeAll { isHomeSession($0) }
                     break
                 }
                 merge(session: row)
@@ -1270,7 +1381,11 @@ final class HUDModel {
 
     private func applySessions(_ list: JSONValue) {
         guard let rows = list["sessions"].array ?? list.array else { return }
-        sessions = rows.compactMap(Self.sessionRow(from:)).filter { $0.spawnedBy == nil }
+        let parsed = rows.compactMap(Self.sessionRow(from:))
+        if homeSessionKey == nil, let home = parsed.first(where: { isHomeSession($0) }) {
+            homeSessionKey = home.key
+        }
+        sessions = parsed.filter { $0.spawnedBy == nil && !isHomeSession($0) }
         sessionsAsOf = Date()
         if let model = list["defaults"]["model"].string {
             defaultModel = Self.modelRef(provider: list["defaults"]["modelProvider"].string, model: model)
@@ -1279,6 +1394,7 @@ final class HUDModel {
     }
 
     private func merge(session row: SessionRow) {
+        guard !isHomeSession(row) else { return }
         if let index = sessions.firstIndex(where: { $0.key == row.key }) {
             sessions[index] = row
         } else {
@@ -1365,6 +1481,7 @@ final class HUDModel {
         session.modelProvider = row["modelProvider"].string
         session.overrideSource = row["modelOverrideSource"].string
         session.spawnedBy = row["spawnedBy"].string
+        session.label = row["label"].string
         session.status = row["status"].string
         session.startedAt = row["startedAt"].dateFromMs
         session.endedAt = row["endedAt"].dateFromMs

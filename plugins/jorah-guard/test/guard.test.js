@@ -21,7 +21,7 @@ const WS = "/home/jorah/workspace";
 const settings = { workspace: WS, cleanSessionKeys: ["agent:main:main"] };
 
 const TELEGRAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
-const VOICE = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "webchat", senderIsOwner: true } };
+const VOICE = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "voice", senderIsOwner: true } };
 const CHILD = { agentId: "background", sessionKey: "agent:background:subagent:x", requester: { senderIsOwner: false } };
 
 function fresh() {
@@ -392,6 +392,17 @@ test("only Telegram with a sender id or the PC's CLI counts as Adam typing; a cl
   assert.equal(run("edit", memory, claimed).verdict, "confirm");
   assert.match(run("edit", memory, voice).description, /Asked by voice/);
   assert.equal(run("edit", memory, cli).verdict, "allow");
+});
+
+test("typing in the HUD (webchat) is checked like voice, but its card says it was typed (2026-11-22)", () => {
+  const { run } = fresh();
+  const hud = { agentId: "main", sessionKey: "agent:main:hud", requester: { channel: "webchat", senderIsOwner: true } };
+  const memory = { path: "MEMORY.md", edits: [{ newText: "x" }] };
+  const d = run("edit", memory, hud);
+  assert.equal(d.verdict, "confirm", "still a card, as by voice");
+  assert.match(d.description, /Typed in the HUD or the web chat, not Telegram: confirm only if this was you\./);
+  assert.doesNotMatch(d.description, /Asked by voice/);
+  assert.equal(run("toolbox_install", { id: "tb-0123456789", name: "x", version: "1", source: "s", sha256: "a", licence: "MIT", released: "2026-01-01", size: "1 MB" }, hud).verdict, "confirm");
 });
 
 test("an unwritable state folder blocks every call that records taint, not just the first (P5.4 fault run)", () => {

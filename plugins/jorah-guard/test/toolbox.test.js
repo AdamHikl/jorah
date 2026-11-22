@@ -15,7 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const matrix = JSON.parse(readFileSync(join(here, "..", "..", "..", "config", "permission-matrix.json"), "utf8"));
 const settings = { workspace: "/home/jorah/workspace", cleanSessionKeys: ["agent:main:main"] };
 const ADAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
-const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } };
+const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "voice", senderIsOwner: true } };
 const CARD = {
   id: "tb-0123456789", name: "orca-slicer", version: "2.3.1",
   source: "https://github.com/SoftFever/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage",

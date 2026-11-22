@@ -21,6 +21,7 @@ class Request(unittest.TestCase):
         headers, body = build_request("What's on today?", "t0ken")
         sent = json.loads(body)
         self.assertEqual(headers["x-openclaw-session-key"], "agent:main:main")
+        self.assertEqual(headers["x-openclaw-message-channel"], "voice")
         self.assertEqual(headers["Authorization"], "Bearer t0ken")
         self.assertTrue(sent["stream"])
         self.assertEqual(sent["model"], "openclaw/main")

@@ -118,7 +118,7 @@ export default {
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings);
-        const from = who.voice ? "voice" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
+        const from = who.voice ? "voice" : who.webchat ? "webchat" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
         log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };

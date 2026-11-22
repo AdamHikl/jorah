@@ -53,6 +53,9 @@ def build_request(text, token, session_key=SESSION_KEY):
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "x-openclaw-session-key": session_key,
+        # Marks the turn as spoken, so jorah-guard's cards say "Asked by voice" and typing in the
+        # HUD (which arrives as "webchat") isn't taken for voice.
+        "x-openclaw-message-channel": "voice",
     }
     body = {
         "model": "openclaw/main",

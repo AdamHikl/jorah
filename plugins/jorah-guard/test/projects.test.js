@@ -19,7 +19,7 @@ const matrix = JSON.parse(readFileSync(MATRIX_FILE, "utf8"));
 const settings = { workspace: "/home/jorah/workspace", cleanSessionKeys: ["agent:main:main"] };
 
 const ADAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
-const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } };
+const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "voice", senderIsOwner: true } };
 const DIGEST_JOB = { agentId: "main", sessionKey: "agent:main:cron:project-digest" };
 const P = "tree-watering-robot";
 const ANSWER = { project: P, question_id: "Q-0001", key: "B", note: "your pick" };

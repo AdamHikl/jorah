@@ -70,11 +70,13 @@ export function settings(cfg = {}) {
 }
 
 // How Adam said it, as recorded with an answer or result (the contract's answer.via): from the
-// tool call's requester, never from the model. Anything that isn't Telegram or voice is "chat".
+// tool call's requester, never from the model. jorah-voice and jorah-phone mark their turns
+// "voice"; typing in the HUD or the web chat arrives as "webchat" and is "chat", like anything else
+// that isn't Telegram or voice.
 export function viaOf(ctx) {
   const r = ctx?.requester;
   if (r?.channel === "telegram") return "telegram";
-  if (r?.channel === "webchat" || r?.channel === "voice") return "voice";
+  if (r?.channel === "voice") return "voice";
   return "chat";
 }
 

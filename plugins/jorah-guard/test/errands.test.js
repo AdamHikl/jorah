@@ -20,7 +20,7 @@ const MANIFEST = join(here, "..", "..", "jorah-errands", "openclaw.plugin.json")
 const settings = { workspace: "/home/jorah/workspace", cleanSessionKeys: ["agent:main:main"] };
 
 const ADAM = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "telegram", senderId: "owner-id", senderIsOwner: true } };
-const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } };
+const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "voice", senderIsOwner: true } };
 const DEEP = { agentId: "deep", sessionKey: "agent:deep:subagent:research-1" };
 const NOW = new Date("2026-11-17T15:00:00Z");
 const TZ = "Europe/Bratislava";

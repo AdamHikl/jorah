@@ -172,6 +172,7 @@ class GatewayStreamTest(unittest.TestCase):
             sse_text('data: {"error": {"message": "boom"}}')
         headers, body = build_request("q", "tok")
         self.assertNotIn("tok", body.decode())
+        self.assertEqual(headers["x-openclaw-message-channel"], "voice")
 
 
 class Running:

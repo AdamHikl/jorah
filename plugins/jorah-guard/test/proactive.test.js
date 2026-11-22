@@ -49,7 +49,7 @@ test("proactive runs: told apart by the run's trigger, the session key, a parent
   assert.equal(is({ agentId: "main", sessionKey: "hook:gmail:1" }, null), true); // a bare key, no agent prefix
   assert.equal(is(HEARTBEAT, null), true); // main, no requester, no trigger: can't be shown to be Adam's
   assert.equal(is(ADAM, "user"), false);
-  assert.equal(is({ agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } }, "user"), false);
+  assert.equal(is({ agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "voice", senderIsOwner: true } }, "user"), false);
   assert.equal(is({ agentId: "main", sessionKey: "agent:main:main", requester: { senderIsOwner: true } }, null), false); // the PC's CLI
   // A child spawned from a cron session inherits it.
   const parents = { "agent:background:subagent:k": "agent:main:cron:job-9" };
@@ -108,7 +108,7 @@ test("loop_done and loop_drop: free in Adam's clean chat, a card after outside t
   const d = run("loop_drop", { id: "L3" }, ADAM);
   assert.equal(d.verdict, "confirm");
   assert.match(d.description, /id: L3/);
-  const voice = { agentId: "main", sessionKey: "agent:main:voice-2", requester: { channel: "webchat", senderIsOwner: true } };
+  const voice = { agentId: "main", sessionKey: "agent:main:voice-2", requester: { channel: "voice", senderIsOwner: true } };
   assert.equal(run("loop_done", { id: "L3" }, voice).verdict, "confirm");
 });
 

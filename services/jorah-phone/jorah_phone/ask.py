@@ -79,6 +79,8 @@ def build_request(text, token, session_key=SESSION_KEY, note=SIRI_NOTE):
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "x-openclaw-session-key": session_key,
+        # Siri asks are spoken; shares keep the label they had. jorah-guard checks both as voice.
+        "x-openclaw-message-channel": "voice",
     }
     body = {
         "model": "openclaw/main",

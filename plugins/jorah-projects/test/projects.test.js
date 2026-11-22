@@ -373,9 +373,12 @@ test("project_answer: Adam's answer lands in the inbox with who and how, nothing
   assert.equal(statSync(join(fx.sdir, "inbox")).mode & 0o777, 0o700);
   assert.equal(readFileSync(join(fx.work, "project", "questions.yaml"), "utf8"), before);
   // By voice the record says so.
-  await call("project_answer", { project: "tree-watering-robot", question_id: "Q-0002", note: "let's say 500 euros" }, { agentId: "main", sessionKey: "agent:main:voice", requester: { channel: "webchat", senderIsOwner: true } });
+  await call("project_answer", { project: "tree-watering-robot", question_id: "Q-0002", note: "let's say 500 euros" }, { agentId: "main", sessionKey: "agent:main:voice", requester: { channel: "voice", senderIsOwner: true } });
   assert.equal(answers(fx)[1].via, "voice");
   assert.equal(answers(fx)[1].key, null);
+  // Typed in the HUD (webchat) is chat, not voice (2026-11-22).
+  await call("project_answer", { project: "tree-watering-robot", question_id: "Q-0002", note: "typed in the HUD" }, { agentId: "main", sessionKey: "agent:main:hud", requester: { channel: "webchat", senderIsOwner: true } });
+  assert.equal(answers(fx)[2].via, "chat");
 });
 
 test("project_answer: refuses what isn't an answer to a real question", async () => {
@@ -583,7 +586,7 @@ test("project_start, local-only: Adam's words verbatim in intake.md, a level-0 e
 test("project_start with one of Adam's repos: owner filled in, folder named after the repo; via voice and the app", async () => {
   const fx = startFixture();
   const { call } = load(fx);
-  const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "webchat", senderIsOwner: true } };
+  const VOICE = { agentId: "main", sessionKey: "agent:main:voice-1", requester: { channel: "voice", senderIsOwner: true } };
   const r = await call("project_start", { name: "robot-tour", repo: "robot_tour", words: "Finish the robot tour." }, VOICE);
   assert.equal(r.status, "started");
   assert.equal(r.repo, "AdamHikl/robot_tour");

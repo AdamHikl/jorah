@@ -904,6 +904,16 @@ Run each of these against the live Gateway from the start of the upgrade. A chec
   - a Telegram turn;
   - the matrix line, which reaches live with the guard's next deploy.
 
+### Target 2026.11.5 or 11.6 instead of 10.33 (proposed 2026-11-22, waits for Adam)
+
+Source tier only. Full record: `docs/evidence/oc-upgrade-11.5-2026-11-22/README.md`.
+
+- **The deep hand-back failure of 2026-11-22 16:57:48** [measured: live log and files]: just before it, the log says `claude-cli transcript check v4 miss … expectedPath=/home/jorah/.claude/projects/-home-jorah-workspace/…`. The transcript exists under `~/.claude-jorah/projects/-home-jorah-workspace/`. **The link from README "Conversation continuity" was never made on the PC**: `~/.claude/projects/` holds only `-opt-node-lib-node-modules-openclaw`. A missed check makes 10.9 pin the announce to main's old Claude process, so it fails with `cli_live_session_changed`. Since 2026-11-16: 280 misses, all for main's workspace. `setup-continuity.sh` would make the wrong link on the PC: it derives the key from `/opt/jorah/workspace`.
+- **10.33 doesn't fix it** [verified: `src/agents/command/claude-cli-project-dir.ts` at each tag]: 10.9 and 10.33 look only in `$HOME/.claude/projects`. 11.5 and 11.6 follow `CLAUDE_CONFIG_DIR`. 11.4 and 10.33 are on the release branch without that change.
+- **Eligible:** 11.5 at 2026-11-24 11:47 CET, 11.6 at 2026-11-26 18:26 CET. Neither needs an exception; the 10.33 exception above lapses if the target changes. 11.6 adds Claude CLI and subagent delivery fixes and exec-approval security fixes.
+- **Breaking or default changes that touch Jorah** (detail in the record): hook shapes unchanged apart from added fields, `before_tool_call` fails closed after 15 s and `message_sending` fails open after 15 s; Tool Search wrapper unchanged from 10.33 (`dispatch_action`), and claude-cli turns now load OpenClaw tools through Tool Search by default; 13 SDK methods removed, none used by a Jorah plugin; host `apply_patch` may edit outside the workspace by default; user-installed plugins show unsandboxed native UI in the Control UI by default; pairing credentials move out of the shared database, so a rollback may need the HUD and iPhone paired again.
+- **Interim fix, proposed:** as `jorah`, `ln -s /home/jorah/.claude-jorah/projects/-home-jorah-workspace /home/jorah/.claude/projects/-home-jorah-workspace`. No restart. Undo: remove the link.
+
 ## Advisory watch, drift check and install policy, 2026-11-19
 
 **Why:** GHSA-pw3x-g8v8-fvj2, published 2026-11-19, affects the live 2026.10.9. It was on OpenClaw's own advisory list but not in GitHub's global database, so `npm audit` said nothing. The research (`docs/plan/research/openclaw-security-landscape.md`, recommendations 4, 5 and 10) asked for three small pieces. Adam: "yes do all fixes in opus 5.5 high subsessions".

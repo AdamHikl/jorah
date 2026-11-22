@@ -137,12 +137,14 @@ class StreamReader:
                 "last": self.last_rate_info, "windows": self.windows or None}
 
 
-def build_command(settings, project, *, session_id, setup=False):
+def build_command(settings, project, *, session_id, setup=False, model=None, effort=None):
     settings_file = settings.run_settings_file(project.web, setup)
+    chosen_model = model or project.model or settings.model
+    chosen_effort = effort or project.effort or settings.effort
     cmd = [
         str(settings.claude_bin), "-p",
         "--output-format", "stream-json", "--verbose",
-        "--model", settings.model, "--effort", settings.effort,
+        "--model", chosen_model, "--effort", chosen_effort,
         "--max-turns", str(project.limits["maxTurns"]),
         "--setting-sources", "",
         "--settings", str(settings_file),
@@ -197,11 +199,11 @@ def build_env(settings, project):
     return env
 
 
-def run(settings, project, brief, *, minutes, setup=False, session_id=None, popen=subprocess.Popen):
+def run(settings, project, brief, *, minutes, setup=False, session_id=None, popen=subprocess.Popen, model=None, effort=None):
     """Run Claude Code to completion or until the wall clock runs out. Returns a summary dict.
     `setup`: a setup run, with the settings that let it draft CHARTER.md."""
     session_id = session_id or str(uuid.uuid4())
-    cmd = build_command(settings, project, session_id=session_id, setup=setup)
+    cmd = build_command(settings, project, session_id=session_id, setup=setup, model=model, effort=effort)
     env = build_env(settings, project)
     Path(env["CLAUDE_CODE_TMPDIR"]).mkdir(parents=True, exist_ok=True, mode=0o700)
     reader = StreamReader()

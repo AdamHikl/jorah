@@ -64,9 +64,11 @@ EXPECTED = {
     "project-config.bench-unknown.json": "bench: isn't one of the allowed values",
     "project-config.branch-main.json": "branch: has the wrong form",
     "project-config.branch-outside-jorah.json": "branch: has the wrong form",
+    "project-config.effort-unknown.json": "effort: isn't one of the allowed values",
     "project-config.level-3.json": "level: is above 2",
     "project-config.level-true.json": "level: must be integer",
     "project-config.minutes-missing.json": "is missing 'minutesPerRun'",
+    "project-config.model-unknown.json": "model: isn't one of the allowed values",
     "project-config.no-paused.json": "is missing 'paused'",
     "project-config.repo-empty.json": "repo: has the wrong form",
     "project-config.repo-missing.json": "is missing 'repo'",
@@ -359,6 +361,20 @@ class RegistryTest(unittest.TestCase):
         self.assertIn("registry.tree-watering-robot.branch: has the wrong form", problems)
         self.assertIsNone(good["new-idea"]["repo"])  # a local-only project, accepted above
         self.assertEqual(pc.check_registry([]), ["registry: must be an object of projects"])
+
+    def test_optional_model_and_effort(self):
+        good = json.loads((GOOD / "projects.json").read_text())
+        for model in ("opus", "sonnet", "haiku", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", None):
+            for effort in ("low", "medium", "high", "xhigh", "max", None):
+                candidate = copy.deepcopy(good)
+                candidate["minimal"]["model"] = model
+                candidate["minimal"]["effort"] = effort
+                self.assertEqual(pc.check_registry(candidate), [], (model, effort))
+        for field, bad_val in (("model", "gpt-4"), ("model", True), ("effort", "extreme"), ("effort", 3)):
+            candidate = copy.deepcopy(good)
+            candidate["minimal"][field] = bad_val
+            problems = pc.check_registry(candidate)
+            self.assertTrue(any(f"registry.minimal.{field}: isn't one of the allowed values" in p for p in problems), (field, bad_val, problems))
 
 
 class FounderFieldsTest(unittest.TestCase):

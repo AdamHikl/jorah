@@ -93,6 +93,29 @@
       ],
       "description": "The bench environment for runs, or null. null when left out"
     },
+    "model": {
+      "enum": [
+        "opus",
+        "sonnet",
+        "haiku",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        null
+      ],
+      "description": "Claude model for runs, or null for the runner's default. null when left out"
+    },
+    "effort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        null
+      ],
+      "description": "Reasoning effort for runs, or null for the runner's default. null when left out"
+    },
     "paused": {
       "type": "boolean"
     }

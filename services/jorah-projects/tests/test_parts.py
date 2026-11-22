@@ -104,8 +104,52 @@ class RegistryTest(unittest.TestCase):
     def test_a_good_entry_and_its_defaults(self):
         self.write({"robot": {"repo": "AdamHikl/robot"}})
         p = config.load_registry(self.s)["robot"]
-        self.assertEqual((p.branch, p.state_dir, p.level, p.limits, p.web, p.schedule), ("jorah/line", "project", 0, config.DEFAULT_LIMITS, False, []))
+        self.assertEqual((p.branch, p.state_dir, p.level, p.limits, p.web, p.schedule, p.model, p.effort),
+                         ("jorah/line", "project", 0, config.DEFAULT_LIMITS, False, [], None, None))
         self.assertEqual(p.work_dir, self.tmp / "work/robot")
+
+    def test_optional_model_and_effort_in_registry(self):
+        pc = contract.load(CONTRACT)
+        base = {"repo": "AdamHikl/robot", "workDir": str(self.tmp / "work/robot"), "branch": "jorah/line",
+                "level": 0, "schedule": [], "limits": dict(config.DEFAULT_LIMITS), "paused": False}
+        self.write({
+            "a": {**base, "workDir": str(self.tmp / "work/a"), "model": "sonnet", "effort": "xhigh"},
+            "b": {**base, "workDir": str(self.tmp / "work/b"), "model": "claude-haiku-5-5", "effort": "max"},
+            "c": {**base, "workDir": str(self.tmp / "work/c"), "model": None, "effort": None},
+            "bad-model": {**base, "workDir": str(self.tmp / "work/bad-model"), "model": "gpt-4"},
+            "bad-model-bool": {**base, "workDir": str(self.tmp / "work/bad-model-bool"), "model": True},
+            "bad-effort": {**base, "workDir": str(self.tmp / "work/bad-effort"), "effort": "turbo"},
+            "bad-effort-int": {**base, "workDir": str(self.tmp / "work/bad-effort-int"), "effort": 2},
+        })
+        for checker in (None, pc):
+            projects = config.load_registry(self.s, checker)
+            self.assertEqual((projects["a"].model, projects["a"].effort), ("sonnet", "xhigh"))
+            self.assertEqual((projects["b"].model, projects["b"].effort), ("claude-haiku-5-5", "max"))
+            self.assertEqual((projects["c"].model, projects["c"].effort), (None, None))
+            for bad_name in ("bad-model", "bad-model-bool", "bad-effort", "bad-effort-int"):
+                self.assertIsInstance(projects[bad_name], config.ConfigError, (checker is not None, bad_name))
+
+    def test_runner_json_quota_and_backoff_settings(self):
+        runner_file = self.tmp / "runner.json"
+        self.s.runner_file = runner_file
+        runner_file.write_text(json.dumps({
+            "githubAppId": "12345",
+            "githubOwner": "AdamHikl",
+            "weeklySoft": 0.7,
+            "tightModel": "haiku",
+            "tightEffort": "low",
+            "usageBackoffMinutes": 20,
+        }))
+        loaded = config.load_runner_file(config.Settings(runner_file=runner_file))
+        self.assertEqual(loaded.weekly_soft, 0.7)
+        self.assertEqual(loaded.tight_model, "haiku")
+        self.assertEqual(loaded.tight_effort, "low")
+        self.assertEqual(loaded.usage_backoff_minutes, 20)
+        for bad in ({"weeklySoft": 1.2}, {"weeklySoft": True}, {"tightModel": "gpt-4"},
+                    {"tightEffort": "turbo"}, {"usageBackoffMinutes": 0}, {"usageBackoffMinutes": True}):
+            runner_file.write_text(json.dumps(bad))
+            with self.assertRaises(config.ConfigError, msg=bad):
+                config.load_runner_file(config.Settings(runner_file=runner_file))
 
     def test_bad_entries_are_refused_one_by_one(self):
         bad = {

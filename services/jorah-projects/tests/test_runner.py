@@ -359,6 +359,124 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(w.run_now()["outcome"], "usage-limit")
         self.assertEqual(datetime.fromisoformat(w.usage()["backoffUntil"]), w.clock.at + timedelta(hours=1))
 
+    def test_per_project_model_and_effort_override_defaults(self):
+        w = self.w
+        w.entry["model"] = "sonnet"
+        w.entry["effort"] = "xhigh"
+        w.write_registry()
+        record = w.run_now()
+        self.assertEqual(record["outcome"], "ok", record)
+        self.assertEqual((record["model"], record["effort"], record["steppedDown"]), ("sonnet", "xhigh", None))
+        argv = w.calls()[0]["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
+        self.assertEqual(argv[argv.index("--effort") + 1], "xhigh")
+
+    def test_soft_step_down_is_off_by_default_and_steps_down_between_soft_and_ceiling(self):
+        w = self.w
+        reset = int((w.clock.at + timedelta(days=2)).timestamp())
+        w.behave([{"op": "emit", "line": {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "rateLimitType": "seven_day", "utilization": 0.75, "resetsAt": reset}}}])
+        first = w.run_now()
+        self.assertEqual(first["outcome"], "ok")
+        # Default weekly_soft=None leaves today's defaults unchanged even at 75%.
+        second = w.run_now()
+        self.assertEqual((second["model"], second["effort"], second["steppedDown"]), ("claude-opus-5-5", "high", None))
+        argv = w.calls()[-1]["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1], "claude-opus-5-5")
+        self.assertEqual(argv[argv.index("--effort") + 1], "high")
+
+        # Turn soft step-down on: between weekly_soft (0.70) and weekly_ceiling (0.85), run steps down.
+        w.settings.weekly_soft = 0.70
+        w.settings.tight_model = "sonnet"
+        w.settings.tight_effort = "medium"
+        third = w.run_now()
+        self.assertEqual(third["outcome"], "ok")
+        self.assertEqual((third["model"], third["effort"], third["steppedDown"]), ("sonnet", "medium", "stepped down: weekly 75%"))
+        argv = w.calls()[-1]["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
+        self.assertEqual(argv[argv.index("--effort") + 1], "medium")
+        self.assertEqual(w.calls()[-1]["env"]["CLAUDE_CONFIG_DIR"], str(w.settings.claude_config_dir))
+        self.assertTrue(any("stepped down: weekly 75%" in line for line in w.logs), w.logs)
+
+    def test_soft_step_down_never_picks_stronger_than_project_setting_and_skips_at_ceiling(self):
+        w = self.w
+        reset = int((w.clock.at + timedelta(days=2)).timestamp())
+        w.behave([{"op": "emit", "line": {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "rateLimitType": "seven_day", "utilization": 0.75, "resetsAt": reset}}}])
+        w.run_now()
+
+        w.settings.weekly_soft = 0.70
+        w.settings.tight_model = "sonnet"
+        w.settings.tight_effort = "medium"
+
+        # Project already weaker than tight: stays at haiku / low (never stronger).
+        w.entry["model"] = "haiku"
+        w.entry["effort"] = "low"
+        w.write_registry()
+        weaker = w.run_now()
+        self.assertEqual((weaker["model"], weaker["effort"], weaker["steppedDown"]), ("haiku", "low", None))
+        argv = w.calls()[-1]["argv"]
+        self.assertEqual(argv[argv.index("--model") + 1], "haiku")
+        self.assertEqual(argv[argv.index("--effort") + 1], "low")
+
+        # Mixed: model haiku stays haiku, effort high steps down to medium.
+        w.entry["effort"] = "high"
+        w.write_registry()
+        mixed = w.run_now()
+        self.assertEqual((mixed["model"], mixed["effort"], mixed["steppedDown"]), ("haiku", "medium", "stepped down: weekly 75%"))
+
+        # At ceiling (0.85): still skips even when weekly_soft is set.
+        w.entry["limits"]["runsPerDay"] = 8
+        w.write_registry()
+        w.behave([{"op": "emit", "line": {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "rateLimitType": "seven_day", "utilization": 0.85, "resetsAt": reset}}}])
+        w.run_now()
+        before_calls = len(w.calls())
+        skipped = w.run_now()
+        self.assertEqual(skipped["outcome"], "skipped")
+        self.assertIn("weekly limit", skipped["reason"])
+        self.assertEqual(len(w.calls()), before_calls)
+
+    def test_unknown_or_stale_weekly_utilization_keeps_default_handling(self):
+        w = self.w
+        w.settings.weekly_soft = 0.70
+        w.settings.tight_model = "haiku"
+        w.settings.tight_effort = "low"
+
+        # Missing usage.json -> unknown utilization -> normal run with default model/effort.
+        first = w.run_now()
+        self.assertEqual((first["outcome"], first["model"], first["effort"], first["steppedDown"]), ("ok", "claude-opus-5-5", "high", None))
+
+        # utilization: None -> unknown -> normal run.
+        fsio.write_private_json(w.settings.state_root / "usage.json", {
+            "v": 1, "backoffUntil": None, "reason": None, "skipped": 0,
+            "lastSeen": {"at": w.clock.at.isoformat(timespec="seconds"), "sevenDay": {"utilization": None, "resetsAt": None}},
+        })
+        second = w.run_now()
+        self.assertEqual((second["outcome"], second["model"], second["effort"], second["steppedDown"]), ("ok", "claude-opus-5-5", "high", None))
+
+        # Stale reading (resetsAt in the past) -> ignored -> normal run even if utilization was >= ceiling.
+        past_reset = (w.clock.at - timedelta(minutes=5)).isoformat(timespec="seconds")
+        fsio.write_private_json(w.settings.state_root / "usage.json", {
+            "v": 1, "backoffUntil": None, "reason": None, "skipped": 0,
+            "lastSeen": {"at": (w.clock.at - timedelta(days=1)).isoformat(timespec="seconds"), "sevenDay": {"utilization": 0.92, "resetsAt": past_reset}},
+        })
+        third = w.run_now()
+        self.assertEqual((third["outcome"], third["model"], third["effort"], third["steppedDown"]), ("ok", "claude-opus-5-5", "high", None))
+
+    def test_configurable_usage_backoff_minutes_keeps_reset_rule(self):
+        w = self.w
+        w.settings.usage_backoff_minutes = 15
+        # Without reset time: uses usage_backoff_minutes (15m).
+        w.behave([{"op": "result", "set": {"is_error": True, "result": "Claude AI usage limit reached"}}, {"op": "exit", "code": 1}])
+        self.assertEqual(w.run_now()["outcome"], "usage-limit")
+        self.assertEqual(datetime.fromisoformat(w.usage()["backoffUntil"]), w.clock.at + timedelta(minutes=15))
+
+        # After 16 minutes, backoff expires; a limit hit WITH a known reset time still waits until reset.
+        w.clock.advance(minutes=16)
+        reset = int((w.clock.at + timedelta(hours=3)).timestamp())
+        w.behave([{"op": "emit", "line": {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour", "utilization": 1.0, "resetsAt": reset}}},
+                  {"op": "result", "set": {"is_error": True, "result": "You've hit your limit"}}, {"op": "exit", "code": 1}])
+        self.assertEqual(w.run_now()["outcome"], "usage-limit")
+        self.assertEqual(datetime.fromisoformat(w.usage()["backoffUntil"]), datetime.fromtimestamp(reset, tz=timezone.utc))
+
     def test_runs_stop_while_the_weekly_limit_is_over_85_percent(self):
         w = self.w
         reset = int((w.clock.at + timedelta(days=2)).timestamp())

@@ -18,6 +18,7 @@ import secrets
 import shutil
 import stat
 import subprocess
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from string import Template
@@ -43,6 +44,28 @@ class Stop(Exception):
 
 def _now_iso(now):
     return now.isoformat(timespec="seconds")
+
+
+def _fresh_weekly_utilization(usage, now):
+    """Fresh seven-day utilization in 0..1, or None when missing, non-numeric or stale."""
+    seen = usage.get("lastSeen") or {}
+    week = seen.get("sevenDay") or {}
+    util = week.get("utilization")
+    if not isinstance(util, (int, float)) or isinstance(util, bool):
+        return None
+    reset = week.get("resetsAt")
+    if reset:
+        try:
+            return float(util) if datetime.fromisoformat(reset) > now else None
+        except ValueError:
+            return None
+    # Without a reset time the reading counts for 12 hours, so it can't hold runs off forever.
+    if seen.get("at"):
+        try:
+            return float(util) if datetime.fromisoformat(seen["at"]) > now - timedelta(hours=12) else None
+        except ValueError:
+            return None
+    return None
 
 
 class ProjectState:
@@ -251,18 +274,11 @@ class Runner:
             usage["skipped"] = int(usage.get("skipped") or 0) + 1
             fsio.write_private_json(self.usage_file, usage)
             raise Skip(f"usage limit: no runs until {until}")
-        seen = usage.get("lastSeen") or {}
-        week = seen.get("sevenDay") or {}
-        if isinstance(week.get("utilization"), (int, float)) and week["utilization"] >= self.s.weekly_ceiling:
-            reset = week.get("resetsAt")
-            # Without a reset time the reading counts for 12 hours, so it can't hold runs off forever.
-            fresh = reset and datetime.fromisoformat(reset) > now
-            if not reset and seen.get("at"):
-                fresh = datetime.fromisoformat(seen["at"]) > now - timedelta(hours=12)
-            if fresh:
-                usage["skipped"] = int(usage.get("skipped") or 0) + 1
-                fsio.write_private_json(self.usage_file, usage)
-                raise Skip(f"the weekly limit is over {int(self.s.weekly_ceiling * 100)}% (Adam's own sessions keep room)")
+        util = _fresh_weekly_utilization(usage, now)
+        if util is not None and util >= self.s.weekly_ceiling:
+            usage["skipped"] = int(usage.get("skipped") or 0) + 1
+            fsio.write_private_json(self.usage_file, usage)
+            raise Skip(f"the weekly limit is over {int(self.s.weekly_ceiling * 100)}% (Adam's own sessions keep room)")
         try:
             free = self._disk_free(self.s.work_root)
         except OSError:
@@ -285,11 +301,27 @@ class Runner:
 
     # ---- the run ---------------------------------------------------------------------------------
 
+    def resolve_run_settings(self, project, now):
+        """(model, effort, stepped_down_note) for one run, respecting per-project and soft quota limits."""
+        base_model = project.model or self.s.model
+        base_effort = project.effort or self.s.effort
+        if self.s.weekly_soft is None:
+            return base_model, base_effort, None
+        util = _fresh_weekly_utilization(self.usage(), now)
+        if util is None or util < self.s.weekly_soft or util >= self.s.weekly_ceiling:
+            return base_model, base_effort, None
+        chosen_model = config.weaker_choice(base_model, self.s.tight_model, config.MODEL_TIERS)
+        chosen_effort = config.weaker_choice(base_effort, self.s.tight_effort, config.EFFORT_TIERS)
+        if chosen_model == base_model and chosen_effort == base_effort:
+            return base_model, base_effort, None
+        return chosen_model, chosen_effort, f"stepped down: weekly {round(util * 100)}%"
+
     def run(self, project, state, folder, kind, slot, pc):
         now = self.now()
         rid = f"{now.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(3)}"
         record = {"v": 1, "id": rid, "project": project.name, "trigger": kind, "slot": slot,
                   "startedAt": _now_iso(now), "endedAt": None, "outcome": None, "reason": None,
+                  "model": None, "effort": None, "steppedDown": None,
                   "sessionId": None, "exit": None, "startHead": None, "endHead": None,
                   "sync": None, "intake": None, "commits": [], "backlog": None, "questions": None,
                   "adamTasks": None, "reverted": [], "usage": None, "gitleaks": None, "problems": [],
@@ -438,7 +470,14 @@ class Runner:
         except (GitError, UnsafeRepo, OSError, subprocess.SubprocessError):
             record["problems"].append("~/work/.toolbox couldn't be prepared")
         brief = self.brief(pc, project, repo, record, conflict, setup=setup)
-        result = self._claude_run(self.s, project, brief, minutes=project.limits["minutesPerRun"], setup=setup)
+        chosen_model, chosen_effort, stepped = self.resolve_run_settings(project, self.now())
+        record["model"] = chosen_model
+        record["effort"] = chosen_effort
+        record["steppedDown"] = stepped
+        if stepped:
+            self.log(f"{project.name}: {stepped} ({chosen_model}, {chosen_effort})")
+        run_project = replace(project, model=chosen_model, effort=chosen_effort)
+        result = self._claude_run(self.s, run_project, brief, minutes=project.limits["minutesPerRun"], setup=setup)
         record["sessionId"] = result.get("sessionId")
         record["exit"] = {"code": result.get("code"), "signal": result.get("signal"), "timedOut": result.get("timedOut"),
                           "seconds": result.get("seconds"), **(result.get("result") or {})}
@@ -693,9 +732,10 @@ class Runner:
             changed = True
         if usage.get("limited"):
             reset = usage.get("resetsAt")
-            until = datetime.fromisoformat(reset) if reset else now + timedelta(minutes=self.s.default_backoff_minutes)
+            backoff = timedelta(minutes=self.s.usage_backoff_minutes)
+            until = datetime.fromisoformat(reset) if reset else now + backoff
             if until <= now:
-                until = now + timedelta(minutes=self.s.default_backoff_minutes)
+                until = now + backoff
             current["backoffUntil"] = _now_iso(until.astimezone(self.tz))
             current["reason"] = f"usage limit ({usage.get('rateLimitType') or 'type not given'})"
             current["skipped"] = 0
@@ -813,9 +853,8 @@ class Runner:
         usage = self.usage()
         if usage.get("backoffUntil") and datetime.fromisoformat(usage["backoffUntil"]) > now:
             return f"usage limit until {usage['backoffUntil']}"
-        week = (usage.get("lastSeen") or {}).get("sevenDay") or {}
-        reset = week.get("resetsAt")
-        if isinstance(week.get("utilization"), (int, float)) and week["utilization"] >= self.s.weekly_ceiling and reset and datetime.fromisoformat(reset) > now:
+        util = _fresh_weekly_utilization(usage, now)
+        if util is not None and util >= self.s.weekly_ceiling:
             return "the weekly limit is high"
         try:
             if self._disk_free(self.s.work_root) < self.s.min_free_bytes:
@@ -832,7 +871,8 @@ class Runner:
         now = self.now()
         rid = f"{now.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(3)}"
         record = {"v": 1, "id": rid, "kind": "learn", "tool": tool["name"], "version": tool.get("version"), "toolId": tool.get("id"),
-                  "startedAt": _now_iso(now), "endedAt": None, "outcome": None, "reason": None, "exit": None, "usage": None,
+                  "startedAt": _now_iso(now), "endedAt": None, "outcome": None, "reason": None,
+                  "model": None, "effort": None, "steppedDown": None, "exit": None, "usage": None,
                   "toolbox": None}
         runs = state["runsToday"] or {}
         today = now.date().isoformat()
@@ -844,7 +884,14 @@ class Runner:
                 raise Stop("~/work/.toolbox isn't a safe git repo")
             brief = toolbox.learn_brief(self.s, self.s.toolbox_brief_template, tool, done, today=today,
                                         minutes=project.limits["minutesPerRun"], max_turns=project.limits["maxTurns"])
-            result = self._claude_run(self.s, project, brief, minutes=project.limits["minutesPerRun"])
+            chosen_model, chosen_effort, stepped = self.resolve_run_settings(project, now)
+            record["model"] = chosen_model
+            record["effort"] = chosen_effort
+            record["steppedDown"] = stepped
+            if stepped:
+                self.log(f"toolbox: {stepped} ({chosen_model}, {chosen_effort})")
+            run_project = replace(project, model=chosen_model, effort=chosen_effort)
+            result = self._claude_run(self.s, run_project, brief, minutes=project.limits["minutesPerRun"])
             record["exit"] = {"code": result.get("code"), "timedOut": result.get("timedOut"), "seconds": result.get("seconds"),
                               **(result.get("result") or {})}
             record["usage"] = result.get("usage")
@@ -945,6 +992,8 @@ class Runner:
         sync = record.get("sync") or {}
         if sync.get("connected"):
             item["notes"].append(f"connected: the local-only line now merges {project.repo}'s {sync.get('defaultBranch') or 'default branch'}")
+        if record.get("steppedDown"):
+            item["notes"].append(record["steppedDown"])
         if project.repo is None:
             item["notes"].append("local only: no GitHub repo yet, so nothing is synced or pushed")
         if record["outcome"] in ("secret-found", "scan-failed"):

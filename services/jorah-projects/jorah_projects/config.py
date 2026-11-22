@@ -29,6 +29,24 @@ STATE_DIR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*
 LIMIT_RANGES = {"runsPerDay": (0, 8), "minutesPerRun": (5, 120), "maxTurns": (1, 500)}
 DEFAULT_LIMITS = {"runsPerDay": 3, "minutesPerRun": 45, "maxTurns": 200}
 BENCHES = {"robotics"}
+MODEL_TIERS = {
+    "haiku": 0,
+    "claude-haiku-5-5": 0,
+    "sonnet": 1,
+    "claude-sonnet-5-5": 1,
+    "opus": 2,
+    "claude-opus-5-5": 2,
+}
+MODELS = frozenset(MODEL_TIERS)
+EFFORT_TIERS = {"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
+EFFORTS = frozenset(EFFORT_TIERS)
+
+
+def weaker_choice(base, tight, tiers):
+    """Return `tight` only when it is strictly weaker than `base` in `tiers`; never stronger."""
+    if tight is None or base not in tiers or tight not in tiers:
+        return base
+    return tight if tiers[tight] < tiers[base] else base
 
 
 class ConfigError(ValueError):
@@ -64,8 +82,11 @@ class Settings:
     effort: str = "high"
     min_free_bytes: int = 5 * 1024**3
     kill_grace_seconds: int = 30
-    default_backoff_minutes: int = 60
+    usage_backoff_minutes: int = 60
     weekly_ceiling: float = 0.85
+    weekly_soft: float | None = None
+    tight_model: str | None = "claude-sonnet-5-5"
+    tight_effort: str | None = "medium"
     default_hold_hours: int = 48
     require_root_owned_bench: bool = True
     # Jorah's toolbox (jorah_projects/toolbox.py, docs/runbooks/toolbox.md).
@@ -107,10 +128,29 @@ def load_runner_file(settings):
     if not isinstance(data, dict):
         raise ConfigError("runner.json must hold an object")
     for key, value in data.items():
-        if key not in RUNNER_KEYS or not isinstance(value, str):
-            raise ConfigError(f"runner.json: unknown or non-text key {key[:40]}")
-        attr = RUNNER_KEYS[key]
-        setattr(settings, attr, Path(value) if attr in PATH_KEYS else value)
+        if key in RUNNER_KEYS:
+            if not isinstance(value, str):
+                raise ConfigError(f"runner.json: non-text key {key[:40]}")
+            attr = RUNNER_KEYS[key]
+            setattr(settings, attr, Path(value) if attr in PATH_KEYS else value)
+        elif key == "weeklySoft":
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < float(value) < 1):
+                raise ConfigError("runner.json: weeklySoft must be a number between 0 and 1, or null")
+            settings.weekly_soft = float(value) if value is not None else None
+        elif key == "tightModel":
+            if value is not None and (not isinstance(value, str) or value not in MODELS):
+                raise ConfigError(f"runner.json: tightModel must be one of {sorted(MODELS)} or null")
+            settings.tight_model = value
+        elif key == "tightEffort":
+            if value is not None and (not isinstance(value, str) or value not in EFFORTS):
+                raise ConfigError(f"runner.json: tightEffort must be one of {sorted(EFFORTS)} or null")
+            settings.tight_effort = value
+        elif key == "usageBackoffMinutes":
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ConfigError("runner.json: usageBackoffMinutes must be a positive whole number")
+            settings.usage_backoff_minutes = value
+        else:
+            raise ConfigError(f"runner.json: unknown key {key[:40]}")
     if settings.github_app_id and not settings.github_app_id.isdigit():
         raise ConfigError("runner.json: githubAppId must be a number")
     if settings.github_owner and not re.match(r"^[A-Za-z0-9-]+$", settings.github_owner):
@@ -131,6 +171,8 @@ class Project:
     web: bool
     bench: str | None
     paused: bool
+    model: str | None = None
+    effort: str | None = None
 
 
 def _private_file(path):
@@ -195,12 +237,19 @@ def parse_entry(settings, name, entry, pc=None):
     web = entry.get("web", False)
     bench = entry.get("bench")
     paused = entry.get("paused", False)
+    model = entry.get("model")
+    effort = entry.get("effort")
     if not isinstance(web, bool) or not isinstance(paused, bool):
         raise ConfigError(f"{name}: web and paused must be true or false")
     if bench is not None and bench not in BENCHES:
         raise ConfigError(f"{name}: bench must be one of {sorted(BENCHES)} or null")
+    if model is not None and (not isinstance(model, str) or model not in MODELS):
+        raise ConfigError(f"{name}: model must be one of {sorted(MODELS)} or null")
+    if effort is not None and (not isinstance(effort, str) or effort not in EFFORTS):
+        raise ConfigError(f"{name}: effort must be one of {sorted(EFFORTS)} or null")
     return Project(name=name, repo=repo, work_dir=work_dir, branch=branch, state_dir=state_dir, level=level,
-                   schedule=sorted(set(schedule)), limits=limits, web=web, bench=bench, paused=paused)
+                   schedule=sorted(set(schedule)), limits=limits, web=web, bench=bench, paused=paused,
+                   model=model, effort=effort)
 
 
 def load_registry(settings, pc=None, check_mode=True):

@@ -110,6 +110,16 @@ the code (`runner.py`, `intake.py`).
 - Result: `inbox/results/<uuid4>.json` `{"v":1,"id","task":"A-0001","text","files":[names in inbox/results/files/],"at"}`.
 - Request: `requests/<name>.json` `{"v":1,"id","type":"run-now"|"pause"|"resume","by","at"}`.
 
+## Model, effort and quota step-down
+
+All quota step-down settings are **off by default** (`weekly_soft` is `None`) until Adam picks values, so today's behaviour is unchanged unless configured.
+
+- **Per-project `model` and `effort`** (optional in `projects.json`): `model` may be `opus`, `sonnet`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, or `null`; `effort` may be `low`, `medium`, `high`, `xhigh`, `max`, or `null`. Absent or `null` uses the runner defaults (`claude-opus-5-5`, `high`).
+- **Soft step-down** (`Settings`: `weekly_soft`, `tight_model`, `tight_effort`; `runner.json`: `weeklySoft`, `tightModel`, `tightEffort`): defaults are `weekly_soft = None` (off), `tight_model = "claude-sonnet-5-5"`, `tight_effort = "medium"`. When `weekly_soft` is set and fresh seven-day utilization is at or above `weekly_soft` and below `weekly_ceiling` (`0.85`), the run goes ahead with `tight_model`/`tight_effort` (clamped so it is never stronger than the project's own setting) and records/logs `stepped down: weekly NN%`. At or above `weekly_ceiling` runs still skip; unknown or stale utilization keeps today's handling.
+- **Usage-limit backoff** (`Settings`: `usage_backoff_minutes`, default `60`; `runner.json`: `usageBackoffMinutes`): minutes to back off after a usage-limit hit when no future `resetsAt` time is known. When `resetsAt` is known, the runner still waits until reset.
+- **Billing:** `CLAUDE_CONFIG_DIR` stays Jorah's Max login; there is no API-key fallback.
+- **Open decision:** capped API fallback for project runs: Adam's yes, a cap in euros, and which key.
+
 ## Tests
 
 `python3 -m unittest discover -s services/jorah-projects/tests` (in `just unit`): a stand-in

@@ -274,6 +274,8 @@ name matching `^[a-z0-9][a-z0-9-]{0,62}$`:
 | `limits` | yes | `runsPerDay` 0-8, `minutesPerRun` 5-120, `maxTurns` 1-500 |
 | `web` | no (`false`) | WebSearch and WebFetch in runs |
 | `bench` | no (`null`) | `robotics` or `null` |
+| `model` | no (`null`) | `opus`, `sonnet`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, or `null` |
+| `effort` | no (`null`) | `low`, `medium`, `high`, `xhigh`, `max`, or `null` |
 | `paused` | yes | boolean |
 
 ## Using the checker

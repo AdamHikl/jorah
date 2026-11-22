@@ -106,7 +106,8 @@ elif sandbox == "\"off\"":
     print("deep sandbox: off (Max lane, tools limited to its allow list)")
     lanes.append("max")
 else:
-    print(f"deep sandbox: unknown ({sandbox[:30] or 'unreadable'})")
+    shown = sandbox[:30] or "unreadable"
+    print(f"deep sandbox: unknown ({shown})")
     lanes.append("unknown")
 
 order = load("ORDER")

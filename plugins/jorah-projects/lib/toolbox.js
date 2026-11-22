@@ -523,6 +523,57 @@ function list(dir, max = 200) {
   return { ok: true, items, broken };
 }
 
+// toolbox_list's default view (review fix 6, 2026-11-22). jorah-guard counts it as a plain read,
+// decided before the call from its `view` argument alone (config/permission-matrix.json viewRead),
+// so it may hold nothing that a run, a tool or a web page wrote: installed tools' names, versions,
+// kinds and command names, each matched against the strict shapes above, smoke tests and notes as
+// fixed words, and counts. Free text (title, purpose, licence, source, smoke output, errors, root
+// commands) and anything about waiting proposals except how many there are stay in view "full".
+// A value that doesn't match its shape is left out, never shown, and counted in left_out.
+const VIEW_TIME = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
+const STATUS_WORD = /^[a-z][a-z-]{0,19}$/;
+export const FULL_VIEW_HINT = "This view holds no text a run, a tool or a web page wrote, so it doesn't mark this chat. "
+  + "For waiting proposals, smoke-test output, errors and root commands, call toolbox_list with view \"full\": that marks this chat as having read outside text.";
+
+export function installedView({ installed = {}, tested = new Map(), waiting = 0, approved = 0, results = [] } = {}) {
+  let leftOut = 0;
+  const keep = (v, re) => {
+    if (typeof v === "string" && re.test(v)) return v;
+    if (v !== undefined && v !== null) leftOut += 1;
+    return null;
+  };
+  const tools = [];
+  for (const [name, t] of Object.entries(isObj(installed) ? installed : {})) {
+    if (!NAME.test(name) || !isObj(t)) { leftOut += 1; continue; }
+    const kind = KINDS.includes(t.kind) ? t.kind : null;
+    if (kind === null && t.kind !== undefined) leftOut += 1;
+    const versionOk = typeof t.version === "string" && (VERSION.test(t.version) || DEB_VERSION.test(t.version));
+    if (!versionOk && t.version != null) leftOut += 1;
+    const version = versionOk ? t.version : null;
+    const names = Array.isArray(t.commands) ? t.commands : isObj(t.commands) ? Object.keys(t.commands) : [];
+    const commands = names.slice(0, 12).map((c) => keep(c, COMMAND)).filter(Boolean);
+    const smoke = tested.get(name);
+    const current = isObj(smoke) && smoke.id === t.id && typeof t.id === "string";
+    tools.push({
+      name, version, kind, commands, installed_at: keep(t.installedAt, VIEW_TIME),
+      smoke_test: !current ? "not run yet" : smoke.ok === true ? "passed" : smoke.ok === false ? "failed" : "unknown",
+      notes: current && smoke.ok === true && isObj(smoke.learn) && smoke.learn.notes === true ? "written" : "not yet",
+    });
+  }
+  const byStatus = {};
+  for (const r of Array.isArray(results) ? results : []) {
+    const st = isObj(r) && typeof r.status === "string" && STATUS_WORD.test(r.status) ? r.status : "other";
+    byStatus[st] = (byStatus[st] ?? 0) + 1;
+  }
+  const count = (n) => (Number.isInteger(n) && n >= 0 ? n : 0);
+  return {
+    status: "ok", view: "installed", installed: tools,
+    waiting_for_card: count(waiting), approved_not_taken_yet: count(approved), recent_results_by_status: byStatus,
+    ...(leftOut ? { left_out: leftOut } : {}),
+    next: FULL_VIEW_HINT,
+  };
+}
+
 export function readToolbox(s) {
   let installed = {};
   let installedOk = false;

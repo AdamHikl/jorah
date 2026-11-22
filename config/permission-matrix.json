@@ -11,8 +11,9 @@
     "reminder_job", "price_compare", "supply_list", "supply_plan"
   ],
   "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read",
-    "calendar_read", "mail_read", "mail_open", "contact_search", "project_digest", "project_preview",
-    "toolbox_list"],
+    "calendar_read", "mail_read", "mail_open", "contact_search", "project_digest", "project_preview"],
+  "viewRead": ["toolbox_list"],
+  "viewReadAbout": "Review fix 6 (2026-11-22): the call's own view argument decides, before the tool runs (lib/policy.js cleanView). No arguments, or exactly {\"view\": \"installed\"}, is a read: the plugin then returns only installed tools' names, versions, kinds, command names, pass/fail and counts, each checked against the toolbox's strict shapes, never text a run, a tool or a page wrote. Any other argument or value (view: full shows proposals, notes, smoke output, errors and root commands) is a taintRead. A result-dependent mark is not used, because after_tool_call is observation only; it is kept only as a backstop that adds a mark when a clean-view result isn't the clean view (index.js).",
   "search": ["web_search", "x_search"],
   "url": ["web_fetch", "browser"],
   "fileWrite": ["write", "edit", "apply_patch"],
@@ -59,7 +60,7 @@
     "sendTool": "proactive_notify"
   },
   "projects": {
-    "about": "jorah-projects (docs/plan/11-project-mode.md section 5). project_pause is in read on purpose: pausing is always free, even frozen. project_status returns only counts, ids and times, so it stays a read; project_digest carries run-written text, so it marks the chat. project_start (section 5.1) is free in Adam's clean typed chat and a card with his exact words after outside text or by voice; project_connect, project_set_level (level 1 is a schedule) and project_set_capabilities (web research and the robotics bench, issue #14) are always a card. project_preview copies run-rendered images into the workspace outbox for a reply, so it marks the chat like project_digest. Toolbox (docs/runbooks/toolbox.md): toolbox_list shows tool output and run-written proposals, so it marks the chat; toolbox_propose only writes an inert proposal (the plugin refuses it while frozen), so it is a read; toolbox_install and toolbox_remove are always a card with the exact fields (id, name, version, source, sha256, licence, released, size), and only they write the installer's queue."
+    "about": "jorah-projects (docs/plan/11-project-mode.md section 5). project_pause is in read on purpose: pausing is always free, even frozen. project_status returns only counts, ids and times, so it stays a read; project_digest carries run-written text, so it marks the chat. project_start (section 5.1) is free in Adam's clean typed chat and a card with his exact words after outside text or by voice; project_connect, project_set_level (level 1 is a schedule) and project_set_capabilities (web research and the robotics bench, issue #14) are always a card. project_preview copies run-rendered images into the workspace outbox for a reply, so it marks the chat like project_digest. Toolbox (docs/runbooks/toolbox.md): toolbox_list is in viewRead: its default view (installed tools, names and versions, counts) is a read, and view full (tool output and run-written proposals) marks the chat; toolbox_propose only writes an inert proposal (the plugin refuses it while frozen), so it is a read; toolbox_install and toolbox_remove are always a card with the exact fields (id, name, version, source, sha256, licence, released, size), and only they write the installer's queue."
   },
   "errands": {
     "about": "jorah-errands (docs/runbooks/errands.md). reminder_job and price_compare only compute: they return an automations call or numbers and set nothing, so they are reads; the reminder itself still goes through automations and the schedule rule. supply_list and supply_plan read Adam's own record, which only supply_save writes, so they are reads too. supply_save is free in Adam's clean typed chat and a card with the exact fields after outside text or by voice; supply_forget deletes, so it is always a card."

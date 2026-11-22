@@ -17,7 +17,7 @@ const CONSULT_CLASSES = new Set(["read", "search", "url"]);
 export const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
 
 export function classify(matrix, tool) {
-  for (const cls of ["read", "taintRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
+  for (const cls of ["read", "taintRead", "viewRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
     "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "confirmAlways", "cronOnly"]) {
     if ((matrix[cls] ?? []).includes(tool)) return cls;
   }
@@ -79,6 +79,30 @@ export function proactiveRun({ ctx = {}, run = {}, matrix = {}, parentOf = () =>
   }
   if ((ctx.agentId ?? "main") === "main" && !ctx.requester && !run.trigger) return { proactive: true, why: "a run with no requester and no known trigger" };
   return { proactive: false };
+}
+
+// viewRead (review fix 6, 2026-11-22): a tool whose call says, in its `view` argument, whether
+// its result may carry text a run, a tool or a web page wrote. Whether a chat is marked has to be
+// decided here, before the tool runs: after_tool_call is observation only (handlers run
+// concurrently, a failed one is skipped, `result` is optional; OpenClaw docs
+// plugins/hooks/tool-policy.md), so a taint set from the result could come after the model has
+// read it, or never. So the call itself chooses: no arguments, or exactly { view: "installed" },
+// is a read, and the plugin promises that view holds only fields matching its own strict shapes;
+// any other argument, or any other value, is a taintRead. viewBackstop below then checks the
+// result as a second line, and only ever adds a mark.
+export function cleanView(params) {
+  const p = params && typeof params === "object" ? params : {};
+  const keys = Object.keys(p);
+  return keys.every((k) => k === "view") && (p.view === undefined || p.view === "installed");
+}
+
+// After a clean-view call: if the result isn't the plugin's clean view (an older plugin that
+// ignores `view`, an error, no result), mark the chat anyway. Never removes a mark.
+export function viewBackstop({ tool, params, result, error, matrix }) {
+  if (classify(matrix, tool) !== "viewRead" || !cleanView(params)) return null;
+  const d = result?.details;
+  if (error == null && d && typeof d === "object" && (d.view === "installed" || (d.status === "unavailable" && Object.keys(d).length <= 2))) return null;
+  return `${tool} (its result wasn't the clean view)`;
 }
 
 const isCronSession = (key) => sessionRest(key).startsWith("cron:");
@@ -294,7 +318,8 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${w.inner}` };
   }
 
-  const cls = classify(matrix, tool);
+  const named = classify(matrix, tool);
+  const cls = named === "viewRead" ? (cleanView(params) ? "read" : "taintRead") : named;
   const state = sessionState(view, ctx, settings, run);
   const key = ctx.sessionKey;
   const agent = ctx.agentId ?? "unknown";
@@ -328,7 +353,8 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
 
     case "taintRead": {
       const repo = params.repo ?? params.project;
-      return { verdict: "allow", taint: `${tool}${repo ? ` ${short(repo, 40)}` : ""}`, readRepo: typeof repo === "string" ? repo : undefined };
+      const full = named === "viewRead" ? ` (view: ${short(textOf(params.view ?? "?"), 20)})` : "";
+      return { verdict: "allow", taint: `${tool}${full}${repo ? ` ${short(repo, 40)}` : ""}`, readRepo: typeof repo === "string" ? repo : undefined };
     }
 
     case "search": {

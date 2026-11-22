@@ -80,6 +80,21 @@ Adam runs one command as root (step 6 below). It installs only from Ubuntu's own
 
 Runs can read `/opt/jorah-toolbox` and `/var/lib/jorah-toolbox` but write neither.
 
+**`toolbox_list`'s two views** (guard review fix 6, 2026-11-22):
+- Default, `view: "installed"`: each installed tool's name, version, kind and command names,
+  whether the smoke test passed and notes are written, and counts (proposals waiting for a card,
+  approvals not taken yet, recent results by status). Each value must match the toolbox's own
+  strict shape or it is left out. It holds no text a run, a tool or a page wrote, so the guard
+  counts it as a plain read and the chat stays clean.
+- `view: "full"`: the list as before, with proposals and their cards, smoke-test output, errors
+  and root commands. It marks the chat as having read outside text.
+
+The guard decides from the call's `view` alone, before the call runs (`viewRead` in
+`config/permission-matrix.json`, `cleanView` in `plugins/jorah-guard/lib/policy.js`). If a
+default-view result comes back without `view: "installed"` (for example, an older plugin), the
+guard marks the chat afterwards and logs `late-mark`. Deploy `plugins/jorah-projects` and the
+permission list together.
+
 **Files:**
 
 | Path | Owner | What |
@@ -262,7 +277,7 @@ waited for one, called his summary "the card", and each new ask left another wai
 proposals stay), and once a tool's version is installed, `toolbox_propose` refuses it again and
 `toolbox_list` hides leftover proposals for it.
 
-If anything fails, `toolbox_list` says why. Copy that line to the build session. If Jorah says
+If anything fails, `toolbox_list` with `view: "full"` says why. Copy that line to the build session. If Jorah says
 GitHub's hourly limit is used up, ask again after the time he gives.
 
 **5b. A tool from another host**, in the same chat:

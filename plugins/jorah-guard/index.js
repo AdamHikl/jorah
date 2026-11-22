@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, isConsultAgent, resultSeeds, sessionState, speaker, typedByOwner } from "./lib/policy.js";
+import { decide, isConsultAgent, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -197,6 +197,13 @@ export default {
         const callId = event?.toolCallId ?? ctx?.toolCallId;
         const refused = event?.error != null || (typeof callId === "string" && blockedCalls.has(callId));
         if (!matrix) matrix = loadMatrix(matrixFile);
+        // Review fix 6: a clean-view toolbox_list was decided before it ran (policy.cleanView). If
+        // its result isn't the clean view after all, mark the chat now. Only ever adds a mark.
+        const late = matrix && viewBackstop({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, error: event?.error, matrix });
+        if (late) {
+          state.markTainted(key, late);
+          log({ session: key ?? null, agent: ctx?.agentId ?? null, call: callId ?? null, tool: event?.toolName, verdict: "late-mark", reason: late });
+        }
         if (!refused && matrix) {
           const urls = resultSeeds({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, matrix, wrote: (cores) => state.wrote(key, cores) });
           const forms = urls.flatMap(seenForms);

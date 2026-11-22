@@ -549,9 +549,27 @@ final class HUDModel {
     /// `openclaw --profile jorah devices approve <id>` on the PC; then `device.scopes.waitUpgrade`
     /// hands this connection a new device token, which the HUD keeps and reconnects with.
     func requestCardAccess() {
-        guard !isDemo, phase == .connected, !canAnswerApprovals, cardAccessWait == nil else { return }
+        guard !canAnswerApprovals else { return }
+        requestScopes(["operator.approvals"])
+    }
+
+    /// The same request for `operator.admin` (Adam, 2026-11-22): resetting the main conversation
+    /// with /new from the HUD needs it, as the iPhone and the Control UI already have. Approved on
+    /// the PC by Adam, like card access.
+    var isAdmin: Bool { grantedScopes.contains("operator.admin") }
+    func requestAdminAccess() {
+        guard !isAdmin else { return }
+        requestScopes(["operator.admin"])
+    }
+
+    /// The scopes the pending request asks for, shown with the approve command.
+    var requestedScopes: [String] = []
+
+    private func requestScopes(_ added: [String]) {
+        guard !isDemo, phase == .connected, cardAccessWait == nil else { return }
         var scopes = grantedScopes
-        if !scopes.contains("operator.approvals") { scopes.append("operator.approvals") }
+        for scope in added where !scopes.contains(scope) { scopes.append(scope) }
+        requestedScopes = scopes.sorted()
         cardAccessError = nil
         cardAccessWait = Task { [weak self] in
             guard let self else { return }
@@ -578,20 +596,20 @@ final class HUDModel {
                     let status = result["status"].string ?? "unknown"
                     let granted = (result["scopes"].array ?? []).compactMap(\.string)
                     if status == "approved", let token = result["deviceToken"].string,
-                       granted.contains("operator.approvals") {
+                       added.allSatisfy({ granted.contains($0) }) {
                         self.cardAccessRequestId = nil
                         if !self.client.adoptUpgradedToken(token, scopes: granted) {
                             self.cardAccessError = "Approved, but the new device token could not be kept in the Keychain."
                         }
                     } else {
                         self.cardAccessRequestId = nil
-                        self.cardAccessError = "Card access was not granted (\(PlainText.clean(status, limit: 40)))."
+                        self.cardAccessError = "\(added.joined(separator: ", ")) was not granted (\(PlainText.clean(status, limit: 40)))."
                     }
                     return
                 }
             } catch {
                 self.cardAccessRequestId = nil
-                self.cardAccessError = "Card access request failed: \(error.localizedDescription)"
+                self.cardAccessError = "The access request failed: \(error.localizedDescription)"
             }
         }
     }

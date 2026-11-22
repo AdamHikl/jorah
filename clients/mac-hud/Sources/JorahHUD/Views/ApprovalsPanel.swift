@@ -14,6 +14,7 @@ struct ApprovalsPanel: View {
         let voiceCards = model.visibleVoiceCards
         VStack(alignment: .leading, spacing: 8) {
             status
+            admin
             if !model.approvals.isEmpty || !voiceCards.isEmpty {
                 ScrollView {
                     VStack(spacing: 8) {
@@ -52,7 +53,7 @@ struct ApprovalsPanel: View {
                 }
                 if let requestId = model.cardAccessRequestId {
                     let command = "openclaw --profile jorah devices approve \(requestId)"
-                    Text(verbatim: "Waiting for you. On the PC, as Jorah's user, check the request shows \"Jorah HUD\" asking for operator.approvals, operator.read, operator.write, then run:")
+                    Text(verbatim: "Waiting for you. On the PC, as Jorah's user, check the request shows \"Jorah HUD\" asking for \(model.requestedScopes.joined(separator: ", ")), then run:")
                         .font(.system(size: 11)).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack {
@@ -78,6 +79,40 @@ struct ApprovalsPanel: View {
                 line("NO CARDS WAITING", Theme.dim)
             } else {
                 line("\(total) CARD\(total == 1 ? "" : "S") WAITING FOR YOU", Theme.amber)
+            }
+        }
+    }
+
+    /// Admin access (Adam, 2026-11-22): /new in the main conversation needs operator.admin. Shown
+    /// once the HUD can answer cards; the card-access request above shows its own wait.
+    @ViewBuilder private var admin: some View {
+        if !model.isDemo, model.phase == .connected, model.canAnswerApprovals, !model.isAdmin {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    line("NO ADMIN · /new AND RESETS FROM THE HUD NEED IT", Theme.dim)
+                    if model.cardAccessRequestId == nil {
+                        Button("Ask for admin access") { model.requestAdminAccess() }
+                            .font(Theme.label(9))
+                            .help("Files a request to add operator.admin to this HUD. Nothing changes until you approve it on the PC.")
+                    }
+                }
+                if let requestId = model.cardAccessRequestId {
+                    let command = "openclaw --profile jorah devices approve \(requestId)"
+                    Text(verbatim: "Waiting for you. On the PC, as Jorah's user, check the request shows \"Jorah HUD\" asking for \(model.requestedScopes.joined(separator: ", ")), then run:")
+                        .font(.system(size: 11)).foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Text(verbatim: command).font(Theme.mono(10)).foregroundStyle(Theme.text).textSelection(.enabled)
+                        Button("Copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(command, forType: .string)
+                        }
+                        .font(Theme.label(9))
+                    }
+                }
+                if let error = model.cardAccessError {
+                    Text(verbatim: error).font(Theme.mono(10)).foregroundStyle(Theme.red)
+                }
             }
         }
     }

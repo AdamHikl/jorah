@@ -223,6 +223,11 @@ Expected:
 4. Within 15 minutes it shows the smoke test passed. Within about 45 minutes the learning run is
    done and `~/work/.toolbox/notes/uv.md` exists.
 
+2026-11-22: asked to install video tools, Jorah asked Adam for an ffmpeg link instead of searching
+(the guard's log shows no search and nothing blocked). His rules now say to search for the
+publisher's release page himself, never ask Adam for a link, and use `kind: "apt"` for Ubuntu
+packages.
+
 Since 2026-11-21 (later the same day): in any turn Adam started, Jorah raises the card for a tool he
 or a run needs, not only one Adam named, and shows run-written requests with their cards when Adam
 talks to him; never from a heartbeat or an automation. `toolbox_install` waits up to 2 minutes for

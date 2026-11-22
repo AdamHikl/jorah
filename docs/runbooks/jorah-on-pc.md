@@ -463,6 +463,35 @@ Adam's call of 2026-11-13: run the guard on live, **enforcing**, log every decis
 
 It prints no arguments, addresses or messages.
 
+**Health check for the review** (review fix 7, 2026-11-22). Send the commands on standard input to `bash -ls`, from the Mac:
+
+```bash
+ssh -i ~/.ssh/jorah-pc-setup -o IdentitiesOnly=yes adamh@100.115.240.14 "wsl -d jorah -u jorah -- bash -ls" <<'EOF'
+systemctl is-active openclaw-gateway
+openclaw --profile jorah plugins list 2>&1 | grep jorah-guard
+EOF
+```
+
+Expected: `active`, then a `jorah-guard` line showing it enabled.
+
+Don't put the commands in quotes after `bash -lc`. The SSH command runs in Windows' shell first, which doesn't read single quotes as quotes. So the `|` goes to Windows, which then looks for its own `grep` and fails with `'grep' is not recognized`. Text on standard input passes through Windows unread. (The 2026-11-13 review task had the old form. It was a one-time task in `~/.claude/scheduled-tasks/jorah-guard-review`, outside this repo, and has already run.)
+
+**Why command-line check sessions log as `none`** (review fix 8, 2026-11-22). The guard's `from` field, in `plugins/jorah-guard/index.js`, is:
+- `voice` or `webchat`, from the requester's channel;
+- else `adam-typed` if `typedByOwner` (`lib/policy.js`) holds: the owner flag set, and either Telegram with a sender id, or no channel and no sender id (the CLI on the PC);
+- else `other` if there is a requester at all;
+- else `none`.
+
+So `none` means the tool call reached the guard with **no requester**. A requester missing from one call is taken from an earlier call or run start with the same run id (`withRequester`). The two cases:
+- **The install test, 2026-11-13** (`agent:main:p5-live-check`) [measured]: main was still on the API-key provider, OpenClaw's own runtime. A CLI `agent` turn there carries the CLI's requester: owner set, no channel, no sender id. The G-S1 spike of 2026-11-11 found the same. So it logged `adam-typed`.
+- **The check sessions from 2026-11-16 on** (`pm-check`, `errands-check`) [measured: `none`]: main and `deep` moved to `claude-cli` on 2026-11-16 at 20:30 ("Back on the Max plan" above). Claude Code then makes the tool calls through OpenClaw's MCP bridge. On live 2026.10.9, that path's tool hooks get no requester. [docs-only] The 2026.11.x release notes say "MCP tool-policy hooks now get the trusted CLI requester" (see the upgrade section below). The run-id fallback didn't fill it either. Either the run's start had no requester, or the MCP calls carry another run id; the log can't say which.
+
+**What follows:**
+- **`none` is the safe direction.** `none` is never `typedByOwner`, so such a chat counts as not Adam's own: saves to memory and the other writes get a card. A run with no requester and no recorded trigger counts as proactive, so `message` is blocked there.
+- **Adam's own Telegram turns may also log as `none` on 2026.10.9,** because they run on `claude-cli` too. In the Telegram check (review fix 5), `none` points to the missing requester, not to `typedByOwner`. `other` would point to `typedByOwner` (Telegram with no sender id). Only `adam-typed` passes.
+- **After the 2026.10.33 upgrade,** CLI checks may log as `adam-typed` again. Re-check both after it.
+- **What would settle it:** on `jorah-dev`, one CLI turn on `claude-cli` and one on OpenClaw's own runtime, comparing `from`. Not done.
+
 **Known before going live:**
 - `jorah-ios`'s tools (`ios_build`, `ios_install`, `ios_status`) aren't in the permission list yet. Once that plugin is on live, they're blocked until added, and adding them needs Adam's yes.
 - The jorah-github card doesn't say the chat has read outside text.

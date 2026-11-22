@@ -1,7 +1,13 @@
 """Gateway WebSocket approvals client for jorah-voice (protocol v4).
 
 Connects on loopback using the shared Gateway token with role `operator`, scopes
-`operator.approvals` and `operator.read`, and capability `plugin-approvals`.
+`operator.admin`, `operator.approvals` and `operator.read`, and capability `plugin-approvals`.
+
+Why admin (Adam's yes, 2026-11-22, ADR 0010): OpenClaw 2026.10.9 shows a card raised in a Chat
+Completions turn (every spoken turn) only to admin connections, so without it a voice card has no
+approval route and is closed at once (measured 13:42:36, "no approval route"). The shared token
+already allows admin; this connection only asks for it. It then sees every card on the Gateway, and
+`session.py` keeps only cards from its own voice turns.
 Only `allow-once` and `deny` are ever sent to `plugin.approval.resolve`.
 """
 
@@ -199,7 +205,7 @@ class GatewayApprovalsClient(ApprovalsClient):
                     "mode": "backend",
                 },
                 "role": "operator",
-                "scopes": ["operator.approvals", "operator.read"],
+                "scopes": ["operator.admin", "operator.approvals", "operator.read"],
                 "caps": ["plugin-approvals"],
                 "commands": [],
                 "permissions": {},

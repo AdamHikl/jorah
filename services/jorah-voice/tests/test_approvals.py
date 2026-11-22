@@ -107,7 +107,7 @@ class ApprovalsProtocol(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(connect_req["method"], "connect")
         params = connect_req["params"]
         self.assertEqual(params["role"], "operator")
-        self.assertEqual(params["scopes"], ["operator.approvals", "operator.read"])
+        self.assertEqual(params["scopes"], ["operator.admin", "operator.approvals", "operator.read"])
         self.assertIn("plugin-approvals", params["caps"])
         self.assertEqual(params["auth"], {"token": "gateway-secret-token-for-test-only"})
 

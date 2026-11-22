@@ -42,6 +42,10 @@ See "Card routes" (filled in after the source research and the scratch test). Ta
 | Telegram | Telegram only |
 | OpenClaw iOS app | The app (which, as admin, also lists the others: D4) |
 
+## The voice service's Gateway connection holds admin (Adam's yes, 2026-11-22)
+
+A card raised in a Chat Completions turn, which is how every spoken turn reaches the Gateway, is visible only to `operator.admin` connections (`isApprovalRecordVisibleToClient`; measured on live at 13:42:36: `Plugin approval unavailable (no approval route)` with the HUD and an approvals-only connection online). So `jorah-voice`'s approvals connection asks for `operator.admin` as well. The shared Gateway token it already holds allows admin, so no secret gains power; the connection sees every pending card, and `session.py` acts only on cards from its own voice turn (same session key, a `webchat` or `voice` turn source, created while that turn ran). It never sends `allow-always`.
+
 ## Re-check
 
 When guest mode is built, when OpenClaw changes approval routing, and after the first month of use: how often a confirmation was refused, and whether any unknown voice ever confirmed.

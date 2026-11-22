@@ -34,7 +34,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from . import fsio
 from .gitsafe import GitError, Repo, UnsafeRepo, init_local
@@ -208,10 +208,16 @@ def commit_notes(settings, home, message):
 
 
 # ---- GitHub's record of a release ------------------------------------------------------------------
-# One GET to api.github.com per GitHub-hosted request, unauthenticated (60 an hour per address).
+# One GET to api.github.com per GitHub-hosted request, unauthenticated (60 an hour per address),
+# backed by an on-disk cache (TTL 6h, If-None-Match 304s, and 7-day stale fallback on rate limit).
 
 GITHUB_TIMEOUT = 20
 GITHUB_MAX_BYTES = 4 << 20
+GITHUB_CACHE_FILE = "github-cache.json"
+GITHUB_CACHE_TTL_SECONDS = 6 * 3600
+GITHUB_CACHE_MAX_STALE_SECONDS = 7 * 86400
+GITHUB_CACHE_MAX_ENTRIES = 64
+_MAX_CACHE_FILE_BYTES = 8 << 20
 
 
 class GitHubLookupError(Exception):
@@ -232,24 +238,107 @@ class _HttpsOnly(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_HttpsOnly, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
 
 
-def github_get(url, opener=_OPENER):
+def _parse_iso_utc(value):
+    if not isinstance(value, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T", value):
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _clean_etag(value):
+    if isinstance(value, str) and 0 < len(value) <= 512 and "\r" not in value and "\n" not in value:
+        return value
+    return None
+
+
+def _gh_cache_read(path):
+    path = Path(path)
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_CACHE_FILE_BYTES:
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("v") != 1 or not isinstance(data.get("entries"), dict):
+        return {}
+    out = {}
+    for url, raw in data["entries"].items():
+        if not isinstance(url, str) or not url or not isinstance(raw, dict):
+            continue
+        if _parse_iso_utc(raw.get("fetchedAt")) is None or "body" not in raw:
+            continue
+        out[url] = {"etag": _clean_etag(raw.get("etag")), "body": raw["body"], "fetchedAt": raw["fetchedAt"]}
+    return out
+
+
+def _gh_cache_set(path, url, etag, body, fetched_at, max_entries=GITHUB_CACHE_MAX_ENTRIES):
+    entries = _gh_cache_read(path)
+    entries[url] = {"etag": _clean_etag(etag), "body": body, "fetchedAt": fetched_at}
+    if len(entries) > max_entries:
+        ordered = sorted(
+            entries.items(),
+            key=lambda kv: _parse_iso_utc(kv[1].get("fetchedAt")) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        entries = dict(ordered[:max_entries])
+    fsio.write_private_json(path, {"v": 1, "entries": entries})
+
+
+def github_get(url, opener=None, *, cache_path=None, now=None,
+               ttl_seconds=GITHUB_CACHE_TTL_SECONDS, max_stale_seconds=GITHUB_CACHE_MAX_STALE_SECONDS):
     """GitHub's API answer at `url` (https://api.github.com/...), parsed. Raises GitHubLookupError."""
+    opener = opener or _OPENER
     if not url.startswith("https://api.github.com/"):
         raise GitHubLookupError("only api.github.com", final=True)
-    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "jorah-toolbox/1",
-                                                   "X-GitHub-Api-Version": "2022-11-28"})
+    current = now() if now is not None else datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+
+    entry = _gh_cache_read(cache_path).get(url) if cache_path else None
+    age_s = None
+    if entry is not None:
+        fetched_dt = _parse_iso_utc(entry["fetchedAt"])
+        if fetched_dt is not None:
+            age_s = (current - fetched_dt).total_seconds()
+            if 0 <= age_s < ttl_seconds:
+                return entry["body"]
+
+    req_headers = {"Accept": "application/vnd.github+json", "User-Agent": "jorah-toolbox/1",
+                   "X-GitHub-Api-Version": "2022-11-28"}
+    if entry is not None and entry.get("etag"):
+        req_headers["If-None-Match"] = entry["etag"]
+    request = urllib.request.Request(url, headers=req_headers)
     try:
         with opener.open(request, timeout=GITHUB_TIMEOUT) as response:
             data = response.read(GITHUB_MAX_BYTES + 1)
+            resp_etag = response.headers.get("ETag") if response.headers else None
     except urllib.error.HTTPError as error:
-        headers = error.headers or {}
+        err_headers = error.headers or {}
+        if error.code == 304 and entry is not None:
+            new_etag = err_headers.get("ETag") or entry.get("etag")
+            if cache_path:
+                try:
+                    _gh_cache_set(cache_path, url, new_etag, entry["body"], current.isoformat())
+                except OSError:
+                    pass
+            return entry["body"]
         if error.code == 404:
             raise GitHubLookupError("GitHub has no published release for this URL (drafts aren't visible): check the owner, repo and tag",
                                     final=True) from None
-        if error.code in (403, 429) and (headers.get("x-ratelimit-remaining") == "0" or headers.get("retry-after")):
-            reset = headers.get("x-ratelimit-reset")
+        if error.code in (403, 429) and (err_headers.get("x-ratelimit-remaining") == "0" or err_headers.get("retry-after")):
+            if entry is not None and age_s is not None and 0 <= age_s < max_stale_seconds:
+                return entry["body"]
+            reset = err_headers.get("x-ratelimit-reset")
             until = (datetime.fromtimestamp(int(reset), timezone.utc).strftime("%H:%M UTC") if reset and reset.isdigit()
-                     else f"in {headers.get('retry-after') or 60} seconds")
+                     else f"in {err_headers.get('retry-after') or 60} seconds")
             raise GitHubLookupError(f"GitHub's API limit for this machine (60 lookups an hour, no sign-in) is used up until {until}") from None
         raise GitHubLookupError(f"GitHub's API answered {error.code}") from None
     except GitHubLookupError:
@@ -259,14 +348,246 @@ def github_get(url, opener=_OPENER):
     if len(data) > GITHUB_MAX_BYTES:
         raise GitHubLookupError("GitHub's answer is over 4 MB")
     try:
-        return json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
         raise GitHubLookupError("GitHub's answer isn't JSON") from None
+    if cache_path:
+        try:
+            _gh_cache_set(cache_path, url, resp_etag, parsed, current.isoformat())
+        except OSError:
+            pass
+    return parsed
+
+
+# ---- Ubuntu packages: Launchpad's publishing record and the package's own copyright file ------
+
+LAUNCHPAD = "https://api.launchpad.net/1.0"
+UBUNTU_CHANGELOGS = "https://changelogs.ubuntu.com/changelogs/pool"
+UBUNTU_FILLS = ("version", "released", "release_page", "homepage", "licence", "licence_source")
+UBUNTU_ALLOWED_HOSTS = ("api.launchpad.net", "changelogs.ubuntu.com")
+SERIES = re.compile(r"^[a-z]{3,20}$")
+COMPONENT = re.compile(r"^(main|restricted|universe|multiverse)$")
+DEB_VERSION = re.compile(r"^(?:\d+:)?[A-Za-z0-9][A-Za-z0-9.+~-]{0,79}$")
+SOURCE = re.compile(r"^[a-z0-9][a-z0-9+.-]{1,62}$")
+MAX_LICENCE = 60
+
+
+class UbuntuLookupError(Exception):
+    pass
+
+
+class _UbuntuHttpsOnly(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parts = urlsplit(newurl)
+        if parts.scheme != "https" or parts.hostname not in UBUNTU_ALLOWED_HOSTS:
+            raise UbuntuLookupError("Ubuntu lookup redirected to an unexpected host")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_UBUNTU_OPENER = urllib.request.build_opener(_UbuntuHttpsOnly, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+
+
+def is_series(value):
+    return isinstance(value, str) and bool(SERIES.match(value))
+
+
+def no_epoch(version):
+    return re.sub(r"^\d+:", "", str(version))
+
+
+def launchpad_binaries(series, pkg):
+    arch = f"{LAUNCHPAD}/ubuntu/{series}/amd64"
+    return (
+        f"{LAUNCHPAD}/ubuntu/+archive/primary?ws.op=getPublishedBinaries"
+        f"&binary_name={quote(pkg, safe='')}&exact_match=true"
+        f"&distro_arch_series={quote(arch, safe='')}&status=Published"
+    )
+
+
+def newest_binary(answer, pkg):
+    """The newest published version of one binary package from Launchpad's answer, or None."""
+    raw_entries = answer.get("entries") if isinstance(answer, dict) and isinstance(answer.get("entries"), list) else []
+    entries = []
+    for e in raw_entries:
+        if not isinstance(e, dict):
+            continue
+        if (e.get("binary_package_name") == pkg and e.get("status") == "Published"
+                and isinstance(e.get("binary_package_version"), str) and DEB_VERSION.match(e["binary_package_version"])
+                and isinstance(e.get("source_package_name"), str) and SOURCE.match(e["source_package_name"])
+                and isinstance(e.get("source_package_version"), str) and DEB_VERSION.match(e["source_package_version"])
+                and isinstance(e.get("component_name"), str) and COMPONENT.match(e["component_name"])):
+            dt = _parse_iso_utc(e.get("date_published"))
+            if dt is not None:
+                entries.append((dt, e))
+    if not entries:
+        return None
+    entries.sort(key=lambda item: item[0], reverse=True)
+    dt, e = entries[0]
+    pocket = e.get("pocket")
+    return {
+        "name": pkg,
+        "version": e["binary_package_version"],
+        "published": dt.isoformat().replace("+00:00", "Z"),
+        "pocket": "" if pocket is None else str(pocket),
+        "component": e["component_name"],
+        "source": e["source_package_name"],
+        "sourceVersion": e["source_package_version"],
+    }
+
+
+def copyright_url(b):
+    prefix = b["source"][:4] if b["source"].startswith("lib") else b["source"][0]
+    return f"{UBUNTU_CHANGELOGS}/{b['component']}/{prefix}/{b['source']}/{b['source']}_{no_epoch(b['sourceVersion'])}/copyright"
+
+
+def _has_control(text):
+    return any((ord(c) < 32 and c not in "\n\t") or c == "\x7f" for c in text)
+
+
+def dep5_licence(text):
+    """The licence of a machine-readable (DEP-5) copyright file's 'Files: *' paragraph, or None."""
+    if not isinstance(text, str) or not re.search(r"^Format:\s*https?://\S*copyright-format", text, re.MULTILINE):
+        return None
+    for para in re.split(r"\n\s*\n", text.replace("\r", "")):
+        if not re.search(r"^Files:\s*\*\s*$", para, re.MULTILINE):
+            continue
+        match = re.search(r"^License:[ \t]*(\S[^\n]*)$", para, re.MULTILINE)
+        if not match:
+            return None
+        value = re.sub(r"\s+", " ", match.group(1)).strip()
+        if _has_control(value):
+            return None
+        return f"{value[:MAX_LICENCE - 1]}…" if len(value) > MAX_LICENCE else value
+    return None
+
+
+def _ubuntu_fetch(url, max_bytes, opener=None):
+    opener = opener or _UBUNTU_OPENER
+    parts = urlsplit(url)
+    if parts.scheme != "https" or parts.hostname not in UBUNTU_ALLOWED_HOSTS:
+        raise UbuntuLookupError("unexpected Ubuntu lookup host")
+    request = urllib.request.Request(url, headers={"User-Agent": "jorah-toolbox/1", "Accept": "application/json, text/plain"})
+    try:
+        with opener.open(request, timeout=GITHUB_TIMEOUT) as response:
+            cl = response.headers.get("Content-Length") if response.headers else None
+            if cl and cl.isdigit() and int(cl) > max_bytes:
+                return 200, None
+            data = response.read(max_bytes + 1)
+    except urllib.error.HTTPError as error:
+        return error.code, None
+    if len(data) > max_bytes:
+        return 200, None
+    if parts.hostname == "api.launchpad.net":
+        return 200, data.decode("utf-8")
+    return 200, data.decode("utf-8", errors="replace")
+
+
+def ubuntu_record(series, packages, fetch=None):
+    """Ubuntu's record for an apt request: {'ok': True, 'found': ..., 'copyright': ...} or {'ok': False, 'reason': ...}.
+    One Launchpad lookup per package (at most 8), then the first package's copyright file."""
+    if not is_series(series):
+        return {"ok": False, "reason": f"invalid Ubuntu series {str(series)[:20]}"}
+    fetch_fn = fetch or _ubuntu_fetch
+    found = []
+    for pkg in list(packages)[:8]:
+        try:
+            status, text = fetch_fn(launchpad_binaries(series, pkg), GITHUB_MAX_BYTES)
+        except Exception as error:  # noqa: BLE001 - network/fetch errors become clear unknown reason
+            return {"ok": False, "reason": f"Launchpad (Ubuntu's archive) didn't answer ({type(error).__name__}); try again in a few minutes"}
+        if status != 200:
+            return {"ok": False, "reason": f"Launchpad answered {status} for {pkg}; try again later"}
+        if text is None:
+            return {"ok": False, "reason": f"Launchpad's answer for {pkg} is over 4 MB; try again later"}
+        try:
+            answer = json.loads(text)
+        except (ValueError, TypeError):
+            return {"ok": False, "reason": f"Launchpad's answer for {pkg} isn't JSON"}
+        found.append(newest_binary(answer, pkg))
+    copyright_info = None
+    if found and found[0]:
+        url = copyright_url(found[0])
+        try:
+            status, text = fetch_fn(url, 1 << 20)
+            copyright_info = {"url": url, "text": text if status == 200 else None}
+        except Exception:  # noqa: BLE001 - missing/unreadable copyright file isn't fatal
+            copyright_info = {"url": url, "text": None}
+    return {"ok": True, "found": found, "copyright": copyright_info}
+
+
+def apply_ubuntu(m, series, found, copyright_info):
+    """Fill in and check an apt request from Ubuntu's record: (manifest, record, problems)."""
+    problems = []
+    out = dict(m)
+    record = {
+        "series": series,
+        "packages": [],
+        "copyright": copyright_info.get("url") if isinstance(copyright_info, dict) else None,
+        "filled": [],
+    }
+    packages = m.get("packages") or []
+    for i, pkg in enumerate(packages):
+        b = found[i] if i < len(found) else None
+        if not b:
+            problems.append(
+                f"packages: Ubuntu {series} publishes no package named {str(pkg)[:63]} for amd64 "
+                "(check the binary package's exact name)"
+            )
+        else:
+            record["packages"].append({"name": b["name"], "version": b["version"], "pocket": b["pocket"], "published": b["published"]})
+    if problems:
+        return out, record, problems
+    main = found[0]
+    version = no_epoch(main["version"])
+    if "version" not in m:
+        out["version"] = version[:30]
+        record["filled"].append("version")
+    elif m["version"] != version and m["version"] != main["version"]:
+        problems.append(
+            f"version: Ubuntu {series} publishes {main['name']} {main['version']}, which apt installs; "
+            "leave version out and it is filled in"
+        )
+    day = max(b["published"][:10] for b in found)
+    if "released" not in m:
+        out["released"] = day
+        record["filled"].append("released")
+    elif m["released"] != day:
+        problems.append(
+            f"released: Ubuntu published the newest of these packages on {day}, not {m['released']}; "
+            "leave released out and it is filled in"
+        )
+    page = f"https://launchpad.net/ubuntu/+source/{main['source']}/{quote(main['sourceVersion'], safe='')}"
+    for k in ("release_page", "homepage"):
+        if k not in m:
+            out[k] = page
+            record["filled"].append(k)
+    licence = dep5_licence(copyright_info.get("text") if isinstance(copyright_info, dict) else None)
+    out["licence"] = licence or "see Ubuntu's copyright file"
+    out["licence_source"] = (copyright_info.get("url") if isinstance(copyright_info, dict) and copyright_info.get("url")
+                             else copyright_url(main))
+    record["filled"].extend(["licence", "licence_source"])
+    record["licenceFrom"] = "the package's copyright file" if licence else "not machine-readable; see the copyright file"
+    return out, record, problems
+
+
+def _check_apt_request(tc, manifest, today):
+    stand_in = {
+        "version": "0",
+        "released": "2000-01-01",
+        "release_page": "https://launchpad.net/",
+        "homepage": "https://launchpad.net/",
+        "licence": "stand-in",
+        "licence_source": "stand-in",
+    }
+    probe = dict(manifest)
+    for k in UBUNTU_FILLS:
+        if k not in probe:
+            probe[k] = stand_in[k]
+    return tc.check(probe, today)
 
 
 # ---- requests from runs ----------------------------------------------------------------------------
 
-def collect_requests(settings, source, today, get=github_get):
+def collect_requests(settings, source, today, get=github_get, ubuntu_fetch=None):
     """Turn run-written requests into proposals. `source`: {"project", "run"}. `get`: GitHub's API,
     for release assets. Returns {"proposed": [{"id", "name", "version"}], "refused": [{"file", "why"}],
     "waiting": [{"file", "why"}]}; a waiting request stays in requests/ for the next run's turn."""
@@ -282,21 +603,28 @@ def collect_requests(settings, source, today, get=github_get):
     if tc is None or not proposals.is_dir():
         out["refused"].append({"file": "*", "why": "the toolbox isn't installed, so requests wait"})
         return out
+    raw_series = getattr(settings, "ubuntu_series", "noble")
+    series = raw_series if is_series(raw_series) else "noble"
+    cache_path = Path(settings.state_root) / GITHUB_CACHE_FILE
     for path in entries[:10]:
         name = path.name[:60]
-        why = wait = github = None
+        why = wait = github = ubuntu = None
         try:
             info = os.lstat(path)
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError("isn't a plain file")
             manifest = tc.load_file(path)
-            problems = tc.check_request(manifest, today)
+            if isinstance(manifest, dict) and manifest.get("kind") == "apt":
+                problems = _check_apt_request(tc, manifest, today)
+            else:
+                problems = tc.check_request(manifest, today)
             if problems:
                 raise ValueError("; ".join(problems[:5]))
             where = tc.github_asset(manifest.get("url")) if manifest.get("kind") == "archive" else None
             if where:
                 try:
-                    release = get(tc.GITHUB_API + where["path"])
+                    url = tc.GITHUB_API + where["path"]
+                    release = get(url, cache_path=cache_path) if get is github_get else get(url)
                 except GitHubLookupError as error:
                     if error.final:
                         raise ValueError(f"url: {error}") from None
@@ -306,6 +634,14 @@ def collect_requests(settings, source, today, get=github_get):
                     if problems:
                         raise ValueError("; ".join(problems[:5]))
                     github = {**github, "checkedAt": _now()}
+            if not wait and manifest.get("kind") == "apt":
+                got = ubuntu_record(series, manifest.get("packages") or [], fetch=ubuntu_fetch)
+                if not got["ok"]:
+                    raise ValueError(got["reason"])
+                manifest, ubuntu, problems = apply_ubuntu(manifest, series, got["found"], got["copyright"])
+                if problems:
+                    raise ValueError("; ".join(problems[:5]))
+                ubuntu = {**ubuntu, "checkedAt": _now()}
             if not wait:
                 # The unpacked size is a limit set from the download size, never the run's estimate.
                 manifest, filled = tc.fill_sizes(manifest)
@@ -335,6 +671,8 @@ def collect_requests(settings, source, today, get=github_get):
                   "digest": tc.digest(manifest), "card": tc.card_fields(manifest, pid)}
         if github:
             record["github"] = github
+        if ubuntu:
+            record["ubuntu"] = ubuntu
         target = proposals / f"{pid}.json"
         if not target.exists():
             tmp = proposals / f".{pid}.tmp"

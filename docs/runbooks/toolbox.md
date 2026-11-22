@@ -232,8 +232,10 @@ publish date, so the 7-day rule uses Ubuntu's date) and the licence from the `Fi
 that exact version's `debian/copyright` on changelogs.ubuntu.com (else "see Ubuntu's copyright
 file", with the link). Checked against the live services: cowsay 3.03+dfsg2-8 (COWSAY), ffmpeg
 6.1.1-3ubuntu5 (LGPL-2.1+), libxcb-cursor0 (MIT/X); openjdk-21-jre-headless's update of 2026-11-19
-was refused until 2026-11-26 by the 7-day rule. Run-written apt requests (the runner, in Python)
-don't have this lookup yet: they still need the fields.
+was refused until 2026-11-26 by the 7-day rule. Run-written apt requests (the runner, in Python,
+`services/jorah-projects/jorah_projects/toolbox.py`) now do the same Launchpad and
+`debian/copyright` lookup when those fields are omitted, and refuse disagreements or lookup
+failures instead of guessing.
 
 2026-11-22: asked to install video tools, Jorah asked Adam for an ffmpeg link instead of searching
 (the guard's log shows no search and nothing blocked). His rules now say to search for the
@@ -432,11 +434,15 @@ The project runner's unit allows `AF_INET`, and its runs already reach the netwo
 from inside the unit has been measured.
 
 **The hourly limit is shared.** GitHub allows 60 unauthenticated API requests an hour per public
-address. The PC and the Mac share one: at 17:46 both had 2 left, used by build sessions' own
-lookups. A test right after a busy build session can hit the limit; Jorah then says until when.
-If that keeps happening, a follow-up could sign the lookups with the jorah-github App's
-installation token (5,000 an hour). That is a build-session decision, because the token is a
-secret.
+address, shared between the PC and the Mac (build sessions' own lookups). Both the chat side
+(`plugins/jorah-projects/lib/ghcache.js`) and the runner (`services/jorah-projects/jorah_projects/toolbox.py`)
+now keep an on-disk response cache (`github-cache.json` in the state directory, mode `0600`,
+atomic writes, capped at 64 entries): lookups within 6 hours read from cache with no HTTP request,
+older entries send `If-None-Match` (`304 Not Modified` does not count against GitHub's limit), and
+a rate-limited lookup (`403`/`429` with remaining `0`) falls back to a cached copy under 7 days old
+(`cached: true`, `cachedAt` on the chat side) or reports the reset time otherwise. As the next step,
+signing the lookups with the `jorah-github` App's installation token (5,000 an hour) remains a
+secret-handling decision for Adam.
 
 **Deployed 2026-11-20, on Adam's yes typed in the build session ("Yes deploy it")**, with the
 coordinating session's go for the live Gateway:

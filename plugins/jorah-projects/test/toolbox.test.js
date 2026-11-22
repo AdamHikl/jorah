@@ -4,11 +4,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { register } from "../index.js";
+import { githubRelease, register } from "../index.js";
+import { CACHE_FILE, ghCache } from "../lib/ghcache.js";
 import { applyGithub, canonical, cardFields, checkManifest, checkRequest, digest, fillSizes, githubAsset, installedCeiling, MISSING_HINT, olderRelease, proposalId, sizeText } from "../lib/toolbox.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -525,4 +526,103 @@ test("toolbox_propose for Ubuntu: the newest pocket wins, an epoch is dropped, a
   assert.equal(plain.card.licence, "see Ubuntu's copyright file");
   call = load(fixture(), { fetch: fakeUbuntu({ status: 503 }) });
   assert.equal((await call("toolbox_propose", { manifest: cowsayRequest() })).status, "unavailable");
+});
+
+// ---- GitHub release on-disk cache: TTL, If-None-Match 304, rate-limit stale fallback (2026-11-22) -
+
+test("ghcache + githubRelease: mode 0600, 6h TTL, If-None-Match 304, and 7-day rate-limit fallback", async () => {
+  const fx = fixture();
+  const stateDir = join(fx.root, "state");
+  const where = githubAsset(example("github", GH.request).url);
+  const rel = example("github", GH.release);
+  let clock = new Date("2026-11-19T10:00:00.000Z");
+  const queue = [];
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, headers: init?.headers ?? {} });
+    const next = queue.shift();
+    if (!next) throw new Error("unexpected fetch");
+    return { status: next.status ?? 200, url, headers: new Headers(next.headers ?? {}), text: async () => next.text ?? JSON.stringify(next.body) };
+  };
+
+  // 1. Cold miss: 200 with ETag writes github-cache.json mode 0600 and leaves no .tmp files.
+  queue.push({ status: 200, headers: { etag: 'W/"rel-1"' }, body: rel });
+  const r1 = await githubRelease(fetchImpl, where, () => clock, where.path, stateDir);
+  assert.equal(r1.ok, true);
+  assert.equal(r1.cached, undefined);
+  assert.equal(calls.length, 1);
+  const cacheFile = join(stateDir, CACHE_FILE);
+  assert.equal(statSync(cacheFile).mode & 0o777, 0o600);
+  assert.deepEqual(readdirSync(stateDir).filter((f) => f.endsWith(".tmp")), []);
+  const disk = JSON.parse(readFileSync(cacheFile, "utf8"));
+  assert.equal(disk.entries[RELEASE_URL].etag, 'W/"rel-1"');
+  assert.equal(disk.entries[RELEASE_URL].fetchedAt, "2026-11-19T10:00:00.000Z");
+
+  // 2. Within 6h TTL (+5h59m): no HTTP request made at all.
+  clock = new Date("2026-11-19T15:59:00.000Z");
+  const r2 = await githubRelease(fetchImpl, where, () => clock, where.path, stateDir);
+  assert.equal(r2.ok, true);
+  assert.equal(r2.cached, true);
+  assert.equal(r2.cachedAt, "2026-11-19T10:00:00.000Z");
+  assert.equal(calls.length, 1);
+
+  // 3. Past 6h TTL (+6h01m): sends If-None-Match; 304 refreshes fetchedAt and skips rate limit.
+  clock = new Date("2026-11-19T16:01:00.000Z");
+  queue.push({ status: 304, headers: { etag: 'W/"rel-2"' }, text: "" });
+  const r3 = await githubRelease(fetchImpl, where, () => clock, where.path, stateDir);
+  assert.equal(r3.ok, true);
+  assert.equal(r3.at, "2026-11-19T16:01:00.000Z");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].headers["if-none-match"], 'W/"rel-1"');
+  assert.equal(JSON.parse(readFileSync(cacheFile, "utf8")).entries[RELEASE_URL].etag, 'W/"rel-2"');
+
+  // 4. Past 6h TTL again, rate-limited (429 with x-ratelimit-remaining 0), < 7 days old: serves cached copy.
+  clock = new Date("2026-11-26T15:00:00.000Z");
+  const reset = String(Date.parse("2026-11-26T16:00:00Z") / 1000);
+  queue.push({ status: 429, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": reset }, body: { message: "rate limit" } });
+  const r4 = await githubRelease(fetchImpl, where, () => clock, where.path, stateDir);
+  assert.equal(r4.ok, true);
+  assert.equal(r4.cached, true);
+  assert.equal(r4.cachedAt, "2026-11-19T16:01:00.000Z");
+  assert.equal(r4.release.tag_name, rel.tag_name);
+
+  // 5. Once >= 7 days old, rate-limited returns the "until <reset>" error.
+  clock = new Date("2026-11-26T16:01:00.000Z");
+  queue.push({ status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": reset }, body: { message: "rate limit" } });
+  const r5 = await githubRelease(fetchImpl, where, () => clock, where.path, stateDir);
+  assert.equal(r5.ok, false);
+  assert.match(r5.reason, /until 16:00 UTC/);
+});
+
+test("ghcache: caps entries by oldest fetchedAt, ignores corrupt or symlinked cache files, and works via toolbox_propose", async () => {
+  const fx = fixture();
+  const stateDir = join(fx.root, "state");
+  const cache = ghCache(stateDir, { maxEntries: 2 });
+  cache.set("https://api.github.com/r/1", { etag: '"1"', body: { n: 1 }, fetchedAt: "2026-11-10T00:00:00.000Z" });
+  cache.set("https://api.github.com/r/2", { etag: '"2"', body: { n: 2 }, fetchedAt: "2026-11-12T00:00:00.000Z" });
+  cache.set("https://api.github.com/r/3", { etag: '"3"', body: { n: 3 }, fetchedAt: "2026-11-11T00:00:00.000Z" });
+  assert.equal(cache.get("https://api.github.com/r/1"), null, "oldest entry evicted");
+  assert.deepEqual(cache.get("https://api.github.com/r/2")?.body, { n: 2 });
+  assert.deepEqual(cache.get("https://api.github.com/r/3")?.body, { n: 3 });
+
+  // Corrupt JSON or symlinked cache file is ignored gracefully.
+  writeFileSync(cache.file, "{not json");
+  assert.equal(cache.get("https://api.github.com/r/2"), null);
+  const badDir = join(fx.root, "bad-state");
+  mkdirSync(badDir, { recursive: true });
+  symlinkSync(cache.file, join(badDir, CACHE_FILE));
+  assert.equal(ghCache(badDir).get("https://api.github.com/r/2"), null);
+
+  // Wired into toolbox_propose: a second Gateway load within 6h makes no fetch.
+  const gh1 = fakeGithub({ [RELEASE_URL]: { headers: { etag: '"uv-1"' }, body: example("github", GH.release) } });
+  const call1 = load(fx, { now: GH_NOW, fetch: gh1 });
+  const first = await call1("toolbox_propose", { manifest: example("github", GH.request) });
+  assert.equal(first.status, "proposed");
+  assert.equal(gh1.calls.length, 1);
+
+  const gh2 = fakeGithub({});
+  const call2 = load(fx, { now: new Date(GH_NOW.getTime() + 60 * 60 * 1000), fetch: gh2 });
+  const second = await call2("toolbox_propose", { manifest: example("github", GH.request) });
+  assert.equal(second.status, "already proposed");
+  assert.equal(gh2.calls.length, 0, "served from on-disk cache within 6h without hitting fetch");
 });

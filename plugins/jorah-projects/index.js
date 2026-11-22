@@ -28,6 +28,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { buildDigest, localDate } from "./lib/digest.js";
+import { ghCache } from "./lib/ghcache.js";
 import { unpushed } from "./lib/git.js";
 import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
 import { listImages, MAX_FILES as PREVIEW_MAX, PreviewError, stage } from "./lib/preview.js";
@@ -140,14 +141,23 @@ export async function ubuntuRecord(fetchImpl, series, packages) {
 }
 
 /** GitHub's answer for a release (or, with `path` = where.list, its list of releases): {ok: true,
- * release, at} or {ok: false, final, reason}. `final`: the request itself is wrong (no such
- * release); otherwise GitHub can't be asked right now. */
-export async function githubRelease(fetchImpl, where, now = () => new Date(), path = where.path) {
+ * release, at, cached?, cachedAt?} or {ok: false, final, reason}. `final`: the request itself is
+ * wrong (no such release); otherwise GitHub can't be asked right now. */
+export async function githubRelease(fetchImpl, where, now = () => new Date(), path = where.path, cache = null) {
   const what = `${where.owner}/${where.repo} ${where.tag}`.slice(0, 120);
+  const url = `${GITHUB_API}${path}`;
+  const at = now();
+  const store = typeof cache === "string" ? ghCache(cache) : cache;
+  const cached = store ? store.get(url) : null;
+  if (cached && store.isFresh(cached, at)) {
+    return { ok: true, release: cached.body, at: cached.fetchedAt, cached: true, cachedAt: cached.fetchedAt };
+  }
+  const reqHeaders = { accept: "application/vnd.github+json", "user-agent": "jorah-toolbox/1", "x-github-api-version": "2022-11-28" };
+  if (cached?.etag) reqHeaders["if-none-match"] = cached.etag;
   let res;
   try {
-    res = await fetchImpl(`${GITHUB_API}${path}`, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "jorah-toolbox/1", "x-github-api-version": "2022-11-28" },
+    res = await fetchImpl(url, {
+      headers: reqHeaders,
       redirect: "follow", signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
   } catch (e) {
@@ -155,10 +165,18 @@ export async function githubRelease(fetchImpl, where, now = () => new Date(), pa
   }
   if (res.url && !String(res.url).startsWith(`${GITHUB_API}/`)) return { ok: false, final: false, reason: "GitHub's API redirected away from api.github.com" };
   const header = (k) => res.headers?.get?.(k) ?? null;
+  if (res.status === 304 && cached) {
+    const fetchedAt = at.toISOString();
+    try { store.set(url, { etag: header("etag") ?? cached.etag, body: cached.body, fetchedAt }); } catch { /* cache write is best-effort */ }
+    return { ok: true, release: cached.body, at: fetchedAt };
+  }
   if (res.status === 404) {
     return { ok: false, final: true, reason: `GitHub has no published release ${what} (drafts aren't visible): check the owner, repo and tag in url` };
   }
   if ((res.status === 403 || res.status === 429) && (header("x-ratelimit-remaining") === "0" || header("retry-after"))) {
+    if (cached && store.isUsableStale(cached, at)) {
+      return { ok: true, release: cached.body, at: cached.fetchedAt, cached: true, cachedAt: cached.fetchedAt };
+    }
     const reset = Number(header("x-ratelimit-reset"));
     const until = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString().slice(11, 16) + " UTC"
       : `in ${Number(header("retry-after")) || 60} seconds`;
@@ -174,7 +192,12 @@ export async function githubRelease(fetchImpl, where, now = () => new Date(), pa
   }
   if (text.length > GITHUB_MAX_BYTES) return { ok: false, final: false, reason: "GitHub's answer is over 4 MB" };
   try {
-    return { ok: true, release: JSON.parse(text), at: now().toISOString() };
+    const release = JSON.parse(text);
+    const fetchedAt = at.toISOString();
+    if (store) {
+      try { store.set(url, { etag: header("etag"), body: release, fetchedAt }); } catch { /* cache write is best-effort */ }
+    }
+    return { ok: true, release, at: fetchedAt };
   } catch {
     return { ok: false, final: false, reason: "GitHub's answer isn't JSON" };
   }
@@ -781,7 +804,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   const lookup = async (where, path = where.path) => {
     const hit = releases.get(path);
     if (hit && hit.until > now().getTime()) return hit.got;
-    const got = await githubRelease(fetchImpl, where, now, path);
+    const got = await githubRelease(fetchImpl, where, now, path, s.stateRoot);
     if (got.ok) {
       releases.set(path, { until: now().getTime() + GITHUB_CACHE_MS, got });
       if (releases.size > 20) releases.delete(releases.keys().next().value);

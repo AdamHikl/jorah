@@ -74,6 +74,7 @@ class Settings:
     toolbox_state: Path = HOME / "sandbox/.cache/jorah-toolbox"
     toolbox_contract: Path = REPO_ROOT / "packages/contracts/toolbox"
     toolbox_brief_template: Path = Path(__file__).resolve().parents[1] / "brief-toolbox.md"
+    ubuntu_series: str = "noble"
     bwrap_bin: str = "/usr/bin/bwrap"
     smoke_seconds: int = 180
     # One learning run per tick at most, and these limits for it; at most learn_per_day a day.

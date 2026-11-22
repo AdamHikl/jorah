@@ -66,11 +66,12 @@ class ProjectState:
 
 
 class Runner:
-    def __init__(self, settings, *, now=None, disk_free=None, claude_run=None, log=None, smoke_run=None, github_get=None):
+    def __init__(self, settings, *, now=None, disk_free=None, claude_run=None, log=None, smoke_run=None, github_get=None, ubuntu_fetch=None):
         self.s = settings
         self._smoke_run = smoke_run or subprocess.run
         self._github_get = github_get or toolbox.github_get
         self._vendor_collect = vendor.collect
+        self._ubuntu_fetch = ubuntu_fetch
         self.tz = ZoneInfo(settings.timezone)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._disk_free = disk_free or (lambda path: shutil.disk_usage(path).free)
@@ -759,7 +760,7 @@ class Runner:
         """After any run: take the tool requests it wrote, and commit its notes."""
         out = {"requests": None, "notes": None}
         try:
-            out["requests"] = toolbox.collect_requests(self.s, source, self.now().date(), self._github_get)
+            out["requests"] = toolbox.collect_requests(self.s, source, self.now().date(), self._github_get, ubuntu_fetch=self._ubuntu_fetch)
         except (OSError, ValueError) as error:
             out["requests"] = {"proposed": [], "refused": [{"file": "*", "why": f"couldn't read requests: {str(error)[:160]}"}]}
         out["notes"] = toolbox.commit_notes(self.s, folder, f"Notes from {label}")

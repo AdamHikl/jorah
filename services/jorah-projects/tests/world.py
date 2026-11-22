@@ -191,6 +191,57 @@ class FakeGitHub:
         return json.loads(json.dumps(answer))
 
 
+class FakeUbuntu:
+    """Launchpad and changelogs.ubuntu.com stand-in for the runner's toolbox tests."""
+
+    def __init__(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        self._parse_qs = parse_qs
+        self._urlsplit = urlsplit
+        self.calls = []
+        self.entries = {}
+        self.copyrights = {}
+        self.status = 200
+        self.error = None
+        for path in sorted((REPO_ROOT / "packages/contracts/toolbox/examples/good").glob("*.json")):
+            m = json.loads(path.read_text())
+            if m.get("kind") != "apt":
+                continue
+            for pkg in m.get("packages") or []:
+                self.entries[pkg] = [{
+                    "binary_package_name": pkg,
+                    "binary_package_version": m["version"],
+                    "status": "Published",
+                    "pocket": "Release",
+                    "component_name": "universe",
+                    "date_published": f"{m['released']}T12:00:00+00:00",
+                    "source_package_name": pkg,
+                    "source_package_version": m["version"],
+                }]
+                self.copyrights[pkg] = (
+                    "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n\n"
+                    f"Files: *\nCopyright: Example\nLicense: {m['licence']}\n"
+                )
+
+    def __call__(self, url, max_bytes=4 << 20):
+        self.calls.append(url)
+        if self.error is not None:
+            raise self.error
+        if url.startswith("https://api.launchpad.net/"):
+            if self.status != 200:
+                return self.status, None
+            name = self._parse_qs(self._urlsplit(url).query).get("binary_name", [""])[0]
+            text = json.dumps({"entries": self.entries.get(name, [])})
+            return (200, None) if len(text) > max_bytes else (200, text)
+        if url.startswith("https://changelogs.ubuntu.com/"):
+            for pkg, text in self.copyrights.items():
+                if f"/{pkg}/" in url and text is not None:
+                    return (200, None) if len(text) > max_bytes else (200, text)
+            return 404, None
+        return 404, None
+
+
 class World:
     def __init__(self, name="robot", *, entry=None, files=None, clone=True, github=True):
         self.tmp = Path(tempfile.mkdtemp(prefix="jorah-projects-test-"))
@@ -255,6 +306,7 @@ class World:
         self.minutes = None
         self.logs = []
         self.github_api = FakeGitHub()
+        self.ubuntu_api = FakeUbuntu()
 
     def make_github(self, files):
         """Adam's repo on GitHub, a bare repo with `files` on main."""
@@ -309,7 +361,7 @@ class World:
         def claude_run(settings, project, brief, *, minutes, setup=False):
             return claude.run(settings, project, brief, minutes=self.minutes if self.minutes is not None else minutes, setup=setup)
         return runner.Runner(self.settings, now=self.clock, disk_free=lambda _p: self.free, claude_run=claude_run, log=self.logs.append,
-                             github_get=self.github_api)
+                             github_get=self.github_api, ubuntu_fetch=self.ubuntu_api)
 
     @property
     def state_dir(self):

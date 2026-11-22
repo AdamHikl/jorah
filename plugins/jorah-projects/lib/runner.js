@@ -203,6 +203,34 @@ export function readInbox(dir) {
   return out;
 }
 
+/**
+ * Pushes of the project's branch since `since` (jorah-github writes pushes.jsonl, issue #19): when,
+ * which commit, by Adam's card or the standing grant, and the files. A missing file is "none yet";
+ * an unreadable one is { ok: false }, never an empty list.
+ */
+export function readPushes(dir, since) {
+  let text;
+  try {
+    text = readFileSync(join(dir, "pushes.jsonl"), "utf8");
+  } catch (e) {
+    return e?.code === "ENOENT" ? { ok: true, pushes: [] } : { ok: false, reason: "the push log can't be read" };
+  }
+  const pushes = [];
+  for (const line of text.split("\n").slice(-500)) {
+    if (!line.trim()) continue;
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    const at = iso(r?.at);
+    if (!at || Date.parse(at) < since.getTime()) continue;
+    pushes.push({
+      at, head: typeof r.head === "string" ? r.head.slice(0, 12) : null, by: r.by === "standing grant" ? "standing grant" : "Adam's card",
+      files: Array.isArray(r.files) ? r.files.slice(0, 50).map((f) => `${String(f?.status ?? "?").slice(0, 10)} ${String(f?.path ?? "?").slice(0, 200)}`) : [],
+      more_files: (Number.isInteger(r.more) ? r.more : 0) + Math.max(0, (Array.isArray(r.files) ? r.files.length : 0) - 50),
+    });
+  }
+  return { ok: true, pushes };
+}
+
 /** Outbox items, one per run: the runner's problems and urgent items. Read only, never deleted here. */
 export function readOutbox(dir) {
   let names;

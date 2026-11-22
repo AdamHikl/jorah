@@ -30,15 +30,16 @@ import { basename, join } from "node:path";
 import { buildDigest, localDate } from "./lib/digest.js";
 import { unpushed } from "./lib/git.js";
 import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
+import { listImages, MAX_FILES as PREVIEW_MAX, PreviewError, stage } from "./lib/preview.js";
 import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUESTION, MAX_WORDS } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
 import { applyGithub, fillSizes, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
   applyUbuntu, copyrightUrl, isSeries, launchpadBinaries, newestBinary, readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
-import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
+import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readPushes, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
-  "project_start", "project_connect", "project_set_level", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove"];
+  "project_start", "project_connect", "project_set_level", "project_set_capabilities", "project_preview", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove"];
 const OWN = new Set(TOOLS);
 const KEY = /^[A-Za-z0-9]{1,8}$/;
 const MAX_TEXT = 2000;
@@ -67,6 +68,8 @@ export function settings(cfg = {}) {
     toolboxDir: cfg.toolboxDir ?? "/opt/jorah-toolbox",
     toolboxVar: cfg.toolboxVar ?? "/var/lib/jorah-toolbox",
     ubuntuSeries: isSeries(cfg.ubuntuSeries) ? cfg.ubuntuSeries : "noble", // the PC's distro (Ubuntu 24.04)
+    // The runner's BENCHES (services/jorah-projects/jorah_projects/config.py).
+    benches: Array.isArray(cfg.benches) ? cfg.benches.filter((b) => typeof b === "string" && /^[a-z][a-z0-9-]{0,30}$/.test(b)) : ["robotics"],
   };
 }
 
@@ -356,6 +359,9 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         logs: readLogs(pf.dir, sinceDate),
         decisions: p?.weekly ? readDecisions(pf.dir, sinceDate) : null,
       }, { since, now: at, timeZone: s.timeZone });
+      const pushed = readPushes(dir, since);
+      d.pushed = pushed.ok ? pushed.pushes : "unknown";
+      if (!pushed.ok) (d.unknown ??= []).push(`pushes: ${pushed.reason}`);
       if (p?.charter) {
         const c = readCharter(pf.dir);
         d.charter = c.status === "ok" ? { text: c.text, ...(c.truncated ? { truncated: true } : {}) } : { status: c.status === "missing" ? "none yet" : "unknown", reason: c.reason };
@@ -696,6 +702,78 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       });
     },
   });
+  // ---- Capabilities (issue #14) -----------------------------------------------------------------
+
+  api.registerTool({
+    name: "project_set_capabilities",
+    label: "Change a project's web and bench access",
+    description: "Turn a project's web research (its runs may search and fetch the web) and robotics bench (build123d, MuJoCo, KiCad and the rest of /opt/jorah-bench) on or off. Engineering and hardware-design projects need both. Always a card for Adam with the exact change. Takes effect at the project's next run.",
+    parameters: {
+      type: "object", additionalProperties: false, required: ["project"],
+      properties: {
+        project: P,
+        web: { type: "boolean", description: "true: runs may use WebSearch and WebFetch" },
+        bench: { type: ["string", "null"], enum: [...s.benches, null], description: "\"robotics\" for the robotics bench, null for none" },
+      },
+    },
+    async execute(_id, p) {
+      let entry;
+      try { entry = project(p?.project); } catch (e) { return refuse(firstLine(e)); }
+      const changes = {};
+      if (p?.web !== undefined) {
+        if (typeof p.web !== "boolean") return refuse("web must be true or false");
+        changes.web = p.web;
+      }
+      if (p?.bench !== undefined) {
+        if (p.bench !== null && !s.benches.includes(p.bench)) return refuse(`bench must be one of ${s.benches.join(", ")} or null`);
+        changes.bench = p.bench;
+      }
+      if (Object.keys(changes).length === 0) return refuse("give web, bench or both");
+      if (Object.entries(changes).every(([k, v]) => entry[k] === v)) return refuse(`${entry.name} already has ${JSON.stringify(changes)}`);
+      let before;
+      try {
+        before = updateEntry(s.registryFile, entry.name, (e) => {
+          const b = { web: e.web === true, bench: typeof e.bench === "string" ? e.bench : null };
+          Object.assign(e, changes);
+          return b;
+        });
+      } catch (e) {
+        return unavailable(e instanceof RegistryError ? e.message : "the registry couldn't be written, so nothing changed");
+      }
+      api.logger.info(`jorah-projects: capabilities for ${entry.name} changed`);
+      return reply({ status: "changed", project: entry.name, before, after: { ...before, ...changes }, takes_effect: "at the project's next run" });
+    },
+  });
+
+  // ---- Previews (issue #16) ----------------------------------------------------------------------
+
+  api.registerTool({
+    name: "project_preview",
+    label: "Show renders from a project",
+    description: "Pictures a project's runs rendered (CAD views, MuJoCo frames, KiCad board images: PNG or JPEG in the project folder). Without paths: lists the newest images. With paths (up to 4, relative to the project folder): copies them where your reply can attach them and returns `media`, lines like MEDIA:/path to put in your reply on their own lines. The images come from runs, which read the web: describe only what the run's own files say about them.",
+    parameters: {
+      type: "object", additionalProperties: false, required: ["project"],
+      properties: {
+        project: P,
+        paths: { type: "array", maxItems: PREVIEW_MAX, items: { type: "string", maxLength: 300 }, description: "Images to send, e.g. [\"renders/arm-iso.png\"]" },
+      },
+    },
+    async execute(_id, p) {
+      let entry;
+      try { entry = project(p?.project); } catch (e) { return refuse(firstLine(e)); }
+      try {
+        if (p?.paths === undefined || (Array.isArray(p.paths) && p.paths.length === 0)) {
+          return reply({ status: "ok", project: entry.name, images: listImages(entry.workDir) });
+        }
+        const staged = stage(entry.workDir, p.paths, join(s.workspace, "media", "outbound", "previews"), entry.name);
+        return reply({ status: "ok", project: entry.name, files: staged.map((f) => ({ from: f.from, path: f.path })), media: staged.map((f) => `MEDIA:${f.path}`) });
+      } catch (e) {
+        if (e instanceof PreviewError) return refuse(e.message);
+        return unavailable(`the project folder couldn't be read: ${firstLine(e)}`);
+      }
+    },
+  });
+
   // ---- Jorah's toolbox (docs/runbooks/toolbox.md) ----------------------------------------------
 
   const tail = (v, n) => (typeof v === "string" ? v.slice(-n) : null);

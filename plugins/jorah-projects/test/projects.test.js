@@ -706,3 +706,45 @@ test("setup from the runner's state.json: running only while a live runner holds
   writeFileSync(join(sdir, "state.json"), JSON.stringify({ v: 1, setup: "pending" }));
   assert.equal(await setup(), "pending");
 });
+
+test("#14 project_set_capabilities: changes only web and bench of that project; validates; refuses no-ops", async () => {
+  const fx = fixture({ extra: { web: false, bench: null } });
+  const before = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  const { call } = load(fx);
+  const r = await call("project_set_capabilities", { project: "tree-watering-robot", web: true, bench: "robotics" });
+  assert.equal(r.status, "changed");
+  assert.deepEqual(r.before, { web: false, bench: null });
+  assert.deepEqual(r.after, { web: true, bench: "robotics" });
+  const after = JSON.parse(readFileSync(fx.regFile, "utf8"));
+  assert.deepEqual(after["other-project"], before["other-project"]);
+  assert.deepEqual({ ...after["tree-watering-robot"], web: null, bench: null }, { ...before["tree-watering-robot"], web: null, bench: null });
+  assert.equal(statSync(fx.regFile).mode & 0o777, 0o600);
+  for (const bad of [{}, { web: "yes" }, { bench: "kitchen" }, { web: true, bench: "robotics" }]) {
+    assert.equal((await call("project_set_capabilities", { project: "tree-watering-robot", ...bad })).status, "refused", JSON.stringify(bad));
+  }
+  assert.equal((await call("project_set_capabilities", { project: "tree-watering-robot", bench: null })).after.bench, null);
+});
+
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+
+test("#16 project_preview: lists renders, stages picked ones in the workspace outbox, and refuses anything else", async () => {
+  const fx = fixture();
+  mkdirSync(join(fx.work, "renders"), { recursive: true });
+  writeFileSync(join(fx.work, "renders", "arm-iso.png"), PNG);
+  writeFileSync(join(fx.work, "renders", "fake.png"), "<html>not an image</html>");
+  writeFileSync(join(fx.root, "secret.png"), PNG);
+  symlinkSync(join(fx.root, "secret.png"), join(fx.work, "renders", "link.png"));
+  const { call } = load(fx);
+  const list = await call("project_preview", { project: "tree-watering-robot" });
+  assert.equal(list.status, "ok");
+  assert.ok(list.images.some((i) => i.path === "renders/arm-iso.png"));
+  assert.ok(!list.images.some((i) => i.path.includes("link")));
+  const r = await call("project_preview", { project: "tree-watering-robot", paths: ["renders/arm-iso.png"] });
+  assert.equal(r.status, "ok");
+  const out = join(fx.root, "workspace", "media", "outbound", "previews", "tree-watering-robot", "renders_arm-iso.png");
+  assert.deepEqual(r.media, [`MEDIA:${out}`]);
+  assert.deepEqual(readFileSync(out), PNG);
+  for (const paths of [["renders/fake.png"], ["renders/link.png"], ["../secret.png"], [join(fx.root, "secret.png")], ["README.md"], [".git/config"], Array(5).fill("renders/arm-iso.png")]) {
+    assert.equal((await call("project_preview", { project: "tree-watering-robot", paths })).status, "refused", JSON.stringify(paths));
+  }
+});

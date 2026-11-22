@@ -46,6 +46,7 @@ docs/evidence/**/mango-*.md
 fixtures/private/
 voiceprint/
 *.voiceprint.json
+workspace/media/
 *.wav
 *.m4a
 !fixtures/synthetic/**/*.wav

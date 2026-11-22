@@ -1,7 +1,7 @@
 {
   "id": "jorah-projects",
   "name": "Jorah projects",
-  "description": "Start, see and steer the projects Jorah's project runner works on (docs/plan/11-project-mode.md sections 5 and 5.1): start a project from Adam's words (an existing repo or local-only), connect it to GitHub, list, status, the founder digest, Adam's answers and task results (with photos he sent), run now, pause, resume, limits and level. Reads the registry, the runner's state and the project folder; writes only the runner's inbox and requests, a new project's registry entry, and one project's limits, repo or level. Also Jorah's toolbox: list, propose, and install or remove a tool on Adam's card (docs/runbooks/toolbox.md). Starts no work itself.",
+  "description": "Start, see and steer the projects Jorah's project runner works on (docs/plan/11-project-mode.md sections 5 and 5.1): start a project from Adam's words (an existing repo or local-only), connect it to GitHub, list, status, the founder digest, Adam's answers and task results (with photos he sent), run now, pause, resume, limits, level, web and bench access, and rendered previews from the project folder. Reads the registry, the runner's state and the project folder; writes only the runner's inbox and requests, a new project's registry entry, and one project's limits, repo or level. Also Jorah's toolbox: list, propose, and install or remove a tool on Adam's card (docs/runbooks/toolbox.md). Starts no work itself.",
   "categories": [
     "other"
   ],
@@ -19,6 +19,8 @@
       "project_start",
       "project_connect",
       "project_set_level",
+      "project_set_capabilities",
+      "project_preview",
       "toolbox_list",
       "toolbox_propose",
       "toolbox_install",
@@ -89,6 +91,13 @@
       "toolboxVar": {
         "type": "string",
         "description": "The toolbox's queue, /var/lib/jorah-toolbox: proposals, approvals (written only by toolbox_install and toolbox_remove), results, smoke tests"
+      },
+      "benches": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Bench names the runner knows (its BENCHES), default [\"robotics\"]"
       }
     }
   }

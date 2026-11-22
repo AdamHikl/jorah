@@ -62,3 +62,14 @@ Live, Adam, 2026-11-21: passed. Two `toolbox_install` cards were allowed in the 
 ## Re-check
 
 Before the HUD is shared or published, and if OpenClaw changes how turn authority reaches `plugin.approval.request`.
+
+## Amendment, 2026-11-22: the HUD also holds operator.admin
+
+Adam asked for it after `/new` in the HUD's Main conversation was refused ("Gateway resets require
+operator.admin"). He moved to using the main conversation only (agent:main:main, unsandboxed, so it can
+start `deep` and Claude Code jobs on either lane), so resetting it from the HUD matters. The HUD's
+scope request is now general (`HUDModel.requestScopes`), with an "Ask for admin access" button.
+Request 369d8986, "Jorah HUD" asking for operator.admin, approvals, read and write, was approved at
+Adam's request on 2026-11-22; `devices list` then showed those four scopes. The HUD now matches the
+iPhone and the Control UI: a stolen HUD device token can also reset sessions and make Gateway admin
+calls. It stays in the Mac's login Keychain; revoke with `openclaw --profile jorah devices revoke`.

@@ -216,14 +216,20 @@ test("Adam's own text only: quoted messages and the chat window OpenClaw adds do
 test("hygiene: long and credential-looking URLs are refused after outside text, with a short reason", () => {
   const p = loadPlugin();
   p.taint();
-  const long = `https://found.example/a?q=${"x".repeat(240)}`;
+  // A long link a search returned may be fetched up to urlSeenMaxChars (issue #15); past that, and
+  // for a long link nobody gave, it's refused.
+  const long = `https://found.example/a?q=${"x".repeat(1000)}`;
+  const seenLong = `https://found.example/a2?q=${"x".repeat(240)}`;
   const creds = ["https://found.example/b?api_key=abc123", "https://found.example/c?access_token=abc", "https://found.example/d?x=ghp_abcdefghijklmnop1234",
     "https://found.example/e?X-Amz-Signature=abcd", "https://found.example/f#access_token=abc"];
-  p.call("web_search", { query: "q" }, searchResult("q", [long, ...creds]));
+  p.call("web_search", { query: "q" }, searchResult("q", [long, seenLong, ...creds]));
   for (const url of [long, ...creds]) assert.equal(p.fetch(url), "block", url);
+  assert.equal(p.fetch(seenLong), "allow");
   const r = p.hook("before_tool_call", { toolName: "web_fetch", params: { url: long }, toolCallId: "h" });
-  assert.match(r.blockReason, /longer than 250 characters/);
+  assert.match(r.blockReason, /longer than 1000 characters/);
   assert.ok(r.blockReason.length < 200);
+  const unseen = p.hook("before_tool_call", { toolName: "web_fetch", params: { url: `https://nobody.example/a?q=${"y".repeat(240)}` }, toolCallId: "h3" });
+  assert.match(unseen.blockReason, /longer than 250 characters/);
   assert.match(p.hook("before_tool_call", { toolName: "web_fetch", params: { url: creds[0] }, toolCallId: "h2" }).blockReason, /"api_key" parameter/);
   assert.equal(p.fetch("https://wttr.in/" + "x".repeat(260)), "block"); // the site list too
   assert.equal(p.call("browser", { action: "navigate", url: "https://user:pw@found.example/" }), "block");
@@ -275,7 +281,8 @@ const childCtx = (n = 21) => ({ agentId: "deep", sessionKey: `agent:deep:subagen
 const spawnDeep = (p, n = 21, task = "Compare lens shops in Slovakia") => {
   p.call("sessions_spawn", { agentId: "deep", task }, { details: { childSessionKey: `agent:deep:subagent:${n}` } });
 };
-const send = (p, content) => p.hook("message_sending", { content }, { sessionKey: "agent:main:main" });
+// The reply as sent: the hook returns nothing when no link had to go.
+const send = (p, content) => p.hook("message_sending", { content }, { sessionKey: "agent:main:main" }) ?? { content };
 
 test("#13: links deep found with web_search and web_fetch survive main's reply; a made-up link doesn't", () => {
   const p = loadPlugin();

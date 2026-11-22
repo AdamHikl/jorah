@@ -207,7 +207,7 @@ test("#14: web and bench for a project are always a card, even in Adam's clean c
   assert.equal(d.verdict, "confirm");
   assert.equal(d.title, "Jorah wants to change a project's web or bench access");
   assert.ok(d.description.includes("web: true"));
-  assert.ok(d.description.includes('bench: "robotics"'));
+  assert.ok(d.description.includes("bench: robotics"));
   state.freeze("test");
   assert.equal(run("project_set_capabilities", { project: P, web: false }).verdict, "block");
 });

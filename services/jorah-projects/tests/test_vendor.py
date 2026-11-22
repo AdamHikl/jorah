@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+import world  # noqa: F401 - puts jorah_projects on the path
 from jorah_projects import vendor
 
 PDF = b"%PDF-1.7\n" + b"x" * 200
@@ -37,13 +38,16 @@ class VendorTest(unittest.TestCase):
         self.own = Path(tempfile.mkdtemp(prefix="jorah-vendor-state-"))
         (self.root / "project" / "vendor" / "requests").mkdir(parents=True)
 
-    def request(self, name, **fields):
+    def request(self, file, **fields):
         body = {"v": 1, "url": URL, "name": "cam3.pdf", "kind": "pdf", "why": "lens position and board size", **fields}
-        (self.root / "project" / "vendor" / "requests" / name).write_text(json.dumps(body))
+        (self.root / "project" / "vendor" / "requests" / file).write_text(json.dumps(body))
 
     def test_a_pdf_is_saved_with_hash_text_manifest_and_gitignore(self):
         self.request("cam.json")
-        text = lambda path, out: (Path(out[0]) / out[1]).write_bytes(b"text") or "cam3.pdf.txt"
+        def text(path, out):
+            (Path(out[0]) / out[1]).write_bytes(b"text")
+            return "cam3.pdf.txt"
+
         got = vendor.collect(project(), self.root, self.own, get=Fetcher({URL: (PDF, "application/pdf")}), text=text, now=lambda: "2026-11-22T10:00:00+00:00")
         self.assertEqual([f["name"] for f in got["fetched"]], ["cam3.pdf"])
         saved = self.root / "project" / "vendor" / "cam3.pdf"

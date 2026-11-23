@@ -40,6 +40,10 @@
         "anthropic/claude-sonnet-4-6": { agentRuntime: { id: "claude-cli" } },
         "anthropic/claude-opus-4-6": { agentRuntime: { id: "claude-cli" } },
         "anthropic/*": { agentRuntime: { id: "claude-cli" } },
+        // The heartbeat and Memory Dreaming automations, on the API key on both lanes: OpenClaw
+        // 2026.11.6 refuses claude-cli in their sandboxed cron sessions (2026-11-23, Adam: "sandbox
+        // them and use the api key"). Each job names this model; nothing else uses it.
+        "anthropic/claude-haiku-4-5-20251001": { agentRuntime: { id: "openclaw" } },
       },
     },
     entries: {

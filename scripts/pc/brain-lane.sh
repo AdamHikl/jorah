@@ -19,6 +19,10 @@ TREE="${JORAH_TREE:-/opt/jorah}"
 STATE="${JORAH_STATE:-$HOME/.openclaw-jorah}"
 BACKUPS="$STATE/backups/brain-lane"
 KEY_PROFILE=anthropic:jorah-store
+# The model the heartbeat and Memory Dreaming automations run on, on both lanes: OpenClaw 2026.11.6
+# refuses claude-cli in their sandboxed cron sessions, so this one model stays on the embedded
+# runtime and the API key (2026-11-23, Adam: "sandbox them and use the api key"). Not part of the lane.
+AUTOMATION_MODEL=anthropic/claude-haiku-4-5-20251001
 # The agents whose own key order moves with the lane. background keeps anthropic:jorah-store.
 SWITCHED_AGENTS="main deep"
 
@@ -90,6 +94,7 @@ read_lane() {
     DEEP_ORDER="$(agent_order deep)" \
     BACKGROUND_ORDER="$(agent_order background)" \
     KEY_PROFILE="$KEY_PROFILE" \
+    AUTOMATION_MODEL="$AUTOMATION_MODEL" \
     python3 -I -c '
 import json, os
 
@@ -104,9 +109,10 @@ runtime_lane = {"openclaw": "api", "claude-cli": "max"}
 lanes = []
 
 defaults = load("DEFAULTS")
+automation = os.environ["AUTOMATION_MODEL"]
 if isinstance(defaults, dict):
     runtimes = [((v or {}).get("agentRuntime") or {}).get("id")
-                for k, v in defaults.items() if k.startswith("anthropic/")]
+                for k, v in defaults.items() if k.startswith("anthropic/") and k != automation]
     on_key = runtimes.count("openclaw")
     on_max = runtimes.count("claude-cli")
     other = len(runtimes) - on_key - on_max
@@ -123,6 +129,10 @@ if isinstance(defaults, dict):
 else:
     print("Claude models for main: unknown (config not readable)")
     lanes.append("unknown")
+if isinstance(defaults, dict):
+    auto_runtime = ((defaults.get(automation) or {}).get("agentRuntime") or {}).get("id")
+    shown = {"openclaw": "API key, sandboxed", None: "not set (the automations fail on the Max lane)"}
+    print(f"Heartbeat and Dreaming ({automation}): " + shown.get(auto_runtime, f"runtime {auto_runtime}"))
 
 deep = load("DEEP")
 runtime = None

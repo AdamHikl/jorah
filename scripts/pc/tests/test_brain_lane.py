@@ -39,8 +39,11 @@ if cmd == "config get":
         print('{"ok": false}'); sys.exit(1)
     if path == "agents.defaults.models":
         runtimes = state["defaults"]
-        print(json.dumps({f"anthropic/claude-{m}" if m != "*" else "anthropic/*": {"agentRuntime": {"id": r}}
-                          for m, r in zip(state["models"], runtimes)}))
+        models = {f"anthropic/claude-{m}" if m != "*" else "anthropic/*": {"agentRuntime": {"id": r}}
+                  for m, r in zip(state["models"], runtimes)}
+        if state.get("automation"):
+            models["anthropic/claude-haiku-4-5-20251001"] = {"agentRuntime": {"id": state["automation"]}}
+        print(json.dumps(models))
     elif path == "agents.entries.deep.models":
         print(json.dumps({"anthropic/claude-opus-5-5": {"agentRuntime": {"id": state["deep"]}}}))
     elif path == "auth.order":
@@ -229,6 +232,21 @@ class BrainLane(unittest.TestCase):
         code, lines, _ = self.run_script("api")
         self.assertEqual(code, 3)
         self.assertTrue(any(line.startswith("REFUSED: deep has no") for line in lines), lines)
+
+    def test_the_automation_model_on_the_key_is_not_part_of_the_lane(self):
+        for lane in ("max", "api"):
+            state = lane_state(lane)
+            state["automation"] = "openclaw"
+            self.set_state(state)
+            with self.subTest(lane=lane):
+                code, lines, _ = self.run_script("status")
+                self.assertEqual(code, 0, "\n".join(lines))
+                self.assert_lane(lines, lane)
+                self.assertIn("Heartbeat and Dreaming (anthropic/claude-haiku-4-5-20251001): API key, sandboxed", lines)
+        state = lane_state("max")
+        self.set_state(state)
+        _, lines, _ = self.run_script("status")
+        self.assertIn("Heartbeat and Dreaming (anthropic/claude-haiku-4-5-20251001): not set (the automations fail on the Max lane)", lines)
 
     def test_one_setting_off_is_mixed(self):
         for change in ("defaults", "deep", "order", "main"):

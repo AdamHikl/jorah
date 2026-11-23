@@ -937,7 +937,23 @@ Run each of these against the live Gateway from the start of the upgrade. A chec
 - **Two Jorah tools broke on 11.6 and were fixed the same evening:**
   - `brain-lane.sh status` read `LANE: unknown`: 11.6 runs `models auth order get` and `models auth list` only with the Gateway stopped. The script now asks the running Gateway (`gateway call models.authStatus`: `profileOrder`, `profiles`). Commit `df8db3b`, deployed. It now reads **`LANE: max`**, with main and deep "none" and background on the key. **Not tested on 11.6:** a lane switch (`order set` / `clear`), so try the HUD's brain switch once before relying on it.
   - The cron watch counted only `payload_kind = 'heartbeat'`, which after the migration matched only a stale Mac-era `heartbeat-main` (last run 2026-11-05). It would have reported cron down about 2.5 h after the restart. It now also counts `agentTurn` jobs named `heartbeat-*`. Commit `9630464`, deployed. Report: `ok`, newest heartbeat 17:22.
-- **Heartbeat fails on 11.6** [measured, 18:22:34]: the migrated automation `heartbeat-main` runs isolated in `agent:main:cron:<job>:run:<id>`. Main's sandbox mode `non-main` sandboxes that session, and its model (Haiku) resolves to claude-cli on the Max lane. 11.6 refuses the run: "This automation belongs to a sandboxed session, but resolved execution provider claude-cli runs on the host and cannot honor the sandbox". 10.9 ran it (17:22 ok). Cron backs off and retries hourly. The failure notice is "not-requested", so no Telegram alert. `Memory Dreaming Promotion` (03:00, isolated, Haiku) is set up the same way. The cron watch still reads `ok`, because an error receipt counts as finished. **Waits for Adam's choice** (session notes).
+- **Heartbeat fails on 11.6** [measured, 18:22:34]: the migrated automation `heartbeat-main` runs isolated in `agent:main:cron:<job>:run:<id>`. Main's sandbox mode `non-main` sandboxes that session, and its model (Haiku) resolves to claude-cli on the Max lane. 11.6 refuses the run: "This automation belongs to a sandboxed session, but resolved execution provider claude-cli runs on the host and cannot honor the sandbox". 10.9 ran it (17:22 ok). Cron backs off and retries hourly. The failure notice is "not-requested", so no Telegram alert. `Memory Dreaming Promotion` (03:00, isolated, Haiku) is set up the same way. The cron watch still reads `ok`, because an error receipt counts as finished.
+- **Fix, 2026-11-23 01:17, Adam: "yes sandbox them and use the api key"** [measured]:
+  - **Why not the other ways:** 11.6 has no setting that keeps these jobs isolated, on Max and sandboxed at once. The other supported ways were main's sandbox off for every non-main session, or the heartbeat inside Adam's main conversation.
+  - **Change:**
+    - `agents.defaults.models["anthropic/claude-haiku-4-5-20251001"] = { agentRuntime: { id: "openclaw" } }`, also in `config/pc/max-lane.patch.json5`;
+    - both jobs given that payload model with `automations edit <id> --agent main --model …`. On 11.6, `--agent` is required when more than one agent is configured.
+    - Backups: `openclaw.json.pre-automation-api-20261123T0117` and `~/backups/automation-<id>.pre-api-20261123T0117.json`.
+  - **Effect:** the jobs run on the embedded runtime in main's Podman sandbox, on `anthropic:jorah-store`, as from 11-07 to 11-15. Adam's chat stays on Max. Cost: about 25 short Haiku turns a day.
+  - **Canary first (`jorah-dev`, 01:12–01:17):**
+    - the same refusal reproduced;
+    - then Dreaming ran `ok` in 1.4 s, and memory-core logged "dreaming promotion complete (… failed=0 …)";
+    - the heartbeat, isolated, ran `ok` in 18 s on the embedded runtime with `sandboxed` set;
+    - both models survived a restart: memory-core doesn't reset its job.
+  - **Learning:** Dreaming reads main's conversations and memory and writes `DREAMS.md` and `memory/` in main's workspace, which the sandbox mounts read-write. It ran this way from 11-07 to 11-15, and the 03:00 run of 11-22 updated `DREAMS.md`.
+  - **Limit:** in sandboxed sessions, 11.6 filters out the `agentmemory` MCP tools unless `tools.sandbox.tools.alsoAllow` names `bundle-mcp`, as doctor warned. Not changed.
+  - **`brain-lane.sh`:** it ignores that model when it reads the lane, and prints "Heartbeat and Dreaming (…): API key, sandboxed".
+  - **Check:** the next heartbeat (about 02:16) and Dreaming (03:00) runs.
 - **Interim transcript link** (`~/.claude/projects/-home-jorah-workspace`) stays. It's harmless on 11.6, which follows `CLAUDE_CONFIG_DIR`.
 - **Rollback:** stop the Gateway, `npm install -g openclaw@2026.10.9` as root, restore the backup tarball over `~/.openclaw-jorah` and `~/.jorah-guard`, then start. 11.6 moves pairing credentials out of the shared database, so the HUD and the iPhone may need pairing again after a rollback.
 - **Open, for Adam:**

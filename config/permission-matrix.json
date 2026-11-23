@@ -7,7 +7,7 @@
     "agentmemory__memory_recall", "agentmemory__memory_smart_search", "agentmemory__memory_sessions",
     "agentmemory__memory_diagnose", "sites_list", "phone_today",
     "today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due",
-    "project_list", "project_status", "project_pause", "toolbox_propose",
+    "project_list", "project_status", "project_pause", "toolbox_propose", "picture_save",
     "reminder_job", "price_compare", "supply_list", "supply_plan"
   ],
   "taintRead": ["sessions_history", "sessions_search", "github_clone", "github_sync", "site_read",
@@ -64,6 +64,9 @@
   },
   "errands": {
     "about": "jorah-errands (docs/runbooks/errands.md). reminder_job and price_compare only compute: they return an automations call or numbers and set nothing, so they are reads; the reminder itself still goes through automations and the schedule rule. supply_list and supply_plan read Adam's own record, which only supply_save writes, so they are reads too. supply_save is free in Adam's clean typed chat and a card with the exact fields after outside text or by voice; supply_forget deletes, so it is always a card."
+  },
+  "pictures": {
+    "about": "picture_save (jorah-projects, 2026-11-23, Adam's call: Jorah keeps pictures by the AGENTS.md rules, without a card). It only copies pictures Adam sent (an attachment recorded in the same chat, or a file inside the inbound-media folders, lib/media.js) into <workspace>/files/pictures/ under a new dated name, appends a line to INDEX.md there, never overwrites, and refuses while frozen; it reads no outside text and sends nothing. The worst a hijacked call can do is keep one of Adam's own pictures in his own private folder, so it is a read, like toolbox_propose."
   },
   "readActions": ["list", "view", "get", "status", "runs", "show", "describe", "search"],
   "memoryFiles": ["MEMORY.md", "USER.md", "DREAMS.md", "memory/"],

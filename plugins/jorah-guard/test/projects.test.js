@@ -42,13 +42,14 @@ function fresh() {
 
 test("matrix: every jorah-projects tool has the class section 5 gives it", () => {
   const tools = JSON.parse(readFileSync(PROJECTS_MANIFEST, "utf8")).contracts.tools;
-  assert.equal(tools.length, 18); // fourteen project tools and four toolbox tools (toolbox.test.js)
+  assert.equal(tools.length, 19); // fourteen project tools, four toolbox tools (toolbox.test.js) and picture_save
   for (const t of tools) assert.notEqual(classify(matrix, t), null, t);
   for (const t of ["project_list", "project_status", "project_pause"]) assert.equal(classify(matrix, t), "read", t);
   assert.equal(classify(matrix, "project_digest"), "taintRead");
   for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_start"]) assert.equal(classify(matrix, t), "localWrite", t);
   for (const t of ["project_set_limits", "project_connect", "project_set_level", "project_set_capabilities"]) assert.equal(classify(matrix, t), "confirmAlways", t);
   assert.equal(classify(matrix, "project_preview"), "taintRead");
+  assert.equal(classify(matrix, "picture_save"), "read");
   for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_set_limits", "project_start", "project_connect", "project_set_level", "project_set_capabilities"]) assert.ok(matrix.cardTitles[t], t);
 });
 
@@ -216,4 +217,16 @@ test("#16: project_preview marks the chat, naming the project", () => {
   const { run, state } = fresh();
   assert.equal(run("project_preview", { project: P }).verdict, "allow");
   assert.match(state.taintOf(ADAM.sessionKey).source, /project_preview/);
+});
+
+test("picture_save needs no card: typed in the HUD, by voice, after outside text, and leaves the chat clean", () => {
+  const HUD = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "webchat", senderIsOwner: true } };
+  const SAVE = { files: ["last"], name: "billa-receipt", why: "receipt for the warranty" };
+  const { run, state } = fresh();
+  assert.equal(run("picture_save", SAVE, HUD).verdict, "allow");
+  assert.ok(!state.taintOf(HUD.sessionKey)?.tainted);
+  assert.equal(run("picture_save", SAVE, VOICE).verdict, "allow");
+  run("web_fetch", { url: "https://forum.example/thread" });
+  assert.equal(run("picture_save", SAVE).verdict, "allow");
+  assert.equal(run("tool_call", { id: "picture_save", args: SAVE }).verdict, "allow");
 });

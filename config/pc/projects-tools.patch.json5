@@ -6,13 +6,15 @@
 // the chat; answers, results, run now, resume and start are a card after outside text or by voice;
 // limits, connect, level and capabilities always.
 //
-// The plugin has eighteen tools: fourteen project_* and four toolbox_*.
+// The plugin has nineteen tools: fourteen project_*, four toolbox_* and picture_save.
 //   - The first twelve project_* tools were this file's first version (2026-11-16).
 //   - toolbox_list, toolbox_propose, toolbox_install and toolbox_remove went live on 2026-11-18
 //     (docs/runbooks/toolbox.md, "The Gateway part": main's list then had 37 entries).
 //   - project_set_capabilities (web research and the robotics bench, always a card, issue #14) and
 //     project_preview (rendered PNG and JPEG views into the workspace outbox, issue #16) are new
 //     with the #13-#24 batch (docs/runbooks/deploy-13-24.md, step 4).
+//   - picture_save (keeps pictures Adam sent, a read for the guard) is new on 2026-11-23
+//     (docs/runbooks/hud-pictures.md, step 3, builds its patch from the live list).
 //
 // THE INSTALL SESSION READS THE LIVE LIST FIRST. Merge patch: the array is the WHOLE list, so an
 // entry left out removes that tool from main. Below is the union of every list committed to main
@@ -50,6 +52,7 @@
           "project_start", "project_connect", "project_set_level",
           "project_set_capabilities", "project_preview",
           "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove",
+          "picture_save",
           "agentmemory__*",
         ] } } },
       },

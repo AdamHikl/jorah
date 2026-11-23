@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import HUDCore
 import Observation
+import UniformTypeIdentifiers
 
 struct ChatLine: Identifiable, Equatable {
     enum Role { case user, assistant, notice }
@@ -10,6 +11,24 @@ struct ChatLine: Identifiable, Equatable {
     var text: String
     var at: Date?
     var streaming = false
+    /// Thumbnails of pictures sent from this HUD (history has none: it shows `pictures` instead).
+    var images: [LineImage] = []
+}
+
+/// A thumbnail on a transcript line. Equal by id, so a redraw doesn't compare pixels.
+struct LineImage: Identifiable, Equatable {
+    let id: String
+    let image: NSImage
+    static func == (a: LineImage, b: LineImage) -> Bool { a.id == b.id }
+}
+
+/// A picture waiting in the composer: prepared for the Gateway, with a thumbnail for its chip.
+struct PendingImage: Identifiable, Equatable {
+    let id: String
+    let prepared: PreparedImage
+    let thumbnail: NSImage
+    let origin: String // "paste" or "file", as chat.send's attachment origin
+    static func == (a: PendingImage, b: PendingImage) -> Bool { a.id == b.id }
 }
 
 struct ActivityItem: Identifiable, Equatable {
@@ -278,6 +297,12 @@ final class HUDModel {
     var historyAsOf: Date?
     var draft = ""
     var sendError: String?
+    var pendingImages: [PendingImage] = []
+    var composerFocused = false
+    var attachNote: String?
+    var preparingImages = 0
+    /// Thumbnails of recent sends, by the text sent, so a history reload keeps them on screen.
+    private var sentPictures: [(text: String, images: [LineImage])] = []
 
     // Work
     var activity: [ActivityItem] = []
@@ -1146,7 +1171,7 @@ final class HUDModel {
                 guard let line = Self.line(from: message, fallbackId: "h\(index)") else { continue }
                 loaded.append(line)
             }
-            lines = loaded
+            lines = withSentPictures(loaded)
             historyAsOf = Date()
             if let run = result["inFlightRun"]["runId"].string {
                 activeRuns.insert(run)
@@ -1186,20 +1211,43 @@ final class HUDModel {
 
     func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, canWrite, let key = currentSessionKey else { return }
+        let images = pendingImages
+        guard !text.isEmpty || !images.isEmpty, preparingImages == 0, canWrite, let key = currentSessionKey else { return }
         guard !isHomeSession(key: key) else {
             sendError = "Not sent: cannot message the HUD home session."
             return
         }
         draft = ""
+        pendingImages = []
+        attachNote = nil
         sendError = nil
         let idempotencyKey = UUID().uuidString
-        lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date()))
+        let thumbs = images.map { LineImage(id: $0.id, image: $0.thumbnail) }
+        lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date(), images: thumbs))
+        if !thumbs.isEmpty {
+            sentPictures.append((text, thumbs))
+            if sentPictures.count > 20 { sentPictures.removeFirst(sentPictures.count - 20) }
+        }
         var params: [String: JSONValue] = [
             "sessionKey": .string(key),
             "message": .string(text),
             "idempotencyKey": .string(idempotencyKey),
         ]
+        if !images.isEmpty {
+            params["attachments"] = .array(images.map { pending in
+                let p = pending.prepared
+                return .object([
+                    "type": .string("image"),
+                    "mimeType": .string(p.mimeType),
+                    "fileName": .string(p.fileName),
+                    "origin": .string(pending.origin),
+                    "content": .string(p.data.base64EncodedString()),
+                    "sizeBytes": .number(Double(p.sizeBytes)),
+                    "width": .number(Double(p.width)),
+                    "height": .number(Double(p.height)),
+                ])
+            })
+        }
         if let mainSessionId { params["sessionId"] = .string(mainSessionId) }
         Task {
             do {
@@ -1207,8 +1255,112 @@ final class HUDModel {
                 if let run = ack["runId"].string { activeRuns.insert(run) }
             } catch {
                 sendError = "Not sent: \(error.localizedDescription)"
+                // Give the pictures back, so a retry doesn't need pasting them again.
+                if pendingImages.isEmpty { pendingImages = images }
             }
         }
+    }
+
+    // MARK: - Pictures in the composer
+
+    var canAttach: Bool { phase == .connected && canWrite && !isDemo }
+
+    /// ⌘V: image files copied in Finder, or image data (screenshots, "Copy Image"). Returns false
+    /// when there is no picture, so the text field pastes text as usual.
+    func attachFromPasteboard(_ pasteboard: NSPasteboard = .general) -> Bool {
+        guard canAttach else { return false }
+        let urls = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let imageURLs = urls.filter(Self.isImageFile)
+        if !imageURLs.isEmpty {
+            attach(urls: imageURLs, origin: "paste")
+            return true
+        }
+        if !urls.isEmpty { return false }
+        // Text copied with a picture in it (a web page, a document) pastes as text. A lone link
+        // beside image data is "Copy Image" from a browser: that is a picture.
+        if let string = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !string.isEmpty,
+           !(string.hasPrefix("http") && !string.contains(where: \.isWhitespace)) {
+            return false
+        }
+        for type in [NSPasteboard.PasteboardType.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")] {
+            if let data = pasteboard.data(forType: type) {
+                attach(data: data, fileName: nil, origin: "paste")
+                return true
+            }
+        }
+        return false
+    }
+
+    func attach(urls: [URL], origin: String = "file") {
+        for url in urls {
+            guard Self.isImageFile(url) else {
+                attachNote = "Not attached: \(url.lastPathComponent) isn't a picture."
+                continue
+            }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            guard size <= ImagePrep.maxSourceBytes else {
+                attachNote = "Not attached: \(url.lastPathComponent) is over 64 MB."
+                continue
+            }
+            guard let data = try? Data(contentsOf: url) else {
+                attachNote = "Not attached: \(url.lastPathComponent) couldn't be read."
+                continue
+            }
+            attach(data: data, fileName: url.lastPathComponent, origin: origin)
+        }
+    }
+
+    func attach(data: Data, fileName: String?, origin: String) {
+        guard canAttach else { return }
+        guard pendingImages.count + preparingImages < ImagePrep.maxImagesPerMessage else {
+            attachNote = "At most \(ImagePrep.maxImagesPerMessage) pictures per message."
+            return
+        }
+        preparingImages += 1
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> Result<PreparedImage, Error> in
+                Result { try ImagePrep.prepare(data, fileName: fileName) }
+            }.value
+            preparingImages -= 1
+            switch result {
+            case .success(let prepared):
+                guard let thumbnail = NSImage(data: prepared.data) else {
+                    attachNote = "Not attached: the picture couldn't be shown."
+                    return
+                }
+                pendingImages.append(PendingImage(id: UUID().uuidString, prepared: prepared, thumbnail: thumbnail, origin: origin))
+                attachNote = nil
+            case .failure(let error):
+                let name = fileName ?? "the picture"
+                attachNote = "Not attached: \(name): \(error.localizedDescription)."
+            }
+        }
+    }
+
+    func removePending(id: String) {
+        pendingImages.removeAll { $0.id == id }
+    }
+
+    static func isImageFile(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType { return type.conforms(to: .image) }
+        return ["jpg", "jpeg", "png", "heic", "heif", "tif", "tiff", "gif", "webp", "bmp"].contains(url.pathExtension.lowercased())
+    }
+
+    /// History lines for messages this HUD sent with pictures get their thumbnails back.
+    private func withSentPictures(_ loaded: [ChatLine]) -> [ChatLine] {
+        guard !sentPictures.isEmpty else { return loaded }
+        var out = loaded
+        var used = Set<Int>()
+        for index in out.indices.reversed() where out[index].role == .user && out[index].images.isEmpty {
+            let text = HistoryPictures.withoutLabel(out[index].text)
+            if let match = sentPictures.indices.reversed().first(where: { !used.contains($0) && sentPictures[$0].text == text }) {
+                used.insert(match)
+                out[index].images = sentPictures[match].images
+                out[index].text = text
+            }
+        }
+        return out
     }
 
     func stopRun() {
@@ -1456,8 +1608,15 @@ final class HUDModel {
         case "assistant": role = .assistant
         default: return nil
         }
-        guard var text = text(of: message), !text.isEmpty else { return nil }
-        if role == .user { text = withoutSpokenNote(text) }
+        var text = text(of: message) ?? ""
+        var pictures = imageBlocks(in: message)
+        if role == .user {
+            let stripped = HistoryPictures.strippingMarkers(text)
+            text = withoutSpokenNote(stripped.text)
+            pictures += stripped.count
+        }
+        if pictures > 0 { text = text.isEmpty ? HistoryPictures.label(pictures) : "\(HistoryPictures.label(pictures))\n\(text)" }
+        guard !text.isEmpty else { return nil }
         let id = message["__openclaw"]["id"].string.map { "\($0)-\(fallbackId)" } ?? fallbackId
         return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs)
     }
@@ -1472,6 +1631,11 @@ final class HUDModel {
         let words = (text[..<start.lowerBound] + text[text.index(after: end)...])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return "🎙 " + words
+    }
+
+    /// Image blocks in a message's content array.
+    static func imageBlocks(in message: JSONValue) -> Int {
+        (message["content"].array ?? []).filter { ["image", "image_url", "input_image"].contains($0["type"].string ?? "") }.count
     }
 
     /// Visible text of a chat message: a string, or the text blocks of a content array.

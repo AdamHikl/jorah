@@ -33,6 +33,7 @@ import { buildDigest, localDate } from "./lib/digest.js";
 import { ghCache } from "./lib/ghcache.js";
 import { unpushed } from "./lib/git.js";
 import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
+import { BURST_MS, MAX_PER_CALL as PICTURES_MAX, MAX_WHY, newestInbound, PictureError, savePictures } from "./lib/pictures.js";
 import { listImages, MAX_FILES as PREVIEW_MAX, PreviewError, stage } from "./lib/preview.js";
 import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUESTION, MAX_WORDS } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
@@ -42,7 +43,7 @@ import { applyGithub, fillSizes, installedView, CARD_ROOM, MIN_AGE_DAYS, cardFie
 import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readPushes, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
 export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
-  "project_start", "project_connect", "project_set_level", "project_set_capabilities", "project_preview", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove"];
+  "project_start", "project_connect", "project_set_level", "project_set_capabilities", "project_preview", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove", "picture_save"];
 const OWN = new Set(TOOLS);
 const KEY = /^[A-Za-z0-9]{1,8}$/;
 const MAX_TEXT = 2000;
@@ -795,6 +796,54 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       } catch (e) {
         if (e instanceof PreviewError) return refuse(e.message);
         return unavailable(`the project folder couldn't be read: ${firstLine(e)}`);
+      }
+    },
+  });
+
+  // ---- Pictures Adam sent, kept (HUD image paste, 2026-11-23) ---------------------------------
+
+  api.registerTool({
+    name: "picture_save",
+    label: "Keep a picture Adam sent",
+    catalogMode: "direct-only",
+    description: "Keep pictures Adam sent in this chat (pasted in the HUD, or a Telegram photo): copies them from OpenClaw's attachment store, which forgets them after a while, into ~/workspace/files/pictures/ as <date>-<name>.<ext>, and adds a line with why to INDEX.md there. Pass files \"last\" (the pictures in his newest message with pictures) or attachment paths as OpenClaw gave them. Only pictures (JPEG, PNG, HEIC, WebP, GIF), at most 4 per call, never overwrites. Needs no card: decide yourself, by the rules in AGENTS.md, which pictures are worth keeping.",
+    parameters: {
+      type: "object", additionalProperties: false, required: ["files", "name"],
+      properties: {
+        files: { type: "array", minItems: 1, maxItems: PICTURES_MAX, items: { type: "string", maxLength: 1024 }, description: "\"last\", or attachment paths from this chat" },
+        name: { type: "string", maxLength: 60, description: "What it shows, lowercase words joined by dashes, e.g. billa-receipt or garden-bed-sketch" },
+        why: { type: "string", maxLength: MAX_WHY, description: "One line for INDEX.md: what it is and why it's kept" },
+      },
+    },
+    async execute(id, p) {
+      if (frozen(s.guardStateDir)) return refuse("Jorah is frozen (/jorah-freeze), so nothing is saved until Adam clears it");
+      const who = caller(id);
+      const wantsLast = Array.isArray(p?.files) && p.files.length === 1 && typeof p.files[0] === "string" && p.files[0].trim().toLowerCase() === "last";
+      let sources = null;
+      if (wantsLast) {
+        // A picture pasted in the HUD may not reach message_received, so "last" is the newer of
+        // this chat's newest recorded attachment and the newest picture in the inbound-media
+        // folders (from the last half hour).
+        const recorded = who.sessionKey ? tracker.recent(who.sessionKey).at(-1) : undefined;
+        const inbound = newestInbound(s.mediaRoots, now().getTime());
+        if (inbound.files.length > 0 && (!recorded || inbound.newestMs > recorded.at + BURST_MS)) sources = inbound.files;
+        else if (!recorded) return refuse("there's no picture from the last half hour: ask Adam to send it again");
+      }
+      if (!sources) {
+        try {
+          sources = resolveFiles(p?.files, { sessionKey: who.sessionKey, tracker, roots: s.mediaRoots, workspace: s.workspace });
+        } catch (e) {
+          return refuse(e instanceof MediaError ? e.message : "the files couldn't be checked");
+        }
+      }
+      if (sources.length === 0) return refuse("give \"last\" or the attachment's path");
+      try {
+        const saved = savePictures(sources, { dir: join(s.workspace, "files", "pictures"), name: p?.name, date: localDate(now(), s.timeZone), why: p?.why });
+        api.logger.info(`jorah-projects: picture_save kept ${saved.length} picture(s)`);
+        return reply({ status: "saved", files: saved.map((f) => ({ path: f.path, bytes: f.bytes })), index: join(s.workspace, "files", "pictures", "INDEX.md") });
+      } catch (e) {
+        if (e instanceof PictureError) return refuse(e.message);
+        return unavailable(`the picture wasn't saved: ${firstLine(e)}`);
       }
     },
   });

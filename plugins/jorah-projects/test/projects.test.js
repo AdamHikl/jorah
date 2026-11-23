@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -747,4 +747,67 @@ test("#16 project_preview: lists renders, stages picked ones in the workspace ou
   for (const paths of [["renders/fake.png"], ["renders/link.png"], ["../secret.png"], [join(fx.root, "secret.png")], ["README.md"], [".git/config"], Array(5).fill("renders/arm-iso.png")]) {
     assert.equal((await call("project_preview", { project: "tree-watering-robot", paths })).status, "refused", JSON.stringify(paths));
   }
+});
+
+// ---- picture_save (HUD image paste, 2026-11-23) ------------------------------------------------
+
+test("picture_save: a picture pasted in the HUD (no message_received) is kept from the inbound folder", async () => {
+  const fx = fixture();
+  const { call } = load(fx);
+  const pasted = join(fx.media, "Screenshot---3f2a.png");
+  writeFileSync(pasted, "pngbytes");
+  utimesSync(pasted, NOW, NOW);
+  const hud = { ...ADAM, requester: { channel: "webchat", senderIsOwner: true } };
+  const r = await call("picture_save", { files: ["last"], name: "billa-receipt", why: "receipt\nfor the kettle warranty" }, hud);
+  assert.equal(r.status, "saved");
+  const dir = join(fx.root, "workspace", "files", "pictures");
+  assert.deepEqual(r.files.map((f) => f.path), [join(dir, "2026-11-16-billa-receipt.png")]);
+  assert.equal(readFileSync(join(dir, "2026-11-16-billa-receipt.png"), "utf8"), "pngbytes");
+  assert.equal(statSync(join(dir, "2026-11-16-billa-receipt.png")).mode & 0o777, 0o600);
+  assert.equal(readFileSync(join(dir, "INDEX.md"), "utf8"), "- 2026-11-16-billa-receipt.png: receipt for the kettle warranty\n");
+  // Saving again never overwrites.
+  const again = await call("picture_save", { files: ["last"], name: "billa-receipt" }, hud);
+  assert.deepEqual(again.files.map((f) => f.path), [join(dir, "2026-11-16-billa-receipt-2.png")]);
+  assert.equal(readFileSync(join(dir, "2026-11-16-billa-receipt.png"), "utf8"), "pngbytes");
+});
+
+test("picture_save: \"last\" takes the newer of this chat's attachment and the inbound folder", async () => {
+  const fx = fixture();
+  const { call, hooks } = load(fx);
+  const photo = join(fx.root, "elsewhere", "file_7.jpg");
+  mkdirSync(dirname(photo), { recursive: true });
+  writeFileSync(photo, "telegram");
+  hooks.message_received[0]({ media: [{ path: photo, contentType: "image/jpeg" }], messageId: "m1" }, { sessionKey: "agent:main:main" });
+  const old = join(fx.media, "older.png");
+  writeFileSync(old, "older");
+  utimesSync(old, new Date(NOW.getTime() - 10 * 60_000), new Date(NOW.getTime() - 10 * 60_000));
+  let r = await call("picture_save", { files: ["last"], name: "kettle" });
+  assert.equal(r.status, "saved");
+  assert.match(r.files[0].path, /2026-11-16-kettle\.jpg$/);
+  assert.equal(readFileSync(r.files[0].path, "utf8"), "telegram");
+  // Two pictures pasted together, newer than the recorded one: both, numbered.
+  const later = new Date(NOW.getTime() + 60_000);
+  for (const n of ["a.png", "b.jpeg"]) { writeFileSync(join(fx.media, n), n); utimesSync(join(fx.media, n), later, later); }
+  r = await call("picture_save", { files: ["last"], name: "whiteboard" });
+  assert.deepEqual(r.files.map((f) => f.path.split("/").pop()).sort(), ["2026-11-16-whiteboard-1.png", "2026-11-16-whiteboard-2.jpg"].sort());
+});
+
+test("picture_save refuses: nothing recent, other paths, non-pictures, bad names, frozen", async () => {
+  const fx = fixture();
+  const { call } = load(fx);
+  const stale = join(fx.media, "stale.png");
+  writeFileSync(stale, "x");
+  utimesSync(stale, new Date(NOW.getTime() - 3600_000), new Date(NOW.getTime() - 3600_000));
+  assert.match((await call("picture_save", { files: ["last"], name: "x" })).reason, /no picture from the last half hour/);
+  const secret = join(fx.root, "secret.png");
+  writeFileSync(secret, "x");
+  assert.match((await call("picture_save", { files: [secret], name: "x" })).reason, /not an attachment from this chat/);
+  // A file inside the inbound folder may be named, but only a picture is kept.
+  writeFileSync(join(fx.media, "doc.pdf"), "%PDF");
+  assert.match((await call("picture_save", { files: [join(fx.media, "doc.pdf")], name: "doc" })).reason, /not a picture/);
+  assert.match((await call("picture_save", { files: [stale], name: "Bad Name" })).reason, /lowercase words/);
+  assert.match((await call("picture_save", { files: [stale], name: "../../etc" })).reason, /lowercase words/);
+  writeFileSync(join(fx.guard, "FROZEN"), "");
+  assert.match((await call("picture_save", { files: [stale], name: "ok" })).reason, /frozen/);
+  assert.equal(existsSync(join(fx.root, "workspace", "files", "pictures", "2026-11-16-ok.png")), false);
 });

@@ -1,4 +1,6 @@
+import HUDCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct HUDView: View {
     @Environment(HUDModel.self) private var model
@@ -407,7 +409,20 @@ struct ConversationView: View {
             if let error = model.sendError {
                 Text(error).font(Theme.mono(11)).foregroundStyle(Theme.red)
             }
+            if !model.pendingImages.isEmpty || model.preparingImages > 0 || model.attachNote != nil {
+                PendingImagesRow()
+            }
             HStack(spacing: 8) {
+                Button {
+                    pickImages()
+                } label: {
+                    Image(systemName: "paperclip").font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canSend ? Theme.text : Theme.dim)
+                .disabled(!canSend)
+                .help("Attach pictures (or paste with ⌘V, or drop them here)")
+                .accessibilityLabel("Attach pictures")
                 TextField(placeholder, text: $model.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...4)
@@ -416,7 +431,7 @@ struct ConversationView: View {
                     .disabled(!canSend)
                     .onSubmit { model.send() }
                     .padding(8)
-                    .overlay(Rectangle().stroke(Theme.stroke, lineWidth: 0.5))
+                    .overlay(Rectangle().stroke(dropTargeted ? Theme.accent : Theme.stroke, lineWidth: dropTargeted ? 1 : 0.5))
                 if !model.activeRuns.isEmpty, model.canWrite {
                     Button("Stop") { model.stopRun() }
                         .font(Theme.label(10))
@@ -425,9 +440,49 @@ struct ConversationView: View {
                 Button("Send") { model.send() }
                     .font(Theme.label(10))
                     .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!canSend || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!canSend || model.preparingImages > 0
+                              || (model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.pendingImages.isEmpty))
+            }
+            .onDrop(of: [.fileURL, .image], isTargeted: $dropTargeted) { providers in
+                guard canSend else { return false }
+                return dropImages(providers)
             }
         }
+        .onChange(of: focused) { model.composerFocused = focused }
+        .onAppear { PasteMonitor.install(model) }
+    }
+
+    @State private var dropTargeted = false
+
+    private func pickImages() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Pictures for Jorah (up to \(ImagePrep.maxImagesPerMessage) per message)"
+        guard panel.runModal() == .OK else { return }
+        model.attach(urls: panel.urls, origin: "file")
+        focused = true
+    }
+
+    private func dropImages(_ providers: [NSItemProvider]) -> Bool {
+        var accepted = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                accepted = true
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in model.attach(urls: [url], origin: "file") }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    guard let data else { return }
+                    Task { @MainActor in model.attach(data: data, fileName: provider.suggestedName, origin: "file") }
+                }
+            }
+        }
+        return accepted
     }
 
     private var canSend: Bool { model.phase == .connected && model.canWrite && model.currentSessionKey != nil }
@@ -437,6 +492,73 @@ struct ConversationView: View {
         if model.phase != .connected { return "Not linked" }
         if !model.canWrite { return "Read only. Pair again with typing to send." }
         return "Message Jorah"
+    }
+}
+
+/// Pictures waiting to be sent, each with its size and a remove button.
+struct PendingImagesRow: View {
+    @Environment(HUDModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(model.pendingImages) { item in
+                        HStack(spacing: 6) {
+                            Image(nsImage: item.thumbnail)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 36, height: 36)
+                                .clipped()
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.prepared.fileName).font(Theme.mono(9)).lineLimit(1).frame(maxWidth: 120, alignment: .leading)
+                                Text("\(item.prepared.width)×\(item.prepared.height) · \(Self.size(item.prepared.sizeBytes))")
+                                    .font(Theme.mono(9)).foregroundStyle(Theme.dim)
+                            }
+                            Button {
+                                model.removePending(id: item.id)
+                            } label: {
+                                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.dim)
+                            .help("Remove this picture")
+                            .accessibilityLabel("Remove \(item.prepared.fileName)")
+                        }
+                        .padding(4)
+                        .overlay(Rectangle().stroke(Theme.stroke, lineWidth: 0.5))
+                    }
+                    if model.preparingImages > 0 {
+                        ProgressView().controlSize(.small)
+                        Text("Preparing…").font(Theme.mono(9)).foregroundStyle(Theme.dim)
+                    }
+                }
+            }
+            if let note = model.attachNote {
+                Text(note).font(Theme.mono(10)).foregroundStyle(Theme.amber)
+            }
+        }
+    }
+
+    static func size(_ bytes: Int) -> String {
+        bytes >= 1_048_576 ? String(format: "%.1f MB", Double(bytes) / 1_048_576) : "\(max(1, bytes / 1024)) KB"
+    }
+}
+
+/// ⌘V in the composer with a picture on the clipboard attaches it; anything else pastes as usual.
+/// A local key monitor, because the text field's own paste ignores images.
+@MainActor
+enum PasteMonitor {
+    private static var monitor: Any?
+
+    static func install(_ model: HUDModel) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == .command, event.charactersIgnoringModifiers?.lowercased() == "v",
+                  model.composerFocused else { return event }
+            return model.attachFromPasteboard() ? nil : event
+        }
     }
 }
 
@@ -556,11 +678,25 @@ struct ChatLineView: View {
                     Text("LIVE").font(Theme.label(8)).foregroundStyle(Theme.amber)
                 }
             }
-            Text(line.text.isEmpty ? "…" : line.text)
-                .font(.system(size: 13))
-                .foregroundStyle(line.role == .notice ? Theme.dim : Theme.text)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !line.images.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(line.images) { picture in
+                        Image(nsImage: picture.image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 160, maxHeight: 110, alignment: .leading)
+                            .overlay(Rectangle().stroke(Theme.stroke, lineWidth: 0.5))
+                            .accessibilityLabel("Picture you sent")
+                    }
+                }
+            }
+            if !line.text.isEmpty || line.images.isEmpty {
+                Text(line.text.isEmpty ? "…" : line.text)
+                    .font(.system(size: 13))
+                    .foregroundStyle(line.role == .notice ? Theme.dim : Theme.text)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.leading, 8)
         .overlay(alignment: .leading) { Rectangle().fill(color.opacity(0.7)).frame(width: 1.5) }

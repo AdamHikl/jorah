@@ -954,6 +954,18 @@ Run each of these against the live Gateway from the start of the upgrade. A chec
   - **Limit:** in sandboxed sessions, 11.6 filters out the `agentmemory` MCP tools unless `tools.sandbox.tools.alsoAllow` names `bundle-mcp`, as doctor warned. Not changed.
   - **`brain-lane.sh`:** it ignores that model when it reads the lane, and prints "Heartbeat and Dreaming (…): API key, sandboxed".
   - **Check:** the next heartbeat (about 02:16) and Dreaming (03:00) runs.
+- **Second error, and its fix (2026-11-23, Adam: "yes set it up")** [measured]:
+  - **02:16:** the heartbeat failed with "Explicit auth order for anthropic has no usable profiles". The Max lane sets `auth.order.anthropic: []`, and `brain-lane.sh max` had cleared main's own order. On `jorah-dev`, main still had its own order from the API-lane days, which is why the canary passed.
+  - After 10 failures in a row, 11.6 **disabled the heartbeat job** on its own.
+  - Dreaming at 03:00 ran `ok` anyway ("dreaming promotion complete … failed=0"), because memory-core does the promotion itself.
+  - **Main's own key order:** 11.6 writes it only with the Gateway stopped. `models.authOrderSet` refuses while `auth.order` controls the provider. So: stopped at 09:04:26, `models auth order set --provider anthropic --agent main anthropic:jorah-store`, started, ready at 09:04:57.
+  - Resulting orders: main `["anthropic:jorah-store"]` (stored), deep `[]` (from `auth.order`), background `["anthropic:jorah-store"]`. Undo, with the Gateway stopped: `models auth order clear --provider anthropic --agent main`.
+  - **Then 11.6 wanted the account on the job** ("Automation has no recorded inference account"). Both jobs: `automations edit <id> --agent main --model 'anthropic/claude-haiku-4-5-20251001@anthropic:jorah-store'`, and the heartbeat `--enable`d again.
+  - **Verified:**
+    - the heartbeat ran by hand at 09:05:39: `ok`, 6.5 s, 0 errors, nothing to deliver. Its session record shows `claude-haiku-4-5-20251001`, `agentRuntime: openclaw`; the failing runs used `claude-haiku-5-5` on `claude-cli`;
+    - Dreaming ran by hand at 09:05:56: `ok`.
+  - **Main's chat stays on Max:** every chat model is pinned to claude-cli, and main has no fallbacks, so the key reaches only main's embedded runs, which are these two jobs.
+  - **`brain-lane.sh`:** a switch no longer sets or clears any agent's own order, since 11.6 can't do that with the Gateway running. Main and background keep the key order on both lanes. deep has no order of its own and follows `auth.order`, which each lane patch sets. Status votes on deep's order, shows main's, and warns if main has lost it.
 - **Interim transcript link** (`~/.claude/projects/-home-jorah-workspace`) stays. It's harmless on 11.6, which follows `CLAUDE_CONFIG_DIR`.
 - **Rollback:** stop the Gateway, `npm install -g openclaw@2026.10.9` as root, restore the backup tarball over `~/.openclaw-jorah` and `~/.jorah-guard`, then start. 11.6 moves pairing credentials out of the shared database, so the HUD and the iPhone may need pairing again after a rollback.
 - **Open, for Adam:**

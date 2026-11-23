@@ -10,8 +10,10 @@
 // deep: max-lane.patch.json5 repins its own Opus 5.5 entry to claude-cli, so this pins it back
 // (2026-11-21, Adam: "switch jorah to api now"). Its tools are unchanged on either runtime
 // (deep-consult.patch.json5 denies the shell).
-// Alongside it, main's and deep's own auth orders go back to anthropic:jorah-store, and deep's
-// Max-lane sandbox "off" and tools.allow are removed, so deep is sandboxed again (scripts/pc/brain-lane.sh does all three).
+// Alongside it, deep's Max-lane sandbox "off" and tools.allow are removed, so deep is sandboxed again
+// (scripts/pc/brain-lane.sh). Since OpenClaw 2026.11.6 (2026-11-23) no agent's own key order moves
+// with the lane: main and background keep anthropic:jorah-store on both lanes, and deep has none and
+// follows auth.order above.
 {
   auth: { order: { anthropic: ["anthropic:jorah-store"] } },
   agents: {

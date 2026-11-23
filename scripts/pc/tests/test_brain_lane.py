@@ -74,6 +74,8 @@ elif cmd == "config patch":
         state["defaults"] = [lane] * len(state["models"])
         state["deep"] = lane
         state["order"] = [os.environ["FAKE_KEY"]] if lane == "openclaw" else []
+        # deep has no order of its own and follows auth.order (OpenClaw 2026.11.6).
+        state["agents"]["deep"] = os.environ["FAKE_KEY"] if lane == "openclaw" else "none"
         if lane == "claude-cli":
             state["deep_sandbox"] = "off"
             state["deep_allow"] = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"]
@@ -118,13 +120,13 @@ else:
 
 def lane_state(lane):
     runtime = {"api": "openclaw", "max": "claude-cli"}[lane]
-    order = "none" if lane == "max" else KEY
+    deep = "none" if lane == "max" else KEY
     return {
         "models": MODELS,
         "defaults": [runtime] * len(MODELS),
         "deep": runtime,
         "order": [KEY] if lane == "api" else [],
-        "agents": {"main": order, "deep": order, "background": KEY},
+        "agents": {"main": KEY, "deep": deep, "background": KEY},
         "deep_sandbox": "off" if lane == "max" else None,
         "deep_allow": ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"] if lane == "max" else None,
         "profiles": {"main": True, "deep": True, "background": True},
@@ -193,7 +195,18 @@ class BrainLane(unittest.TestCase):
         code, lines, _ = self.run_script("status")
         self.assertEqual(code, 0)
         self.assert_lane(lines, "max")
-        self.assertIn("main key order: none", lines)
+        self.assertIn("deep key order: none", lines)
+        self.assertIn(f"main key order: {KEY} (for its embedded runs only: heartbeat and Dreaming)", lines)
+        self.assertFalse(any(line.startswith("WARNING") for line in lines), lines)
+
+    def test_main_without_its_key_order_warns_but_keeps_the_lane(self):
+        state = lane_state("max")
+        state["agents"]["main"] = "none"
+        self.set_state(state)
+        code, lines, _ = self.run_script("status")
+        self.assertEqual(code, 0)
+        self.assert_lane(lines, "max")
+        self.assertTrue(any(line.startswith("WARNING: heartbeat and Dreaming need the key order") for line in lines), lines)
 
     def test_status_on_2026_11_6_asks_the_running_gateway(self):
         # 2026.11.6 runs `models auth order get` and `models auth list` only with the Gateway stopped.
@@ -249,7 +262,7 @@ class BrainLane(unittest.TestCase):
         self.assertIn("Heartbeat and Dreaming (anthropic/claude-haiku-4-5-20251001): not set (the automations fail on the Max lane)", lines)
 
     def test_one_setting_off_is_mixed(self):
-        for change in ("defaults", "deep", "order", "main"):
+        for change in ("defaults", "deep", "order", "deep_order"):
             state = lane_state("api")
             if change == "defaults":
                 state["defaults"][3] = "claude-cli"
@@ -258,7 +271,7 @@ class BrainLane(unittest.TestCase):
             elif change == "order":
                 state["order"] = []
             else:
-                state["agents"]["main"] = "none"
+                state["agents"]["deep"] = "none"
             self.set_state(state)
             with self.subTest(change=change):
                 code, lines, _ = self.run_script("status")
@@ -281,9 +294,9 @@ class BrainLane(unittest.TestCase):
         self.assertEqual(lines[-1], "SWITCHED to api. Existing chats carry over.")
         calls = self.calls.read_text()
         self.assertIn("api-lane.patch.json5 --dry-run", calls)
-        self.assertIn(f"models auth order set --provider anthropic --agent main {KEY}", calls)
-        self.assertIn(f"models auth order set --provider anthropic --agent deep {KEY}", calls)
-        self.assertNotIn("--agent background", calls.replace("order get --provider anthropic --agent background", ""))
+        # 11.6 changes an agent's own order only with the Gateway stopped, so a switch never does.
+        self.assertNotIn("models auth order set", calls)
+        self.assertNotIn("models auth order clear", calls)
         self.assertEqual(len(list(self.backups.glob("openclaw.json.*.pre-api"))), 1)
 
         state = json.loads(self.state.read_text())
@@ -297,7 +310,8 @@ class BrainLane(unittest.TestCase):
         self.assertEqual(code, 0, "\n".join(lines) + err)
         self.assert_lane(lines[:-1], "max")
         state = json.loads(self.state.read_text())
-        self.assertEqual(state["agents"], {"main": "none", "deep": "none", "background": KEY})
+        self.assertEqual(state["agents"], {"main": KEY, "deep": "none", "background": KEY})
+        self.assertNotIn("models auth order", self.calls.read_text().replace("models auth order get", ""))
         self.assertEqual(state["deep_sandbox"], "off")
         self.assertIn("deep sandbox: off (Max lane, tools limited to its allow list)", lines)
 
@@ -339,11 +353,11 @@ class BrainLane(unittest.TestCase):
 
     def test_a_failure_after_the_patch_says_mixed(self):
         state = lane_state("max")
-        state["fail"] = "order set"
+        state["fail"] = "config unset"
         self.set_state(state)
         code, lines, _ = self.run_script("api")
         self.assertEqual(code, 1)
-        self.assertIn("FAILED: could not set main's key order", lines)
+        self.assertIn("FAILED: could not remove agents.entries.deep.sandbox", lines)
         self.assert_lane(lines, "mixed")
 
     def test_keeps_the_newest_twenty_backups(self):

@@ -23,8 +23,11 @@ KEY_PROFILE=anthropic:jorah-store
 # refuses claude-cli in their sandboxed cron sessions, so this one model stays on the embedded
 # runtime and the API key (2026-11-23, Adam: "sandbox them and use the api key"). Not part of the lane.
 AUTOMATION_MODEL=anthropic/claude-haiku-4-5-20251001
-# The agents whose own key order moves with the lane. background keeps anthropic:jorah-store.
-SWITCHED_AGENTS="main deep"
+# Key orders (OpenClaw 2026.11.6, 2026-11-23): main and background keep their own order,
+# anthropic:jorah-store, on both lanes. background needs it for its shell; main only for its embedded
+# runs, which on the Max lane are just the automations above, since every chat model is pinned to
+# claude-cli. deep has no order of its own and follows auth.order, which each lane patch sets. So a
+# switch changes config only: 11.6 sets or clears an agent's own order only with the Gateway stopped.
 
 oc() { openclaw --profile jorah "$@"; }
 say() { printf '%s\n' "$*"; }
@@ -166,11 +169,18 @@ else:
     lanes.append("unknown" if default_order is None else "mixed")
 print("Default key order: " + ("unknown" if default_order is None else (", ".join(default_order) or "none")))
 
-for agent in ("MAIN", "DEEP"):
-    value = os.environ.get(agent + "_ORDER", "")
-    shown = value or "unknown"
-    print(f"{agent.lower()} key order: {shown}")
-    lanes.append({key: "api", "none": "max"}.get(value, "mixed" if value else "unknown"))
+value = os.environ.get("DEEP_ORDER", "")
+print("deep key order: " + (value or "unknown"))
+lanes.append({key: "api", "none": "max"}.get(value, "mixed" if value else "unknown"))
+
+main = os.environ.get("MAIN_ORDER", "")
+if main == key:
+    print("main key order: " + key + " (for its embedded runs only: heartbeat and Dreaming)")
+else:
+    print("main key order: " + (main or "unknown"))
+    print("WARNING: heartbeat and Dreaming need the key order " + key + " on main" + ". Setting it needs the "
+          "Gateway stopped: openclaw --profile jorah models auth order set --provider anthropic "
+          "--agent main " + key)
 
 background = os.environ.get("BACKGROUND_ORDER", "") or "unknown"
 print("background: " + ("API key, on both lanes" if background == key else "key order " + background))
@@ -274,7 +284,7 @@ switch_to() {
     flock -n 9 || refuse "another switch is running"
     [ -f "$patch" ] || refuse "$patch is missing on the PC"
     if [ "$target" = api ]; then
-        for agent in $SWITCHED_AGENTS; do
+        for agent in main deep; do
             has_key_profile "$agent" || refuse "$agent has no $KEY_PROFILE key profile. Run $TREE/scripts/pc/use-api-key.sh first"
         done
     else
@@ -299,15 +309,9 @@ switch_to() {
     say "4/6 Applying it (hot reload, no restart)"
     oc config patch --file "$patch" 2>&1 | tail -n 3 || fail "the patch did not apply"
 
-    say "5/6 Key order for $SWITCHED_AGENTS, and deep's sandbox"
-    for agent in $SWITCHED_AGENTS; do
-        if [ "$target" = api ]; then
-            oc models auth order set --provider anthropic --agent "$agent" "$KEY_PROFILE" >/dev/null 2>&1 \
-                || fail "could not set $agent's key order"
-        else
-            oc models auth order clear --provider anthropic --agent "$agent" >/dev/null 2>&1 \
-                || fail "could not clear $agent's key order"
-        fi
+    say "5/6 Key order and deep's sandbox"
+    # No agent's own order changes: deep follows auth.order, which the patch just set.
+    for agent in main deep; do
         say "    $agent: $(agent_order "$agent")"
     done
 

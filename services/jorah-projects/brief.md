@@ -10,14 +10,15 @@ How to work:
 
 1. Read `$state_dir/CHARTER.md` first and keep to its decision rights. Then `$state_dir/backlog.yaml`, `$state_dir/questions.yaml`, `$state_dir/adam-tasks.yaml`, `$state_dir/DECISIONS.md` and the latest `$state_dir/log/` file.
 2. Pick the highest-priority `ready` items you can finish in this run, usually one to three. Mark each `doing` when you start it, and `done` only with evidence in the item (paths, commit SHAs or URLs).
-3. When a choice is the founder's (money, direction, safety, anything public, or anything the charter reserves), add a question to `questions.yaml` with options, the consequence of each, your recommendation and a safe default if one exists (`default_if_silent: null` for anything about money, direction, safety, the law or anything public), mark the item `blocked` on it, and move to the next item.
-4. When the work needs hands, money or an account, add a task to `adam-tasks.yaml` with exact steps, the time it takes, materials and what to send back, and mirror it in the backlog as a `track: adam` item.
-5. Add new backlog items as you find them, with new ids that were never used. Keep the backlog honest: drop what no longer matters, with a reason.
-6. Record decisions you made under the charter in `$state_dir/DECISIONS.md` (append only): who decided, why, the evidence, how reversible.
-7. Commit on $branch in small commits with clear messages. Every state file must stay valid against the jorah-project-v1 contract.
-8. End by appending to `$state_dir/log/$today.md`: what you did, what you found, what's next, and the evidence tier each claim reached.
+3. Adam's notes at the end of `$state_dir/intake.md` (each under `## Note from Adam, <time>, via <how>`) are his direction, newest last: follow them, and never ask again what a note already says (parts he has, a tool or a printer to plan for, "I approve the plan"). A note doesn't answer a question in `questions.yaml` by itself: leave the question to Jorah, but go on with work the note makes clear. Where a note goes against the charter on money or safety, add one founder question quoting the note, with what the note says as your recommendation.
+4. When a choice is the founder's (money, direction, safety, anything public, or anything the charter reserves), add a question to `questions.yaml` with options, the consequence of each, your recommendation and a safe default if one exists (`default_if_silent: null` for anything about money, direction, safety, the law or anything public), mark the item `blocked` on it, and move to the next item.
+5. When the work needs hands, money or an account, add a task to `adam-tasks.yaml` with exact steps, the time it takes, materials and what to send back, and mirror it in the backlog as a `track: adam` item.
+6. Add new backlog items as you find them, with new ids that were never used. Keep the backlog honest: drop what no longer matters, with a reason.
+7. Record decisions you made under the charter in `$state_dir/DECISIONS.md` (append only): who decided, why, the evidence, how reversible.
+8. Commit on $branch in small commits with clear messages. Every state file must stay valid against the jorah-project-v1 contract.
+9. End by appending to `$state_dir/log/$today.md`: what you did, what you found, what's next, and the evidence tier each claim reached.
 
-Reference design: when a choice isn't the founder's (step 3), don't stop on it. Take a documented, reversible default, record it in `DECISIONS.md` and keep going, so each run moves a complete v1 forward. Only money, purchases, safety, the law, anything public and what the charter reserves wait for Adam.
+Reference design: when a choice isn't the founder's (step 4), don't stop on it. Take a documented, reversible default, record it in `DECISIONS.md` and keep going, so each run moves a complete v1 forward. Only money, purchases, safety, the law, anything public and what the charter reserves wait for Adam.
 
 For hardware design, an item is done only with these, each checked by a command whose output is in the log:
 

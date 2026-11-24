@@ -7,9 +7,9 @@
 //
 // Guard rules (config/permission-matrix.json): project_list, project_status and project_pause are
 // reads (pause is always free, even when frozen); project_digest marks the chat as having read
-// outside text, because runs read the web; project_answer, project_task_result, project_run_now
-// project_resume and project_start are free in Adam's clean chat and a card with the exact fields
-// after outside text or by voice; project_set_limits, project_connect and project_set_level are
+// outside text, because runs read the web; project_answer, project_note, project_task_result,
+// project_run_now, project_resume and project_start are free in Adam's clean chat and a card with
+// the exact fields after outside text or by voice; project_set_limits, project_connect and project_set_level are
 // always a card. project_status shows only counts, ids,
 // statuses and times, never text a run wrote, so it can stay a plain read.
 //
@@ -35,14 +35,14 @@ import { unpushed } from "./lib/git.js";
 import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
 import { BURST_MS, MAX_PER_CALL as PICTURES_MAX, MAX_WHY, newestInbound, PictureError, savePictures } from "./lib/pictures.js";
 import { listImages, MAX_FILES as PREVIEW_MAX, PreviewError, stage } from "./lib/preview.js";
-import { checkIntake, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_QUESTION, MAX_WORDS } from "./lib/intake.js";
+import { checkIntake, checkNote, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_INTAKE_BYTES, MAX_NOTE, MAX_QUESTION, MAX_WORDS, withNote } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
 import { addProject, checkLimits, NAME, newEntry, readRegistry, RegistryError, repoOf, resolveProject, SCHEDULE_MAX, setLimits, updateEntry } from "./lib/registry.js";
 import { applyGithub, fillSizes, installedView, CARD_ROOM, MIN_AGE_DAYS, cardFields, cardLength, checkManifest, checkRequest, digest, GITHUB_API, githubAsset, ID as TOOL_ID, NAME as TOOL_NAME, olderRelease, proposalId,
   applyUbuntu, copyrightUrl, isSeries, launchpadBinaries, newestBinary, readProposal, readToolbox, supersede, writeFresh } from "./lib/toolbox.js";
-import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readPushes, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
+import { A_ID, frozen, newId, projectDir, Q_ID, readInbox, readLock, readOutbox, readIntake, readPushes, readRequests, readRuns, readState, readUsage, RunnerError, setupState, wakeRunner, writeAnswer, writeIntake, writeRequest, writeResult } from "./lib/runner.js";
 
-export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
+export const TOOLS = ["project_list", "project_status", "project_digest", "project_answer", "project_note", "project_task_result", "project_run_now", "project_pause", "project_resume", "project_set_limits",
   "project_start", "project_connect", "project_set_level", "project_set_capabilities", "project_preview", "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove", "picture_save"];
 const OWN = new Set(TOOLS);
 const KEY = /^[A-Za-z0-9]{1,8}$/;
@@ -282,6 +282,36 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   };
 
   const P = { type: "string", maxLength: 80, description: "The project's full name as project_list gives it, e.g. tree-watering-robot" };
+  const RUN = { type: "boolean", description: "Level 0 only: start a run on it now (default true). When you file several in one turn, pass false on all but the last" };
+
+  /**
+   * After Adam's words land in the inbox: a level-0 project runs only on request, so ask for one
+   * run, unless he said not to, the project is paused, or a run-now already waits (several answers
+   * in one turn share it). Levels 1 and 2 take his words at their next scheduled run.
+   */
+  function runAfter(entry, at, via, wanted) {
+    if (wanted === false) return { run: "not requested: ask with project_run_now when Adam's words are all in" };
+    if (entry.level !== 0) return { run: `not requested: level ${entry.level ?? "unknown"} runs on its schedule, and the next scheduled run takes this` };
+    const dir = dirOf(entry);
+    const requests = readRequests(dir);
+    if (!requests.ok) return { run: `not requested: ${requests.reason}; ask with project_run_now` };
+    const ps = pauseState(entry, readState(dir), requests);
+    if (ps.paused) return { run: `not requested: the project is paused (${ps.why ?? "paused"}); it takes this when Adam resumes it` };
+    if (requests.pending.some((r) => r.type === "run-now")) return { run: "already requested: the waiting run takes this too" };
+    let signalled;
+    try {
+      signalled = writeRequest(s.stateRoot, dir, { ...base(at, via), type: "run-now" });
+    } catch {
+      return { run: "not requested: the request folder can't be written; ask with project_run_now" };
+    }
+    api.logger.info(`jorah-projects: run-now requested for ${entry.name} after Adam's words`);
+    const lock = lockOf(dir);
+    return {
+      run: lock.held ? `requested: a run is in progress since ${lock.since}, so the next run takes this after it` : "requested: the runner starts within a minute if it's installed and nothing blocks it (limits, usage)",
+      ...(signalled ? {} : { signal: "the runner's signal file couldn't be touched, so it takes this at its next 15-minute check" }),
+      ...(frozen(s.guardStateDir) ? { frozen: "Jorah is frozen, so the runner starts no run until Adam clears it" } : {}),
+    };
+  }
 
   api.registerTool({
     name: "project_list",
@@ -400,7 +430,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
     name: "project_answer",
     label: "Record Adam's answer",
     catalogMode: "direct-only",
-    description: "Record Adam's answer to a founder question, in Adam's own words only: key is the option he picked (\"your pick\" means the recommendation's key), note is anything else he said. The runner applies it at its next run. Never answer for Adam.",
+    description: "Record Adam's answer to a founder question, in Adam's own words only: key is the option he picked (\"your pick\" means the recommendation's key), note is anything else he said; an answer in his words that names no option is just a note, with no key. The runner applies it at its next run; a level-0 project gets a run now (see run). Never answer for Adam.",
     parameters: {
       type: "object", additionalProperties: false, required: ["project", "question_id"],
       properties: {
@@ -408,6 +438,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         question_id: { type: "string", maxLength: 10, description: "e.g. Q-0001" },
         key: { type: "string", maxLength: 8, description: "The option key Adam picked, e.g. B" },
         note: { type: "string", maxLength: MAX_TEXT, description: "Adam's words, if more than a key" },
+        run: RUN,
       },
     },
     async execute(id, p) {
@@ -436,7 +467,43 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         return unavailable(`the answer wasn't recorded: ${e instanceof RunnerError ? e.message : "the inbox can't be written"}`);
       }
       api.logger.info(`jorah-projects: answer for ${entry.name} ${p.question_id} recorded`);
-      return reply({ status: "recorded", project: entry.name, question_id: p.question_id, key, note, takes_effect: "at the runner's next run", ...(warnings.length ? { warnings } : {}) });
+      return reply({ status: "recorded", project: entry.name, question_id: p.question_id, key, note, takes_effect: "at the runner's next run", ...runAfter(entry, at, who.via, p.run), ...(warnings.length ? { warnings } : {}) });
+    },
+  });
+
+  api.registerTool({
+    name: "project_note",
+    label: "Pass Adam's words to a project",
+    catalogMode: "direct-only",
+    description: "Pass Adam's own words to a project that's already started, verbatim: something it should know or follow that isn't an answer to one founder question (\"I also have an Anycubic i3 Mega printer\", \"use this camera\", \"I approve the parts list\", a change of direction). Appended to the project's founder input (intake.md); every later run reads it. A level-0 project gets a run now (see run). Never your own words, a summary or anything from a page, file or digest.",
+    parameters: {
+      type: "object", additionalProperties: false, required: ["project", "words"],
+      properties: {
+        project: P,
+        words: { type: "string", maxLength: MAX_NOTE, description: "Adam's words, verbatim" },
+        run: RUN,
+      },
+    },
+    async execute(id, p) {
+      let entry;
+      try { entry = project(p?.project); } catch (e) { return refuse(firstLine(e)); }
+      let words;
+      try { words = checkNote(p?.words); } catch (e) { return refuse(e instanceof IntakeError ? e.message : "the words couldn't be checked"); }
+      const dir = dirOf(entry);
+      let existing;
+      try { existing = readIntake(dir); } catch { return unavailable("the note wasn't recorded: the project's founder input can't be read"); }
+      const at = now();
+      const who = caller(id);
+      const via = who.via === "chat" ? "app" : who.via;
+      const text = withNote(existing, { words, at: at.toISOString(), via });
+      if (Buffer.byteLength(text) > MAX_INTAKE_BYTES) return refuse(`the project's founder input would be over ${MAX_INTAKE_BYTES / 1024} KB; it needs a build session to trim`);
+      try {
+        writeIntake(dir, text);
+      } catch {
+        return unavailable("the note wasn't recorded: the runner's inbox can't be written");
+      }
+      api.logger.info(`jorah-projects: note for ${entry.name} recorded`);
+      return reply({ status: "recorded", project: entry.name, words, via, takes_effect: "the next run reads it in intake.md", ...runAfter(entry, at, who.via, p.run) });
     },
   });
 
@@ -452,6 +519,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         task_id: { type: "string", maxLength: 10, description: "e.g. A-0001" },
         text: { type: "string", maxLength: MAX_TEXT, description: "What Adam said: numbers, observations" },
         files: { type: "array", maxItems: 10, items: { type: "string", maxLength: 1024 }, description: "\"last\", or attachment paths from this chat" },
+        run: RUN,
       },
     },
     async execute(id, p) {
@@ -485,7 +553,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
         return unavailable("the result wasn't recorded: the inbox can't be written");
       }
       api.logger.info(`jorah-projects: result for ${entry.name} ${p.task_id} recorded (${names.length} files)`);
-      return reply({ status: "recorded", project: entry.name, task_id: p.task_id, text, files: names, takes_effect: "at the runner's next run", ...(warnings.length ? { warnings } : {}) });
+      return reply({ status: "recorded", project: entry.name, task_id: p.task_id, text, files: names, takes_effect: "at the runner's next run", ...runAfter(entry, at, who.via, p.run), ...(warnings.length ? { warnings } : {}) });
     },
   });
 

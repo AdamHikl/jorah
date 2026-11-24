@@ -830,3 +830,59 @@ test("picture_save refuses: nothing recent, other paths, non-pictures, bad names
   assert.match((await call("picture_save", { files: [stale], name: "ok" })).reason, /frozen/);
   assert.equal(existsSync(join(fx.root, "workspace", "files", "pictures", "2026-11-16-ok.png")), false);
 });
+
+const runNows = (fx) => (existsSync(join(fx.sdir, "requests")) ? requests(fx).filter((x) => x.type === "run-now") : []);
+
+test("project_note: Adam's words appended to intake.md under a dated heading; a header made when there's none", async () => {
+  const fx = fixture();
+  const { call } = load(fx);
+  const r = await call("project_note", { project: "tree-watering-robot", words: "  I have a 3D printer.\nUse it for the brackets.  " });
+  assert.equal(r.status, "recorded");
+  assert.equal(r.via, "telegram");
+  const file = join(fx.sdir, "inbox", "intake.md");
+  const first = readFileSync(file, "utf8");
+  assert.equal(first, `# Founder input\n\nGiven: ${NOW.toISOString()}\nVia: telegram\n\n## Note from Adam, ${NOW.toISOString()}, via telegram\n\nI have a 3D printer.\nUse it for the brackets.\n`);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  // A second note goes after the first, the start's words untouched; the HUD is "app".
+  await call("project_note", { project: "tree-watering-robot", words: "Camera: yes" }, { agentId: "main", sessionKey: "agent:main:hud", requester: { channel: "webchat", senderIsOwner: true } });
+  assert.equal(readFileSync(file, "utf8"), `${first}\n## Note from Adam, ${NOW.toISOString()}, via app\n\nCamera: yes\n`);
+  // Nothing in the project folder; level 1 gets no run request.
+  assert.equal(existsSync(join(fx.work, "project", "intake.md")), false);
+  assert.match(r.run, /^not requested: level 1 runs on its schedule/);
+  assert.deepEqual(runNows(fx), []);
+});
+
+test("project_note refuses: no words, too long, an unknown project, an intake that would grow too big", async () => {
+  const fx = fixture();
+  const { call } = load(fx);
+  assert.match((await call("project_note", { project: "tree-watering-robot", words: "   " })).reason, /Adam's own words/);
+  assert.match((await call("project_note", { project: "tree-watering-robot", words: "x".repeat(4001) })).reason, /longer than 4000/);
+  assert.equal((await call("project_note", { project: "nope", words: "hi" })).status, "refused");
+  mkdirSync(join(fx.sdir, "inbox"), { recursive: true });
+  writeFileSync(join(fx.sdir, "inbox", "intake.md"), `# Founder input\n\nGiven: ${NOW.toISOString()}\nVia: telegram\n\n${"y".repeat(200 * 1024)}\n`);
+  assert.match((await call("project_note", { project: "tree-watering-robot", words: "one more" })).reason, /over 200 KB/);
+});
+
+test("level 0: an answer, result or note starts one run; run false, a waiting run and a pause don't add one", async () => {
+  const fx = fixture({ extra: { level: 0, schedule: [] } });
+  const { call } = load(fx);
+  const a = await call("project_answer", { project: "tree-watering-robot", question_id: "Q-0001", key: "B", run: false });
+  assert.match(a.run, /^not requested: ask with project_run_now/);
+  assert.deepEqual(runNows(fx), []);
+  const b = await call("project_answer", { project: "tree-watering-robot", question_id: "Q-0002", key: "A" });
+  assert.match(b.run, /^requested: the runner starts within a minute/);
+  assert.equal(runNows(fx).length, 1);
+  assert.equal(runNows(fx)[0].via, "telegram");
+  assert.ok(existsSync(join(fx.state, "requests.signal")));
+  const n = await call("project_note", { project: "tree-watering-robot", words: "I approve the parts list" });
+  assert.match(n.run, /^already requested/);
+  const t = await call("project_task_result", { project: "tree-watering-robot", task_id: "A-0001", text: "41 s" });
+  assert.match(t.run, /^already requested/);
+  assert.equal(runNows(fx).length, 1);
+  // Paused: the words are kept, no run asked for.
+  const fx2 = fixture({ extra: { level: 0, schedule: [], paused: true } });
+  const p = await load(fx2).call("project_note", { project: "tree-watering-robot", words: "use the printer" });
+  assert.equal(p.status, "recorded");
+  assert.match(p.run, /^not requested: the project is paused/);
+  assert.deepEqual(runNows(fx2), []);
+});

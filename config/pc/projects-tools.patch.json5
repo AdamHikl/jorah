@@ -47,7 +47,7 @@
           "phone_today",
           "today_picture", "loops_list", "loop_propose", "loop_done", "loop_drop", "proactive_notify", "proactive_feedback",
           "proactive_resume", "proactive_why", "digest_list", "proactive_due", "proactive_tick",
-          "project_list", "project_status", "project_digest", "project_answer", "project_task_result",
+          "project_list", "project_status", "project_digest", "project_answer", "project_note", "project_task_result",
           "project_run_now", "project_pause", "project_resume", "project_set_limits",
           "project_start", "project_connect", "project_set_level",
           "project_set_capabilities", "project_preview",

@@ -343,6 +343,16 @@ export function writeIntake(dir, text) {
   writeAtomic(join(ensure(join(dir, "inbox")), "intake.md"), text);
 }
 
+/** inbox/intake.md's text, or null when there is none yet. Throws if it can't be read. */
+export function readIntake(dir) {
+  try {
+    return readFileSync(join(dir, "inbox", "intake.md"), "utf8");
+  } catch (e) {
+    if (e?.code === "ENOENT") return null;
+    throw e;
+  }
+}
+
 /**
  * Whether a project's first (setup) run has happened: the runner's state.json `setup`
  * (contract jorah-project-v1, "Setup runs"), which a runner with setup runs always writes. Without

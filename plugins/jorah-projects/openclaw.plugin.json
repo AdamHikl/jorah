@@ -11,6 +11,7 @@
       "project_status",
       "project_digest",
       "project_answer",
+      "project_note",
       "project_task_result",
       "project_run_now",
       "project_pause",

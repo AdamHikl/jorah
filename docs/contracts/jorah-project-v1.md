@@ -19,7 +19,7 @@ Nothing here has run on the PC yet. Source and unit tests only.
 <repo>/
   project/                  stateDir in the registry; project when left out
     CHARTER.md              Adam's. Drafted by the setup run; no other run edits it
-    intake.md               Runner only. The founder's words from chat at project start (optional)
+    intake.md               Runner only. The founder's words from chat: at start, then notes (optional)
     backlog.yaml            Jorah's. Schema: backlog.schema.json
     questions.yaml          Jorah asks, Adam answers. Schema: questions.schema.json
     adam-tasks.yaml         Jorah writes, Adam reports. Schema: adam-tasks.schema.json
@@ -194,6 +194,12 @@ writes it, copying `~/.jorah-projects/<name>/inbox/intake.md` into the project f
 not change it. It is optional: a project imported from an existing repo may have none. It has no
 template, since it is never written from one.
 
+Later words from Adam that answer no single question (parts he has, a plan he approves, a change of
+direction) are appended to the inbox's `intake.md` by the `project_note` tool, each under
+`## Note from Adam, <ISO time>, via <telegram|voice|app>`, newest last. The runner copies the file
+again whenever it changes, and the next run reads the new notes first. A note is Adam's direction;
+it answers no founder question by itself, and the charter changes only through a question.
+
 ```markdown
 # Founder input
 
@@ -206,6 +212,10 @@ I want a robot that waters the trees on our plot so nobody has to carry buckets 
 
 Q: How many trees?
 A: About forty, young ones, on a slope.
+
+## Note from Adam, 2026-11-18T08:15:00+01:00, via telegram
+
+I already have a 3D printer, use it for the brackets.
 ```
 
 | Line | Rule | Message |
@@ -230,8 +240,10 @@ existing repo or a brand-new idea.
    `intake.md` beside it. The copy passes the checker as it is.
 3. **The setup run.** The next run is a setup run. It fills the templates from `intake.md` (and the
    repo's own README and docs, if any): a charter draft, the first founder questions, the backlog
-   and any Adam tasks. A charter section `intake.md` doesn't settle says `Open: Q-xxxx`, naming a
-   question the run adds; open placeholders are fine, invented money, dates or rights are not.
+   and any Adam tasks. Where `intake.md` doesn't settle money or safety, the section says
+   `Open: Q-xxxx`, naming a question the run adds (at most two); other sections get the setup
+   brief's safe defaults (no dates, private, no outreach), marked as defaults Adam can change.
+   Invented money, dates or rights are never fine.
    `CHARTER.md` is writable **only** during this run; `intake.md`, `answer` and `result` stay
    runner-only as always.
 4. **After it.** The run's changes must pass `check_project`, or the runner reverts them and the

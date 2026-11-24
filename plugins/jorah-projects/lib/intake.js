@@ -41,3 +41,30 @@ export function intakeText({ words, answers, at, via }) {
   }
   return lines.join("\n");
 }
+
+// A note from Adam to a project that is already running (project_note): his words, verbatim,
+// appended to the same inbox/intake.md under their own heading. The runner copies the file into
+// the project when it changes and tells the next run that intake.md has new words, so a note needs
+// no new protocol: it is founder input like the first message, and only the runner writes it.
+export const MAX_NOTE = 4000;
+export const MAX_INTAKE_BYTES = 200 * 1024; // the runner refuses an intake.md over 256 KB
+
+/** Check one note's words. Returns them, verbatim but trimmed, or throws with what is wrong. */
+export function checkNote(words) {
+  const w = typeof words === "string" ? verbatim(words).trim() : "";
+  if (!w) throw new IntakeError("give Adam's own words for the project");
+  if (w.length > MAX_NOTE) throw new IntakeError(`Adam's words are longer than ${MAX_NOTE} characters`);
+  return w;
+}
+
+/**
+ * inbox/intake.md with one more note: the existing text, then "## Note from Adam, <at>, via <via>"
+ * and his words. A project with no intake yet (imported from a repo) gets the header first, so the
+ * file still follows the contract (check_intake_text).
+ */
+export function withNote(existing, { words, at, via }) {
+  const head = typeof existing === "string" && existing.trim()
+    ? existing.replace(/\s*$/, "\n")
+    : ["# Founder input", "", `Given: ${at}`, `Via: ${via}`, ""].join("\n");
+  return `${head}\n## Note from Adam, ${at}, via ${via}\n\n${words}\n`;
+}

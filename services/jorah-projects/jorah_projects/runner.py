@@ -774,7 +774,8 @@ class Runner:
         else:
             founder = "Nothing new from Adam since the last run."
         if (record.get("founderInput") or {}).get("copied") and not setup:
-            founder += f" `{project.state_dir}/intake.md` has new words from Adam: read it."
+            founder += (f" `{project.state_dir}/intake.md` has new words from Adam (a new `## Note from Adam` at its end): "
+                        "read them before anything else and act on them in this run.")
         intake_line = (f"`{project.state_dir}/intake.md` is the founder input: Adam's own words about the project, verbatim, and his answers to Jorah's start questions."
                        if snap.intake not in (None, b"\0unsafe") else
                        "There is no founder input for this project yet: set up from the repo alone, and ask Adam what the repo can't tell you.")

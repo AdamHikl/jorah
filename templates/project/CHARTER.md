@@ -1,9 +1,11 @@
 # Charter: <project name>
 
 <!-- Setup run: this file is a template. Replace every <...> with what Adam said in intake.md, in
-Adam's words where you can. Where intake.md doesn't settle a section, write "Open: Q-xxxx" there,
-naming a question you add to questions.yaml (the checker requires each named question to exist).
-Never invent money, dates or rights Adam didn't give. Delete this comment when done. -->
+Adam's words where you can. Where intake.md doesn't settle a section, use the setup brief's safe
+default (no dates, private, no outreach) and mark it "Default, Adam can change it". Only money and
+safety get "Open: Q-xxxx", naming a question you add to questions.yaml (the checker requires each
+named question to exist). Never invent money, dates or rights Adam didn't give. Delete this
+comment when done. -->
 
 **Owned by Adam.** The setup run drafts this file from Adam's words in `intake.md`; it is the only
 run that may write it. After that, Jorah's runs never edit it: the runner reverts any change a run

@@ -42,15 +42,15 @@ function fresh() {
 
 test("matrix: every jorah-projects tool has the class section 5 gives it", () => {
   const tools = JSON.parse(readFileSync(PROJECTS_MANIFEST, "utf8")).contracts.tools;
-  assert.equal(tools.length, 19); // fourteen project tools, four toolbox tools (toolbox.test.js) and picture_save
+  assert.equal(tools.length, 20); // fifteen project tools, four toolbox tools (toolbox.test.js) and picture_save
   for (const t of tools) assert.notEqual(classify(matrix, t), null, t);
   for (const t of ["project_list", "project_status", "project_pause"]) assert.equal(classify(matrix, t), "read", t);
   assert.equal(classify(matrix, "project_digest"), "taintRead");
-  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_start"]) assert.equal(classify(matrix, t), "localWrite", t);
+  for (const t of ["project_answer", "project_note", "project_task_result", "project_run_now", "project_resume", "project_start"]) assert.equal(classify(matrix, t), "localWrite", t);
   for (const t of ["project_set_limits", "project_connect", "project_set_level", "project_set_capabilities"]) assert.equal(classify(matrix, t), "confirmAlways", t);
   assert.equal(classify(matrix, "project_preview"), "taintRead");
   assert.equal(classify(matrix, "picture_save"), "read");
-  for (const t of ["project_answer", "project_task_result", "project_run_now", "project_resume", "project_set_limits", "project_start", "project_connect", "project_set_level", "project_set_capabilities"]) assert.ok(matrix.cardTitles[t], t);
+  for (const t of ["project_answer", "project_note", "project_task_result", "project_run_now", "project_resume", "project_set_limits", "project_start", "project_connect", "project_set_level", "project_set_capabilities"]) assert.ok(matrix.cardTitles[t], t);
 });
 
 test("reads: list and status are free and leave the chat clean", () => {
@@ -89,6 +89,19 @@ test("after a web search too, and through the tool-search wrapper the inner call
   assert.equal(r.verdict, "confirm");
   assert.ok(r.description.includes("task_id: A-0001"));
   assert.ok(r.description.includes("text: 41 s"));
+});
+
+test("project_note: free in Adam's clean chat; a card with his exact words after the digest and by voice", () => {
+  const NOTE = { project: P, words: "I have a 3D printer", run: true };
+  assert.equal(fresh().run("project_note", NOTE).verdict, "allow");
+  const { run } = fresh();
+  run("project_digest", { project: P });
+  const d = run("project_note", NOTE);
+  assert.equal(d.verdict, "confirm");
+  assert.equal(d.title, "Jorah wants to pass your words to a project");
+  for (const line of ["words: I have a 3D printer", "project: tree-watering-robot"]) assert.ok(d.description.includes(line), line);
+  assert.match(d.description, /outside text/);
+  assert.match(fresh().run("project_note", NOTE, VOICE).description, /Asked by voice/);
 });
 
 test("by voice: answers, results, run now and resume are cards even in a fresh chat", () => {

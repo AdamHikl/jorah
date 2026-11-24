@@ -577,6 +577,20 @@ enum PasteMonitor {
 /// Which conversation is on screen, a picker to change it, and a button for a new one.
 struct SessionBar: View {
     @Environment(HUDModel.self) private var model
+    @State private var copied = false
+
+    /// Puts every line of the shown conversation on the clipboard, oldest first, as plain text.
+    private func copyConversation() {
+        let text = ChatLineView.transcript(model.lines, title: model.currentSessionTitle)
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(text, forType: .string)
+        copied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -604,6 +618,16 @@ struct SessionBar: View {
                 .help("Choose which conversation to show")
                 .accessibilityLabel("Conversation: \(model.currentSessionTitle)")
                 Spacer()
+                Button {
+                    copyConversation()
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(Theme.label(10))
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(model.lines.isEmpty)
+                .help("Copy the whole conversation as text (Command-Shift-C)")
+                .accessibilityLabel("Copy the whole conversation")
                 Button {
                     model.newConversation()
                 } label: {
@@ -712,6 +736,23 @@ struct ChatLineView: View {
         }
         .padding(.leading, 8)
         .overlay(alignment: .leading) { Rectangle().fill(color.opacity(0.7)).frame(width: 1.5) }
+    }
+
+    /// The conversation as plain text: a header per message ("ADAM · 14:02"), then its text.
+    /// A message that is only pictures says how many; a live reply is copied as far as it has come.
+    static func transcript(_ lines: [ChatLine], title: String) -> String {
+        let blocks = lines.map { line -> String in
+            var header = ChatLineView(line: line).who
+            if let at = line.at { header += " · " + at.hudTime }
+            if line.streaming { header += " (still writing)" }
+            var body = line.text
+            if !line.images.isEmpty {
+                let pictures = line.images.count == 1 ? "[1 picture]" : "[\(line.images.count) pictures]"
+                body = body.isEmpty ? pictures : pictures + "\n" + body
+            }
+            return header + "\n" + body
+        }
+        return (["Conversation: \(title)"] + blocks).joined(separator: "\n\n") + "\n"
     }
 
     private var who: String {

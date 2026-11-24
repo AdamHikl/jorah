@@ -22,6 +22,12 @@ struct LineImage: Identifiable, Equatable {
     static func == (a: LineImage, b: LineImage) -> Bool { a.id == b.id }
 }
 
+/// Where a picture's bytes come from: read in the background, so a big file doesn't block typing.
+enum ImageSource: Sendable {
+    case data(Data)
+    case file(URL)
+}
+
 /// A picture waiting in the composer: prepared for the Gateway, with a thumbnail for its chip.
 struct PendingImage: Identifiable, Equatable {
     let id: String
@@ -1291,50 +1297,90 @@ final class HUDModel {
         return false
     }
 
-    func attach(urls: [URL], origin: String = "file") {
+    /// Pictures from files (picked, dropped, copied in Finder) and from bytes (pasted or dropped
+    /// image data), attached as one batch that shares what is left of the message's budget.
+    func attach(urls: [URL], data: [(Data, String?)] = [], origin: String = "file") {
+        var sources: [(name: String?, source: ImageSource)] = []
+        var refused: [String] = []
         for url in urls {
             guard Self.isImageFile(url) else {
-                attachNote = "Not attached: \(url.lastPathComponent) isn't a picture."
+                refused.append("\(url.lastPathComponent) isn't a picture")
                 continue
             }
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            guard size <= ImagePrep.maxSourceBytes else {
-                attachNote = "Not attached: \(url.lastPathComponent) is over 64 MB."
-                continue
-            }
-            guard let data = try? Data(contentsOf: url) else {
-                attachNote = "Not attached: \(url.lastPathComponent) couldn't be read."
-                continue
-            }
-            attach(data: data, fileName: url.lastPathComponent, origin: origin)
+            sources.append((url.lastPathComponent, .file(url)))
         }
+        sources += data.map { ($0.1, .data($0.0)) }
+        attachBatch(sources, origin: origin, refused: refused)
     }
 
     func attach(data: Data, fileName: String?, origin: String) {
+        attachBatch([(fileName, .data(data))], origin: origin, refused: [])
+    }
+
+    /// Bytes promised to pictures still being prepared, so a second batch can't overspend.
+    private var reservedImageBytes = 0
+
+    private func attachBatch(_ sources: [(name: String?, source: ImageSource)], origin: String, refused: [String]) {
         guard canAttach else { return }
-        guard pendingImages.count + preparingImages < ImagePrep.maxImagesPerMessage else {
-            attachNote = "At most \(ImagePrep.maxImagesPerMessage) pictures per message."
+        var notes = refused
+        let free = max(0, ImagePrep.maxImagesPerMessage - pendingImages.count - preparingImages)
+        let taken = Array(sources.prefix(free))
+        if sources.count > taken.count {
+            notes.insert("attached \(taken.count) of \(sources.count): at most \(ImagePrep.maxImagesPerMessage) pictures per message", at: 0)
+        }
+        let used = pendingImages.reduce(0) { $0 + $1.prepared.sizeBytes } + reservedImageBytes
+        guard !taken.isEmpty else {
+            attachNote = notes.isEmpty ? nil : Self.noteText(notes)
             return
         }
-        preparingImages += 1
-        Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<PreparedImage, Error> in
-                Result { try ImagePrep.prepare(data, fileName: fileName) }
-            }.value
-            preparingImages -= 1
-            switch result {
-            case .success(let prepared):
-                guard let thumbnail = NSImage(data: prepared.data) else {
-                    attachNote = "Not attached: the picture couldn't be shown."
-                    return
-                }
-                pendingImages.append(PendingImage(id: UUID().uuidString, prepared: prepared, thumbnail: thumbnail, origin: origin))
-                attachNote = nil
-            case .failure(let error):
-                let name = fileName ?? "the picture"
-                attachNote = "Not attached: \(name): \(error.localizedDescription)."
-            }
+        guard let each = ImagePrep.share(count: taken.count, usedBytes: used) else {
+            notes.append("no room left: one message holds \(ImagePrep.messageBudgetBytes / 1_048_576) MB of pictures. Send these first")
+            attachNote = Self.noteText(notes)
+            return
         }
+        preparingImages += taken.count
+        reservedImageBytes += each * taken.count
+        attachNote = notes.isEmpty ? nil : Self.noteText(notes)
+        Task {
+            var failures: [String] = []
+            // One at a time: twenty large photos decoded at once would use a lot of memory.
+            for item in taken {
+                let result = await Task.detached(priority: .userInitiated) { () -> Result<PreparedImage, Error> in
+                    Result {
+                        let data: Data
+                        switch item.source {
+                        case .data(let bytes):
+                            data = bytes
+                        case .file(let url):
+                            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                            guard size <= ImagePrep.maxSourceBytes else { throw ImagePrepError.sourceTooLarge(size) }
+                            data = try Data(contentsOf: url)
+                        }
+                        return try ImagePrep.prepare(data, fileName: item.name, maxBytes: each)
+                    }
+                }.value
+                preparingImages -= 1
+                reservedImageBytes -= each
+                let name = item.name ?? "the picture"
+                switch result {
+                case .success(let prepared):
+                    if let thumbnail = NSImage(data: prepared.data) {
+                        pendingImages.append(PendingImage(id: UUID().uuidString, prepared: prepared, thumbnail: thumbnail, origin: origin))
+                    } else {
+                        failures.append("\(name) couldn't be shown")
+                    }
+                case .failure(let error):
+                    failures.append("\(name): \(error.localizedDescription)")
+                }
+            }
+            let all = notes + failures
+            attachNote = all.isEmpty ? nil : Self.noteText(all)
+        }
+    }
+
+    static func noteText(_ notes: [String]) -> String {
+        let text = notes.joined(separator: "; ")
+        return text.prefix(1).uppercased() + text.dropFirst() + "."
     }
 
     func removePending(id: String) {

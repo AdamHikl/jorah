@@ -88,7 +88,7 @@ function typeOf(path, contentType) {
  * newest message with attachments in this chat) or a path OpenClaw gave for an attachment.
  * Returns [{ path (real), ext, bytes }]; throws MediaError saying which entry was refused and why.
  */
-export function resolveFiles(files, { sessionKey, tracker, roots, workspace }) {
+export function resolveFiles(files, { sessionKey, tracker, roots, workspace, max = MAX_FILES }) {
   if (files === undefined || files === null) return [];
   if (!Array.isArray(files)) throw new MediaError("files must be a list");
   const wanted = [];
@@ -103,7 +103,7 @@ export function resolveFiles(files, { sessionKey, tracker, roots, workspace }) {
       wanted.push({ given: p, rec: sessionKey ? tracker.find(sessionKey, p) : null });
     }
   }
-  if (wanted.length > MAX_FILES) throw new MediaError(`at most ${MAX_FILES} files per result`);
+  if (wanted.length > max) throw new MediaError(`at most ${max} files per call`);
   const allowed = realRoots(roots);
   const seen = new Set();
   const out = [];

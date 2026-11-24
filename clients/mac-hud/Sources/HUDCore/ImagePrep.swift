@@ -4,7 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// An image ready for `chat.send`: bytes the Gateway accepts, at most `ImagePrep.maxSide` pixels on
-/// its longest side and `ImagePrep.maxBytes` bytes.
+/// its longest side and at most the byte target it was prepared for.
 public struct PreparedImage: Equatable, Sendable {
     public let data: Data
     public let mimeType: String
@@ -24,23 +24,31 @@ public enum ImagePrepError: Error, Equatable, LocalizedError {
         switch self {
         case .notAnImage: return "not an image this Mac can read"
         case .sourceTooLarge(let bytes): return "the file is \(bytes / 1_048_576) MB, over the 64 MB the HUD reads"
-        case .tooLarge: return "still over 5 MB after shrinking"
-        case .animatedTooLarge: return "an animated GIF over 5 MB or 2048 px can't be shrunk without losing frames"
+        case .tooLarge: return "too large even after shrinking"
+        case .animatedTooLarge: return "an animated GIF this large can't be shrunk without losing frames"
         }
     }
 }
 
 /// Turns pasted, dropped or picked image bytes into what the Gateway takes.
 ///
-/// The Gateway (OpenClaw 2026.11.6, `parseMessageWithAttachments`) refuses an image over 6 MB and
-/// keeps images up to 2 MB inline for the model, saving larger ones to its media store. JPEG, PNG,
-/// WebP and GIF within both limits are sent as they are; anything else (HEIC, TIFF, a large or
-/// rotated photo) is redrawn: PNG when it has transparency, else JPEG, shrinking until it fits.
+/// Limits (OpenClaw 2026.11.6, source read on the PC, 2026-11-24):
+/// - one `chat.send` frame is at most 25 MiB (`maxPayload: 26214400`, fixed in code), so all the
+///   pictures of one message together are at most about 19.4 MB once decoded;
+/// - the Gateway passes a picture of up to 2,000,000 bytes to the model inline and saves a larger
+///   one to its media store, handing the model only a reference; it refuses one over 6 MB.
+/// So each picture is kept under 2 MB, and the pictures of one message share an 18 MB budget.
+/// JPEG, PNG, WebP and GIF within the limits are sent as they are; anything else (HEIC, TIFF, a
+/// large or rotated photo, or one over its share) is redrawn: PNG when it has transparency and
+/// fits, else JPEG, shrinking until it fits.
 public enum ImagePrep {
     public static let maxSide = 2048
-    public static let maxBytes = 5 * 1024 * 1024
+    public static let maxBytesPerImage = 1_950_000
+    public static let messageBudgetBytes = 18 * 1024 * 1024
     public static let maxSourceBytes = 64 * 1024 * 1024
-    public static let maxImagesPerMessage = 4
+    public static let maxImagesPerMessage = 20
+    /// Below this share a picture would be too small to read: refuse instead.
+    public static let minBytesPerImage = 120_000
 
     static let sentAsIs: [String: (mime: String, ext: String)] = [
         UTType.jpeg.identifier: ("image/jpeg", "jpg"),
@@ -49,7 +57,17 @@ public enum ImagePrep {
         UTType.gif.identifier: ("image/gif", "gif"),
     ]
 
-    public static func prepare(_ source: Data, fileName: String?) throws -> PreparedImage {
+    /// Each picture's byte target when `count` more join a message that already holds `usedBytes`:
+    /// an equal share of what is left, at most `maxBytesPerImage`. Nil when the share would be under
+    /// `minBytesPerImage`.
+    public static func share(count: Int, usedBytes: Int) -> Int? {
+        guard count > 0 else { return nil }
+        let left = messageBudgetBytes - usedBytes
+        let each = min(maxBytesPerImage, left / count)
+        return each >= minBytesPerImage ? each : nil
+    }
+
+    public static func prepare(_ source: Data, fileName: String?, maxBytes: Int = maxBytesPerImage) throws -> PreparedImage {
         guard source.count <= maxSourceBytes else { throw ImagePrepError.sourceTooLarge(source.count) }
         guard let image = CGImageSourceCreateWithData(source as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let type = CGImageSourceGetType(image) as String?,
@@ -70,7 +88,7 @@ public enum ImagePrep {
         let hasAlpha = (props[kCGImagePropertyHasAlpha] as? Bool) ?? false
         let longest = max(width, height)
         var sides: [Int] = []
-        for side in [maxSide, 1600, 1280, 1024] where !sides.contains(min(side, longest)) { sides.append(min(side, longest)) }
+        for side in [maxSide, 1600, 1280, 1024, 800] where !sides.contains(min(side, longest)) { sides.append(min(side, longest)) }
         for side in sides {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -94,15 +112,17 @@ public enum ImagePrep {
                 }
             }
         }
-        // A last try well under the limit, for pathological noise.
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: min(1024, longest),
-        ]
-        if let drawn = CGImageSourceCreateThumbnailAtIndex(image, 0, options as CFDictionary),
-           let data = encode(drawn, as: .jpeg, quality: 0.5), data.count <= maxBytes {
-            return PreparedImage(data: data, mimeType: "image/jpeg", fileName: "\(base).jpg", width: drawn.width, height: drawn.height)
+        // Last tries, for noise or a very small share.
+        for side in [640, 480] {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: min(side, longest),
+            ]
+            if let drawn = CGImageSourceCreateThumbnailAtIndex(image, 0, options as CFDictionary),
+               let data = encode(drawn, as: .jpeg, quality: 0.5), data.count <= maxBytes {
+                return PreparedImage(data: data, mimeType: "image/jpeg", fileName: "\(base).jpg", width: drawn.width, height: drawn.height)
+            }
         }
         throw ImagePrepError.tooLarge
     }

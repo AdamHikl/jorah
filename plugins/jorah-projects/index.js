@@ -806,7 +806,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
     name: "picture_save",
     label: "Keep a picture Adam sent",
     catalogMode: "direct-only",
-    description: "Keep pictures Adam sent in this chat (pasted in the HUD, or a Telegram photo): copies them from OpenClaw's attachment store, which forgets them after a while, into ~/workspace/files/pictures/ as <date>-<name>.<ext>, and adds a line with why to INDEX.md there. Pass files \"last\" (the pictures in his newest message with pictures) or attachment paths as OpenClaw gave them. Only pictures (JPEG, PNG, HEIC, WebP, GIF), at most 4 per call, never overwrites. Needs no card: decide yourself, by the rules in AGENTS.md, which pictures are worth keeping.",
+    description: "Keep pictures Adam sent in this chat (pasted in the HUD, or a Telegram photo): copies them from OpenClaw's attachment store, which forgets them after a while, into ~/workspace/files/pictures/ as <date>-<name>.<ext>, and adds a line with why to INDEX.md there. Pass files \"last\" (the pictures in his newest message with pictures) or attachment paths as OpenClaw gave them. Only pictures (JPEG, PNG, HEIC, WebP, GIF), at most 20 per call, never overwrites. Needs no card: decide yourself, by the rules in AGENTS.md, which pictures are worth keeping.",
     parameters: {
       type: "object", additionalProperties: false, required: ["files", "name"],
       properties: {
@@ -831,7 +831,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       }
       if (!sources) {
         try {
-          sources = resolveFiles(p?.files, { sessionKey: who.sessionKey, tracker, roots: s.mediaRoots, workspace: s.workspace });
+          sources = resolveFiles(p?.files, { sessionKey: who.sessionKey, tracker, roots: s.mediaRoots, workspace: s.workspace, max: PICTURES_MAX });
         } catch (e) {
           return refuse(e instanceof MediaError ? e.message : "the files couldn't be checked");
         }

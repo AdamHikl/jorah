@@ -9,7 +9,7 @@ import { appendFileSync, chmodSync, copyFileSync, constants, existsSync, lstatSy
 import { join } from "node:path";
 
 export const PICTURE_EXT = new Set(["jpg", "png", "heic", "webp", "gif"]);
-export const MAX_PER_CALL = 4;
+export const MAX_PER_CALL = 20; // the HUD sends at most 20 pictures in one message
 export const MAX_FOLDER_FILES = 5000;
 export const MAX_FOLDER_BYTES = 2 * 1024 ** 3;
 export const MAX_WHY = 200;

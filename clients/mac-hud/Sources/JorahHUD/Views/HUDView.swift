@@ -466,23 +466,30 @@ struct ConversationView: View {
     }
 
     private func dropImages(_ providers: [NSItemProvider]) -> Bool {
-        var accepted = false
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                accepted = true
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url else { return }
-                    Task { @MainActor in model.attach(urls: [url], origin: "file") }
-                }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                accepted = true
-                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                    guard let data else { return }
-                    Task { @MainActor in model.attach(data: data, fileName: provider.suggestedName, origin: "file") }
-                }
-            }
+        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        let images = providers.filter { provider in
+            !files.contains(provider) && provider.hasItemConformingToTypeIdentifier(UTType.image.identifier)
         }
-        return accepted
+        guard !files.isEmpty || !images.isEmpty else { return false }
+        // Gather the whole drop first, so all its pictures share the budget as one batch.
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in files {
+                let url: URL? = await withCheckedContinuation { done in
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in done.resume(returning: url) }
+                }
+                if let url { urls.append(url) }
+            }
+            var data: [(Data, String?)] = []
+            for provider in images {
+                let bytes: Data? = await withCheckedContinuation { done in
+                    provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { bytes, _ in done.resume(returning: bytes) }
+                }
+                if let bytes { data.append((bytes, provider.suggestedName)) }
+            }
+            model.attach(urls: urls, data: data, origin: "file")
+        }
+        return true
     }
 
     private var canSend: Bool { model.phase == .connected && model.canWrite && model.currentSessionKey != nil }
@@ -533,6 +540,11 @@ struct PendingImagesRow: View {
                         Text("Preparing…").font(Theme.mono(9)).foregroundStyle(Theme.dim)
                     }
                 }
+            }
+            if !model.pendingImages.isEmpty {
+                let total = model.pendingImages.reduce(0) { $0 + $1.prepared.sizeBytes }
+                Text("\(model.pendingImages.count) of \(ImagePrep.maxImagesPerMessage) pictures · \(Self.size(total)) of \(ImagePrep.messageBudgetBytes / 1_048_576) MB")
+                    .font(Theme.mono(9)).foregroundStyle(Theme.dim)
             }
             if let note = model.attachNote {
                 Text(note).font(Theme.mono(10)).foregroundStyle(Theme.amber)

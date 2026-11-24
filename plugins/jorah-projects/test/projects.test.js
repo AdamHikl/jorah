@@ -792,6 +792,25 @@ test("picture_save: \"last\" takes the newer of this chat's attachment and the i
   assert.deepEqual(r.files.map((f) => f.path.split("/").pop()).sort(), ["2026-11-16-whiteboard-1.png", "2026-11-16-whiteboard-2.jpg"].sort());
 });
 
+test("picture_save: twenty pictures pasted together are kept in one call, numbered", async () => {
+  const fx = fixture();
+  const { call } = load(fx);
+  for (let i = 0; i < 21; i++) {
+    const f = join(fx.media, `p${String(i).padStart(2, "0")}.jpg`);
+    writeFileSync(f, `pic ${i}`);
+    const at = new Date(NOW.getTime() - i * 100); // p00 newest
+    utimesSync(f, at, at);
+  }
+  const r = await call("picture_save", { files: ["last"], name: "garden-beds", why: "the beds before planting" });
+  assert.equal(r.status, "saved");
+  assert.equal(r.files.length, 20);
+  const dir = join(fx.root, "workspace", "files", "pictures");
+  assert.ok(existsSync(join(dir, "2026-11-16-garden-beds-20.jpg")));
+  assert.equal(readFileSync(join(dir, "INDEX.md"), "utf8").trim().split("\n").length, 20);
+  const many = Array.from({ length: 21 }, (_, i) => join(fx.media, `p${String(i).padStart(2, "0")}.jpg`));
+  assert.match((await call("picture_save", { files: many, name: "too-many" })).reason, /at most 20/);
+});
+
 test("picture_save refuses: nothing recent, other paths, non-pictures, bad names, frozen", async () => {
   const fx = fixture();
   const { call } = load(fx);

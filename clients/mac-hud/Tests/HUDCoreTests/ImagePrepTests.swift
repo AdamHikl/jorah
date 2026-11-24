@@ -49,7 +49,7 @@ final class ImagePrepTests: XCTestCase {
         XCTAssertEqual(max(prepared.width, prepared.height), 2048)
         XCTAssertEqual(prepared.width, 2048)
         XCTAssertEqual(prepared.fileName, "IMG_0042.jpg")
-        XCTAssertLessThanOrEqual(prepared.sizeBytes, ImagePrep.maxBytes)
+        XCTAssertLessThanOrEqual(prepared.sizeBytes, ImagePrep.maxBytesPerImage)
     }
 
     func testTIFFIsRedrawnAndTransparencyStaysPNG() throws {
@@ -64,10 +64,34 @@ final class ImagePrepTests: XCTestCase {
 
     func testNoiseOverTheByteLimitEndsUnderIt() throws {
         let data = encoded(image(width: 2000, height: 2000, alpha: true, noise: true), as: .png)
-        XCTAssertGreaterThan(data.count, ImagePrep.maxBytes)
+        XCTAssertGreaterThan(data.count, ImagePrep.maxBytesPerImage)
         let prepared = try ImagePrep.prepare(data, fileName: "noise.png")
-        XCTAssertLessThanOrEqual(prepared.sizeBytes, ImagePrep.maxBytes)
+        XCTAssertLessThanOrEqual(prepared.sizeBytes, ImagePrep.maxBytesPerImage)
         XCTAssertTrue(["image/png", "image/jpeg"].contains(prepared.mimeType))
+    }
+
+    func testASmallShareShrinksAPictureThatWouldOtherwiseGoAsItIs() throws {
+        let data = encoded(image(width: 1800, height: 1200, noise: true), as: .jpeg)
+        XCTAssertGreaterThan(data.count, 300_000)
+        let prepared = try ImagePrep.prepare(data, fileName: "photo.jpg", maxBytes: 300_000)
+        XCTAssertLessThanOrEqual(prepared.sizeBytes, 300_000)
+        XCTAssertEqual(prepared.mimeType, "image/jpeg")
+    }
+
+    func testTwentyPicturesShareTheMessageBudget() {
+        // Twenty at once: each gets an equal share, under the per-picture cap.
+        let each = ImagePrep.share(count: 20, usedBytes: 0)!
+        XCTAssertEqual(each, ImagePrep.messageBudgetBytes / 20)
+        XCTAssertLessThanOrEqual(each * 20, ImagePrep.messageBudgetBytes)
+        // One alone gets at most the per-picture cap (the Gateway's 2 MB inline limit).
+        XCTAssertEqual(ImagePrep.share(count: 1, usedBytes: 0), ImagePrep.maxBytesPerImage)
+        // What's left is shared; a full message has no room.
+        XCTAssertEqual(ImagePrep.share(count: 2, usedBytes: ImagePrep.messageBudgetBytes - 1_000_000), 500_000)
+        XCTAssertNil(ImagePrep.share(count: 1, usedBytes: ImagePrep.messageBudgetBytes - 50_000))
+        XCTAssertNil(ImagePrep.share(count: 0, usedBytes: 0))
+        // The budget fits the Gateway's frame: 25 MiB of base64 minus room for the rest of the message.
+        XCTAssertLessThan(ImagePrep.messageBudgetBytes * 4 / 3, 26_214_400 - 512 * 1024)
+        XCTAssertEqual(ImagePrep.maxImagesPerMessage, 20)
     }
 
     func testNotAnImage() {

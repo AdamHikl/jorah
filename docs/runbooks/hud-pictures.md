@@ -8,13 +8,30 @@ keeping with `picture_save`, by its own rules, without a card (Adam's call, 2026
 
 | Part | Where | What |
 |---|---|---|
-| HUD composer | `clients/mac-hud/Sources/JorahHUD/Views/HUDView.swift` | ⌘V with a picture on the clipboard (screenshot, "Copy Image", image files copied in Finder), drag and drop, and a 📎 button. Chips with thumbnail, size and ✕. Up to 4 per message; a message may be pictures only. Text pastes as before. |
-| Preparing | `clients/mac-hud/Sources/HUDCore/ImagePrep.swift` | JPEG, PNG, WebP, GIF within 2048 px and 5 MB go as they are; HEIC, TIFF, larger or rotated pictures are redrawn (PNG with transparency, else JPEG) and shrunk until they fit. The Gateway refuses images over 6 MB. Unit tests: `ImagePrepTests`. |
+| HUD composer | `clients/mac-hud/Sources/JorahHUD/Views/HUDView.swift` | ⌘V with a picture on the clipboard (screenshot, "Copy Image", image files copied in Finder), drag and drop, and a 📎 button. Chips with thumbnail, size and ✕, and a running total. Up to 20 per message (raised from 4 on 2026-11-24); a message may be pictures only. Text pastes as before. |
+| Preparing | `clients/mac-hud/Sources/HUDCore/ImagePrep.swift` | The pictures of one message share 18 MB, each at most 1.95 MB: a batch splits what is left equally, and later pictures get what remains. JPEG, PNG, WebP, GIF within 2048 px and their share go as they are; anything else (HEIC, TIFF, larger, rotated, or over its share) is redrawn (PNG with transparency, else JPEG) and shrunk until it fits. Why these numbers: below. Unit tests: `ImagePrepTests`. |
 | Sending | `HUDModel.send()` | `chat.send` `attachments: [{ type: "image", mimeType, fileName, origin: "paste"\|"file", content: <base64>, sizeBytes, width, height }]`, the shape OpenClaw 2026.11.6 takes (`ChatAttachmentSchema`, source read on the PC). |
 | Transcript | `HUDModel.line(from:)`, `ChatLineView` | Your sent pictures show as thumbnails; history shows `🖼 N pictures` where the Gateway stored them. |
-| Keeping | `plugins/jorah-projects/lib/pictures.js`, tool `picture_save` | Copies a picture Adam sent (an attachment recorded in the same chat, or a file in the inbound-media folders) into `/home/jorah/workspace/files/pictures/<date>-<name>.<ext>` (mode 600, never overwriting) and adds `- <file>: <why>` to `INDEX.md` there. `"last"` is the newer of the chat's last recorded attachment and the newest picture in the inbound folders from the last half hour (a HUD paste may not reach `message_received`). Refuses while frozen. At most 4 per call; the folder stops at 5000 files or 2 GB. |
+| Keeping | `plugins/jorah-projects/lib/pictures.js`, tool `picture_save` | Copies a picture Adam sent (an attachment recorded in the same chat, or a file in the inbound-media folders) into `/home/jorah/workspace/files/pictures/<date>-<name>.<ext>` (mode 600, never overwriting) and adds `- <file>: <why>` to `INDEX.md` there. `"last"` is the newer of the chat's last recorded attachment and the newest picture in the inbound folders from the last half hour (a HUD paste may not reach `message_received`). Refuses while frozen. At most 20 per call; the folder stops at 5000 files or 2 GB. |
 | Guard | `config/permission-matrix.json` | `picture_save` is in `read`, so no card from the HUD, by voice or after outside text. Why: `pictures.about` in the matrix. |
 | Rules | `workspace/AGENTS.md`, "Pictures Adam Sends" | When to keep a picture, what never to keep unasked (health records, ID documents, bank or card details, other people's private messages), the `📎 Kept:` line, and finding pictures again through `INDEX.md`. |
+
+## Why 20 pictures and 18 MB (2026-11-24)
+
+Adam asked for 20 pictures and 40 MB. 20 works; 40 MB in one message doesn't, on OpenClaw 2026.11.6:
+
+- The Gateway's WebSocket takes frames of at most 25 MiB (`maxPayload: 26214400`, fixed in its
+  code, not a setting). Pictures travel as base64, a third larger, so one `chat.send` holds about
+  19.4 MB of pictures; OpenClaw's own Mac app uses the same cap (19,464,192 bytes). 18 MB leaves room
+  for the text and the frame.
+- The Gateway hands the model a picture inline only up to 2,000,000 bytes; a bigger one is saved
+  and the model gets a reference instead. So each picture stays under 1.95 MB, and Jorah sees all
+  of them directly.
+- Claude takes pictures up to 2576 px on the long edge and a request up to 32 MB; the HUD's 2048 px
+  and 18 MB stay inside both.
+
+Twenty photos at about 0.9 MB each, 2048 px, are what Jorah would see anyway: extra bytes beyond
+that add no detail for the model. Kept pictures are these prepared copies, not the originals.
 
 Unchanged: the guard still gives every other guarded call from the HUD a card (ADR 0011). Text in a
 picture is outside text to Jorah, by the rules.
@@ -169,7 +186,8 @@ Open Jorah HUD from `~/Applications`. Pairing is kept (Keychain).
    `📎 Kept: files/pictures/2026-…-….jpg`. A one-off screenshot ("what's this error?") is not kept.
 4. **Find it again.** Ask "show me the kettle receipt I sent". Expected: Jorah names the file from
    `INDEX.md` and describes it.
-5. **Limits.** Paste 5 pictures: the 5th says "At most 4 pictures per message." A HEIC from Photos
+5. **Limits.** Pick 22 pictures: 20 attach, and the note says "Attached 20 of 22: at most 20
+   pictures per message." The line under the chips shows the total of 18 MB. A HEIC from Photos
    arrives as JPEG. Text paste still pastes text.
 
 On the PC, `ls -l /home/jorah/workspace/files/pictures` shows the kept files at `-rw-------`, and

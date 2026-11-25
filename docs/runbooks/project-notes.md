@@ -154,5 +154,5 @@ step 5, a note or `project_run_now` starts that run.
 
 ## Tiers
 
-Source and tests (`just check`, 2026-11-24). Not yet: PC deploy, Gateway restart, and the
-acceptance above.
+Source and tests (`just check`, 2026-11-24). PC deploy and Gateway restart on 2026-11-25
+(`docs/evidence/project-notes/deploy-2026-11-25.md`). Not yet: the acceptance above.

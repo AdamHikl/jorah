@@ -152,7 +152,26 @@ already written stay in each project's `intake.md`, which the old runner also re
 jorah-arm is at level 0; any answers given since its last run wait in the inbox until a run. After
 step 5, a note or `project_run_now` starts that run.
 
+## Pictures and wrapped questions (2026-11-25, commit `954ca09`)
+
+- `view_image` takes at most 5 pictures a call (jorah-guard). 14 at once broke claude-cli's 8 MB
+  line limit and failed the turn. `AGENTS.md`, "Pictures Adam Sends": batches of 5, notes on each;
+  `deep` can't see pictures, so "use Opus" gets Jorah's notes.
+- The plugin's YAML reader reads strings wrapped over several lines, in every PyYAML style, and the
+  runner writes each string on one line. jorah-arm's questions had shown as unknown.
+
+Acceptance (fresh `/new` in the HUD main chat):
+
+1. "What's the status of jorah-arm?" Expected: the questions are listed, Q-0005 (who may move the
+   arm) open; no "unknown" for `questions.yaml`.
+2. "Look at the 14 inventory photos I sent yesterday and list what's in each." Expected: Jorah works
+   in batches of up to 5 and says how far it is; no "Run failed ... 8388608". If it tries more than 5
+   in one call, the guard refuses that call and Jorah retries in batches.
+
+Evidence: `docs/evidence/project-notes/yamlfix-2026-11-25.md`.
+
 ## Tiers
 
 Source and tests (`just check`, 2026-11-24). PC deploy and Gateway restart on 2026-11-25
-(`docs/evidence/project-notes/deploy-2026-11-25.md`). Not yet: the acceptance above.
+(`docs/evidence/project-notes/deploy-2026-11-25.md`). Pictures cap and wrapped YAML deployed the same day (`yamlfix-2026-11-25.md`). Not yet: the
+acceptance above, both lists.

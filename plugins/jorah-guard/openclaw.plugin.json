@@ -16,6 +16,14 @@
     {
       "name": "jorah-status",
       "kind": "runtime-slash"
+    },
+    {
+      "name": "jorah-careful",
+      "kind": "runtime-slash"
+    },
+    {
+      "name": "jorah-today",
+      "kind": "runtime-slash"
     }
   ],
   "configSchema": {

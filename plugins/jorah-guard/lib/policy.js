@@ -29,7 +29,7 @@ const actsAsMain = (matrix, agent) => agent === "main" || isExtensionAgent(matri
 
 export function classify(matrix, tool) {
   for (const cls of ["read", "taintRead", "viewRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
-    "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "confirmAlways", "cronOnly"]) {
+    "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "ownWordsWrite", "confirmAlways", "cronOnly"]) {
     if ((matrix[cls] ?? []).includes(tool)) return cls;
   }
   return null;
@@ -381,7 +381,35 @@ function realOrNull(p) {
   try { return realpathSync(p); } catch { return null; }
 }
 
-export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {}, run = {} }) {
+// Careful mode (docs/plan/13-autonomy.md 6.6): while Adam's /jorah-careful is on, every write the
+// guard would let main or deep make alone becomes a card. Reading, searching and asking deep stay
+// free; blocks and cards stay as they are. view.careful() returns the ISO time it ends, or null.
+const CAREFUL_CLASSES = new Set(["fileWrite", "memoryWrite", "skill", "schedule", "localWrite", "ownWordsWrite", "spawn"]);
+
+// "Thu 14:05" in Adam's time zone; the raw value if it isn't a date.
+export function localTime(iso, timeZone = "Europe/Bratislava") {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString("en-GB", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+export function decide(args) {
+  const d = decideBase(args);
+  if (d.verdict !== "allow") return d;
+  const { tool, params = {}, ctx = {}, matrix, view, settings = {}, run = {} } = args;
+  const until = view?.careful?.() ?? null;
+  if (!until || !actsAsMain(matrix, ctx.agentId ?? "unknown")) return d;
+  const cls = classify(matrix, tool);
+  if (!CAREFUL_CLASSES.has(cls)) return d;
+  if ((matrix.readActions ?? []).includes(typeof params.action === "string" ? params.action : "")) return d;
+  if (cls === "spawn" && params.runtime !== "acp" && isHelperAgent(matrix, params.agentId)) return d;
+  const state = sessionState(view, ctx, settings, run, matrix);
+  const c = card(cardTitle(matrix, tool), [`Careful mode is on until ${localTime(until)} (Adam's /jorah-careful): every write asks first.`, ...paramLines(params)],
+    { voice: state.voice, severity: cardSeverity(cls, params) });
+  return d.taint ? { ...c, taint: d.taint } : c;
+}
+
+function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {}, run = {} }) {
   if (!matrix || typeof matrix !== "object") return { verdict: "block", reason: "permission matrix unreadable" };
   if (typeof tool !== "string" || tool.length === 0) return { verdict: "block", reason: "no tool name" };
 
@@ -508,6 +536,13 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       if (paths.length === 0) {
         return state.tainted ? card("Jorah wants to change a file", [why(state), `${tool} with no clear target.`], cardOpts) : { verdict: "allow" };
       }
+      // Jorah's own rules files at the top of his workspace: always a card, even in Adam's clean
+      // chat (docs/plan/13-autonomy.md 6.2). A project's AGENTS.md under ~/work is a different path.
+      const self = paths.filter((p) => (matrix.selfFiles ?? []).includes(p));
+      if (self.length > 0) {
+        return card("Jorah wants to change its own rules", [state.tainted ? why(state) : "Jorah's own rules files always ask Adam first.",
+          `Files: ${short(self.join(", "), 120)}`, `Adds: ${short(addedText(tool, params), 300)}`], cardOpts);
+      }
       if (!state.tainted) return { verdict: "allow" };
       const added = addedText(tool, params);
       if (kinds.includes("rules")) {
@@ -608,7 +643,16 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     case "localWrite":
       return state.tainted ? card(cardTitle(matrix, tool), [why(state), ...paramLines(params)], cardOpts) : { verdict: "allow" };
 
-    // Always a card with the exact fields, whoever asks (a loop is saved only on Allow once).
+    // An open loop (docs/plan/13-autonomy.md 4.4): saved alone only in Adam's own clean chat when
+    // every sentence of who and what comes from a message he typed there; otherwise the card shows
+    // the exact fields and it is saved only on Allow once.
+    case "ownWordsWrite": {
+      const text = [params.who, params.what].map((v) => textOf(v ?? "")).join(". ");
+      if (!state.tainted && state.typedByOwner && ownChatWords(text, view.typedOf?.(key))) return { verdict: "allow", reason: "Adam's own words" };
+      return card(cardTitle(matrix, tool), [state.tainted ? why(state) : "", ...paramLines(params)], cardOpts);
+    }
+
+    // Always a card with the exact fields, whoever asks.
     case "confirmAlways":
       return card(cardTitle(matrix, tool), [state.tainted ? why(state) : "", ...paramLines(params)], cardOpts);
 

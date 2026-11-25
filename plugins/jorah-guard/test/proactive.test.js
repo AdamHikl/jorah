@@ -86,7 +86,7 @@ test("proactive_notify: allowed in a scheduled run that has read outside text, b
   assert.equal(run("today_picture", {}, CRON, "cron").verdict, "allow"); // reads still work when frozen
 });
 
-test("loop_propose and proactive_resume: always a card with the exact fields, even in Adam's clean chat", () => {
+test("loop_propose and proactive_resume: a card with the exact fields unless they are Adam's own typed words", () => {
   const { run } = fresh();
   const loop = { kind: "i_promised", who: "Jana", what: "Send the photos from Saturday", due: "2026-11-18" };
   const d = run("loop_propose", loop, ADAM);
@@ -125,7 +125,7 @@ test("matrix: every jorah-proactive tool has a class, and phone_today is a read"
   assert.equal(tools.length, 12);
   for (const t of tools) assert.notEqual(classify(matrix, t), null, t);
   for (const t of ["today_picture", "loops_list", "proactive_why", "digest_list", "proactive_due", "phone_today"]) assert.equal(classify(matrix, t), "read", t);
-  assert.equal(classify(matrix, "loop_propose"), "confirmAlways");
+  assert.equal(classify(matrix, "loop_propose"), "ownWordsWrite");
   assert.equal(classify(matrix, "proactive_tick"), "cronOnly");
 });
 

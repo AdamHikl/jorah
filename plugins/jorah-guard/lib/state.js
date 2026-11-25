@@ -3,7 +3,7 @@
 // store says "unknown", and the policy treats unknown as tainted. Seen URLs and Adam's latest
 // words stay in memory only: after a restart a session has seen nothing, which is stricter.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const MAX_SESSIONS = 2000;
@@ -14,6 +14,7 @@ export class GuardState {
     this.dir = dir;
     this.file = join(dir, "taint.json");
     this.freezeFile = join(dir, "FROZEN");
+    this.carefulFile = join(dir, "CAREFUL");
     this.now = now;
     this.broken = null;
     this.unsaved = false;
@@ -273,5 +274,31 @@ export class GuardState {
 
   freeze(by) {
     writeFileSync(this.freezeFile, `frozen ${new Date(this.now()).toISOString()} by ${by}\n`, { mode: 0o600 });
+  }
+
+  // Careful mode (docs/plan/13-autonomy.md 6.6): the file's first word is the ISO time it ends.
+  // Returns that time while it lasts, else null. A file the guard can't read keeps it on.
+  careful() {
+    let text;
+    try {
+      if (!existsSync(this.carefulFile)) return null;
+      text = readFileSync(this.carefulFile, "utf8");
+    } catch {
+      return "Adam turns it off";
+    }
+    const until = String(text).trim().split(/\s+/)[0];
+    const at = Date.parse(until);
+    if (Number.isNaN(at)) return "Adam turns it off";
+    return at > this.now() ? until : null;
+  }
+
+  setCareful(by, hours = 24) {
+    const until = new Date(this.now() + hours * 3600_000).toISOString();
+    writeFileSync(this.carefulFile, `${until} set ${new Date(this.now()).toISOString()} by ${by}\n`, { mode: 0o600 });
+    return until;
+  }
+
+  clearCareful() {
+    rmSync(this.carefulFile, { force: true });
   }
 }

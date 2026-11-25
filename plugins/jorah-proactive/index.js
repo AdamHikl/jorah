@@ -135,7 +135,8 @@ export function createTools(cfg = {}, { logger = console, now = () => new Date()
   tool({
     name: "loop_propose",
     label: "Note an open loop",
-    description: "Propose an open loop. Adam sees these exact fields on a card and it is saved only on a tap of Allow once. "
+    description: "Propose an open loop. In Adam's own clean chat it is saved without a card when who and what are his own typed words; "
+      + "otherwise Adam sees these exact fields on a card and it is saved only on a tap of Allow once. "
       + "kind: waiting_on_me (someone is waiting on Adam) or i_promised (Adam promised to do it). who: at most 60 characters. "
       + "what: at most 100 characters, one line. due: optional YYYY-MM-DD. Write the fields exactly as they should be stored.",
     parameters: {

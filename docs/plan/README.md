@@ -42,6 +42,7 @@
 | `09-engineering-and-ops.md` | Repo, secrets, upgrades, services, tests, backups, session rules, budget | M0, every session |
 | `11-project-mode.md` | Jorah runs a project on his own: project folder, runner, founder loop, trust ladder, robotics bench | Project work, `tree-watering-robot` |
 | `12-voice-identity.md` | Voice identity: a local speaker check on every spoken turn, and a guest mode for anyone who isn't Adam, enforced by routing, tool policy and the guard. Decisions V1 to V9 | Voice work, the room ear, anything read aloud |
+| `13-autonomy.md` | Autonomy: what Jorah decides alone. The decision test, rights by area (tasks, unasked work, memory, reminders, housekeeping, self-management, self-upgrade), standing programs, safety and the trust ladder | Anything Jorah does without asking |
 | `research/` | 13 research tracks and 5 gap studies with sources | When a claim needs checking |
 
 If two documents disagree on order, dates, hours or purchases, `10-roadmap.md` wins. Its section 13 lists stale rows elsewhere, and session M0-F fixes them.

@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
+import { summarizeDay, readTail } from "./lib/today.js";
+import { decide, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -77,6 +78,7 @@ export default {
       readRepos: (k) => state.readRepos(k),
       countAcp: (k) => state.countAcp(k),
       frozen: () => state.frozen(),
+      careful: () => state.careful(),
       parentOf: (k) => state.parentOf(k),
       cleanChild: (k) => state.cleanChild(k),
     };
@@ -185,7 +187,7 @@ export default {
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings, run);
         const from = who.voice ? "voice" : who.webchat ? "webchat" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params) });
+        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params), readAction: (matrix?.readActions ?? []).includes(event?.params?.action) || undefined });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
         return {
@@ -340,6 +342,41 @@ export default {
       },
     });
 
+    // Careful mode (docs/plan/13-autonomy.md 6.6): a soft pause Adam sets and lifts in chat.
+    api.registerCommand({
+      name: "jorah-careful",
+      description: "Careful mode: every write Jorah would make alone asks first, for 24 hours. \"/jorah-careful off\" ends it.",
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: async (ctx) => {
+        if (ctx?.senderIsOwner !== true) return { text: "Only Adam can change careful mode." };
+        const arg = String(ctx?.args ?? "").trim().toLowerCase();
+        if (arg === "off") {
+          state.clearCareful();
+          log({ session: ctx?.sessionKey ?? null, tool: "/jorah-careful", verdict: "careful-off" });
+          return { text: "Careful mode off. Jorah's usual rules apply again." };
+        }
+        if (arg !== "" && arg !== "on") return { text: "Use /jorah-careful to turn it on for 24 hours, or /jorah-careful off." };
+        const until = state.setCareful(ctx?.channel ?? "command");
+        log({ session: ctx?.sessionKey ?? null, tool: "/jorah-careful", verdict: "careful" });
+        return { text: `Careful mode on until ${localTime(until)}. Every write Jorah would make alone (files, memory, skills, schedules, records, coding and background jobs) asks you first. Reading, searching and asking deep stay free. /jorah-careful off ends it.` };
+      },
+    });
+
+    api.registerCommand({
+      name: "jorah-today",
+      description: "What Jorah did alone today, cards shown and calls blocked, from the guard's log.",
+      requireAuth: true,
+      handler: async (ctx) => {
+        if (ctx?.senderIsOwner !== true) return { text: "Only Adam can see this." };
+        try {
+          return { text: summarizeDay(readTail(join(stateDir, "decisions.jsonl")), { matrix }) };
+        } catch (e) {
+          return { text: `The guard's log couldn't be read (${String(e?.message ?? e).slice(0, 80)}), so today's activity is unknown.` };
+        }
+      },
+    });
+
     api.registerCommand({
       name: "jorah-status",
       description: "Show the guard's state for this chat.",
@@ -349,6 +386,7 @@ export default {
         return {
           text: [
             state.frozen() ? "Frozen: yes (clear at a terminal)." : "Frozen: no.",
+            state.careful() ? `Careful mode: on until ${localTime(state.careful())}.` : "Careful mode: off.",
             t?.tainted ? `This chat has read outside text: ${t.source}.` : "This chat hasn't read outside text.",
             matrix ? "Permission list: loaded." : "Permission list: UNREADABLE, so every tool is blocked.",
           ].join("\n"),

@@ -90,6 +90,8 @@
     "x-amz-credential", "x-amz-signature", "x-amz-security-token", "x-goog-credential", "x-goog-signature"],
   "searchQueryMaxChars": 200,
   "acpSpawnsPerHourWithoutConfirm": 3,
-  "consultAgents": ["deep"],
-  "consultAgentsAbout": "Agents main asks for a second opinion, never with a card (Adam's yes of 2026-11-21). In their own sessions only read, search and url tools are allowed: no shell, no writes, no sessions tools, no spawns. Their fetches follow the URL rule like any chat that isn't Adam's own. Adding one needs Adam's yes and the same tool limits in its config (config/pc/deep-consult.patch.json5)."
+  "consultAgents": [],
+  "consultAgentsAbout": "Agents main asks for a second opinion, never with a card (Adam's yes of 2026-11-21). In their own sessions only read, search and url tools are allowed: no shell, no writes, no sessions tools, no spawns. Their fetches follow the URL rule like any chat that isn't Adam's own. Adding one needs Adam's yes and the same tool limits in its config (config/pc/deep-consult.patch.json5). deep was the one consult agent until 2026-11-25, when it became an extension agent (extensionAgents).",
+  "extensionAgents": ["deep"],
+  "extensionAgentsAbout": "2026-11-25, Adam: \"deep should act as an extension of main, so I want it to be able to access the same files and have the same permissions\", and \"just make it so that the main agent can elevate the issue to opus and he then tries to solve it\". An extension agent shares main's workspace and tools (config/pc/deep-consult.patch.json5) and gets main's rules here: no shell, file writes checked like main's. Main asks it without a card. Its session is clean only when the spawn came from Adam's own clean chat in a typed, non-scheduled turn (index.js, State.markCleanChild); otherwise, or until the guard has linked it, it counts as a chat that has read outside text, so its writes and sends get the cards main's would. Its finds go up to the chat that asked it, after link hygiene, as a consult agent's did. Adding one needs Adam's yes."
 }

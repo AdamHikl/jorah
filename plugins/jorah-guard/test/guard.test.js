@@ -17,6 +17,9 @@ import plugin from "../index.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const MATRIX_FILE = join(here, "..", "..", "..", "config", "permission-matrix.json");
 const matrix = JSON.parse(readFileSync(MATRIX_FILE, "utf8"));
+// deep became an extension of main on 2026-11-25 (matrix.extensionAgents). The consult rules still
+// exist for any agent named in consultAgents; these tests check them on a matrix that names deep.
+const CONSULT = { matrix: { ...matrix, consultAgents: ["deep"], extensionAgents: [] } };
 const WS = "/home/jorah/workspace";
 const settings = { workspace: WS, cleanSessionKeys: ["agent:main:main"] };
 
@@ -297,7 +300,8 @@ test("consult: asking deep (Opus) never needs a card, but its brief's URLs are s
 });
 
 test("consult: deep only searches, fetches and sums, even if its config drifts", () => {
-  const { run } = fresh();
+  const { run: plain } = fresh();
+  const run = (tool, params, ctx) => plain(tool, params, ctx, CONSULT);
   const child = { agentId: "deep", sessionKey: "agent:deep:subagent:3", requester: { senderIsOwner: false } };
   // read is blocked since 2026-11-22: outside the sandbox it would reach any file of Jorah's user.
   assert.equal(run("read", { path: "AGENTS.md" }, child).verdict, "block");

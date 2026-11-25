@@ -16,15 +16,14 @@
 // providers/anthropic.md), the same weekly limits as Adam's own Claude Code if it is the same account.
 // deep without its sandbox on this lane (2026-11-22, Adam: "fix it" so deep works on Max). OpenClaw
 // refuses a sandboxed child on claude-cli ("cannot honor the sandbox"), so deep's sandbox is off here
-// and tools.allow names the only tools it keeps: the web, the read-only browser, the price sums and
-// tool search. A managed claude-cli turn gets no Claude-native tools, and jorah-guard allows a consult
-// agent only the same list (permission-matrix consultTools), so read, memory and the supplies record
-// stay out of its reach. OpenClaw lets only an unsandboxed session start an unsandboxed child, so on
+// and (until 2026-11-25) tools.allow named the only tools it kept. A managed claude-cli turn gets no
+// Claude-native tools; jorah-guard checks every OpenClaw tool it calls. OpenClaw lets only an unsandboxed session start an unsandboxed child, so on
 // this lane deep is reachable from Adam's main conversation (agent:main:main: Telegram, voice, the
 // HUD's Main), not from a separate HUD conversation, which is sandboxed (main's mode is non-main).
-// view_image added 2026-11-25 (Adam: "Yes, add it"): deep studies the photos Adam sends; jorah-guard
-// lets it open only picture files in Adam's picture folders, never a URL (consultPictureProblem).
-// brain-lane.sh api removes both again, so on the API lane deep is sandboxed as before.
+// view_image added 2026-11-25 (Adam: "Yes, add it"). Later that day deep became an extension of main
+// (deep-consult.patch.json5): it has main's workspace and tools, so this patch no longer sets
+// tools.allow for it, and brain-lane.sh max unsets an old one. brain-lane.sh api turns the sandbox
+// back on, so on the API lane deep is sandboxed as before.
 // Undo: api-lane.patch.json5 through brain-lane.sh api.
 {
   auth: { order: { anthropic: [] } },
@@ -52,7 +51,6 @@
       deep: {
         models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "claude-cli" } } },
         sandbox: { mode: "off" },
-        tools: { allow: ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe", "view_image"] },
       },
     },
   },

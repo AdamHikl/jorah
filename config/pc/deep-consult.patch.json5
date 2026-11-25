@@ -1,3 +1,18 @@
+// deep as an extension of main, 2026-11-25. Adam: "deep should act as an extension of main, so I
+// want it to be able to access the same files and have the same permissions", then "just make it
+// so that the main agent can elevate the issue to opus and he then tries to solve it". So deep
+// works in main's workspace (/home/jorah/workspace: the same files, pictures, inventory and
+// AGENTS.md, which is the only rules file a spawned agent reads; AGENTS.md sends it to DEEP.md)
+// and keeps main's tools, with four differences: no shell (exec, process; background does shell
+// work, as for main's chat), no message tool (its answer reaches Adam through main, never twice),
+// no spawning or steering other sessions (it answers the chat that asked it), and Code Mode off
+// (below). bootstrapMaxChars is main's 40,000 (bootstrap-limit.patch.json5): main's AGENTS.md is
+// over the 20,000 default. jorah-guard gives it main's rules (matrix.extensionAgents): file
+// writes, memory, sends and money checked as main's, its session clean only when Adam's own clean
+// chat asked it. max-lane.patch.json5 no longer sets tools.allow for deep.
+// Undo: the deny list and workspace from openclaw.json.pre-deep-extension.
+//
+// History, kept for the reasons it records:
 // `deep` as a consult with no card, 2026-11-21, on Adam's request: "can you make it that it doesn't
 // need to ask my permission, just make it work". jorah-guard asked Adam before every hand-off to
 // `deep` from a chat that had read outside text, because `deep` had a sandboxed shell with
@@ -18,18 +33,19 @@
 // (docs/tools/code-mode.md). That `exec` is not a shell, but its default Node executor "is not a
 // security boundary" and runs on the Gateway host, outside Podman. So Code Mode stays off for
 // `deep`: it gets Tool Search (`tool_call`), which jorah-guard unwraps and checks per inner tool.
-// Undo for both: tools.deny as above and `config unset agents.entries.deep.tools.codeMode`.
+// Undo then: `config unset agents.entries.deep.tools.codeMode`.
 {
   agents: {
     entries: {
       deep: {
+        workspace: "/home/jorah/workspace",
+        bootstrapMaxChars: 40000,
         tools: {
           codeMode: false,
           deny: [
             "image_generate", "video_generate", "music_generate", "message",
-            "exec", "process", "write", "edit", "apply_patch",
-            "sessions_list", "sessions_history", "sessions_search", "sessions_send", "sessions_spawn",
-            "sessions_yield", "subagents",
+            "exec", "process",
+            "sessions_spawn", "sessions_send", "sessions_yield", "subagents",
           ],
         },
       },

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
-import { decide, isConsultAgent, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
+import { decide, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -77,7 +77,11 @@ export default {
       countAcp: (k) => state.countAcp(k),
       frozen: () => state.frozen(),
       parentOf: (k) => state.parentOf(k),
+      cleanChild: (k) => state.cleanChild(k),
     };
+    // Spawns of an extension agent waiting for their child's key: toolCallId -> how clean the
+    // asking chat was at that moment (before this spawn marked it "worker result").
+    const extensionSpawns = new Map();
 
     // MCP tools called through the search wrapper arrive without a requester (P5.4, agentmemory on
     // jorah-dev), though the same run's other calls carry one. The run id is set by the Gateway, not
@@ -154,7 +158,8 @@ export default {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
         const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx) };
-        const taintedBefore = sessionState(view, ctx ?? {}, settings, run).tainted;
+        const before = sessionState(view, ctx ?? {}, settings, run, matrix ?? {});
+        const taintedBefore = before.tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
         if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
@@ -163,7 +168,13 @@ export default {
         // echoes a search, the shared browser): remember it so it is never taken as seen.
         // A brief to a consult agent is recorded whatever the taint: what the child finds may go up
         // to this chat (issue #13), so a URL main wrote in the brief must never come back as found.
-        const brief = tool === "sessions_spawn" && !!matrix && isConsultAgent(matrix, event?.params?.agentId);
+        const brief = tool === "sessions_spawn" && !!matrix && isHelperAgent(matrix, event?.params?.agentId);
+        const spawnCall = event?.toolCallId ?? ctx?.toolCallId;
+        if (tool === "sessions_spawn" && matrix && isExtensionAgent(matrix, event?.params?.agentId) && d.verdict !== "block" && typeof spawnCall === "string") {
+          const pro = proactiveRun({ ctx: ctx ?? {}, run, matrix, parentOf: (k) => state.parentOf(k) });
+          extensionSpawns.set(spawnCall, { clean: !taintedBefore && !pro.proactive, why: taintedBefore ? before.source : pro.why });
+          if (extensionSpawns.size > 200) extensionSpawns.delete(extensionSpawns.keys().next().value);
+        }
         if ((taintedBefore || brief) && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
@@ -212,12 +223,18 @@ export default {
           // shop and source links it reports survive the reply rule there (issue #13). Only links
           // that pass link hygiene go up; deep's own written words were already left out above.
           const parent = state.parentOf(key);
-          if (parent && isConsultAgent(matrix, ctx?.agentId)) state.addSeen(parent, forms.filter((u) => upHygienic(u, matrix)));
+          if (parent && isHelperAgent(matrix, ctx?.agentId)) state.addSeen(parent, forms.filter((u) => upHygienic(u, matrix)));
         }
         const child = event?.result?.details?.childSessionKey;
         if (event?.toolName === "sessions_spawn" && typeof child === "string") {
           state.linkChild(child, key);
-          if (matrix && isConsultAgent(matrix, event?.params?.agentId)) state.addSeen(key, state.ownOutsideSeen(child).filter((u) => upHygienic(u, matrix)));
+          const asked = typeof callId === "string" ? extensionSpawns.get(callId) : undefined;
+          if (asked) {
+            extensionSpawns.delete(callId);
+            if (asked.clean && !refused) state.markCleanChild(child, key);
+            else state.markTainted(child, `asked from a chat that wasn't clean: ${asked.why}`);
+          }
+          if (matrix && isHelperAgent(matrix, event?.params?.agentId)) state.addSeen(key, state.ownOutsideSeen(child).filter((u) => upHygienic(u, matrix)));
         }
       } catch (e) {
         api.logger.warn(`jorah-guard: after_tool_call: ${e?.message}`);

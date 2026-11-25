@@ -62,6 +62,9 @@ export class GuardState {
     if (!sessionKey) return { tainted: true, source: "no session key" };
     const own = this.data.sessions[sessionKey];
     if (own?.tainted) return own;
+    // A clean extension child (markCleanChild) was judged by its parent's state when it was asked;
+    // the parent's later marks (its own "worker result" for this very spawn) don't reach back down.
+    if (this.data.cleanChildren?.[sessionKey]) return own ?? null;
     // Children inherit; an unknown parent counts as tainted (checked by the caller via isChild).
     let parent = this.data.parents[sessionKey];
     for (let i = 0; parent && i < 10; i++) {
@@ -144,6 +147,21 @@ export class GuardState {
     const parent = this.data.parents[sessionKey];
     const inherited = parent ? this.seen.get(parent) : null;
     return [...(this.seen.get(sessionKey) ?? [])].filter(([u, s]) => s === "outside" && !inherited?.has(u)).map(([u]) => u);
+  }
+
+  // An extension agent's session (policy.isExtensionAgent) started from Adam's own clean chat by a
+  // typed, non-scheduled turn. Anything else, or a child not marked yet, counts as not clean.
+  markCleanChild(childKey, parentKey) {
+    if (!childKey || !parentKey) return;
+    const marks = (this.data.cleanChildren ??= {});
+    marks[childKey] = { parent: parentKey, at: this.now() };
+    const keys = Object.keys(marks);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 1000))) delete marks[k];
+    this.persist();
+  }
+
+  cleanChild(childKey) {
+    return !this.broken && !!childKey && !!this.data.cleanChildren?.[childKey];
   }
 
   parentOf(childKey) {

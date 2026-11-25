@@ -188,6 +188,39 @@ Acceptance (fresh `/new`): "Use Opus to look at the inventory photos in files/pi
 what's in each." Expected: Jorah spawns deep with `/home/jorah/workspace/files/pictures/...` paths;
 deep's answer names things only visible in the photos; no "Not opened" refusals, no 8 MB failure.
 
+## deep as an extension of main (2026-11-25)
+
+Adam: "deep should act as an extension of main, so I want it to be able to access the same files
+and have the same permissions", then "just make it so that the main agent can elevate the issue to
+opus and he then tries to solve it". Before this, deep couldn't open `files/pictures` (another
+workspace) or write anything, so Jorah (Haiku) redid the photo job itself.
+
+| Where | What |
+|---|---|
+| `config/pc/deep-consult.patch.json5` | deep's workspace is main's `/home/jorah/workspace`; `bootstrapMaxChars` 40,000 like main; deny list: the three generators, `message`, `exec`, `process`, `sessions_spawn`, `sessions_send`, `sessions_yield`, `subagents`. Code Mode stays off. |
+| `config/pc/max-lane.patch.json5`, `scripts/pc/brain-lane.sh` | No `tools.allow` for deep. Both lane switches unset an old one; the API lane still turns deep's sandbox back on (there its sandbox list `group:web, price_compare, browser` still narrows it). |
+| `plugins/jorah-guard` | `matrix.extensionAgents: ["deep"]` (out of `consultAgents`). Main spawns it with no card, even after outside text. In deep's session the guard applies main's rules: no shell, file and memory writes, sends and money checked as main's. Its session is clean only when the spawn came from Adam's own clean, typed chat (`State.markCleanChild`, snapshotted at spawn); otherwise, or before the guard has linked it, it counts as having read outside text, so memory and rules writes get cards. Ordinary files (`inventory/parts.md`) are free either way, as for main. |
+| `workspace/AGENTS.md`, `workspace/DEEP.md` | A spawned agent reads only `AGENTS.md`, so it has an "If You Are `deep`" section pointing to `DEEP.md` (deep's role, how to work, the shopping research rules from `workspace-deep/AGENTS.md`). Main starts each brief "You are deep." and may hand deep whole jobs. `workspace-deep/` is unused from now on; it stays for the undo. |
+
+Live: `config unset agents.entries.deep.tools.allow`, then the patch (dry run first, backup
+`openclaw.json.pre-deep-extension`); deploy `plugins/jorah-guard` and `config/permission-matrix.json`;
+copy `AGENTS.md` and `DEEP.md` into `/home/jorah/workspace` and `record-live` both; recycle the
+Gateway.
+
+Undo: `openclaw.json.pre-deep-extension`, the guard `.tgz`, `AGENTS.md.pre-deep-extension`, remove
+`/home/jorah/workspace/DEEP.md`, recycle.
+
+Acceptance (Telegram or the HUD main chat, a fresh `/new`):
+
+1. "Use Opus to look at the 14 inventory photos in files/pictures and fill in inventory/parts.md."
+   Expected: Jorah says it's asking Opus, with no card; deep opens the photos in batches of 5 and
+   writes `inventory/parts.md` itself; Jorah's reply starts "Opus says" and names the file.
+2. A hard question ("capacitive or resistive soil sensor for the robot?"). Expected: no card, an
+   "Opus says" answer.
+3. After outside text (ask for a web page first), then "use Opus to note in MEMORY.md that ...".
+   Expected: a card for the memory write (deep's session is not clean). In the HUD webchat, as for
+   voice, main's chat counts as not clean, so this card shows there too.
+
 ## Tiers
 
 Source and tests (`just check`, 2026-11-24). PC deploy and Gateway restart on 2026-11-25

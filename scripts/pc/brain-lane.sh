@@ -152,7 +152,7 @@ if sandbox == "null":
     print("deep sandbox: on (default)")
     lanes.append("api")
 elif sandbox == "\"off\"":
-    print("deep sandbox: off (Max lane, tools limited to its allow list)")
+    print("deep sandbox: off (Max lane, the tools main has, no shell)")
     lanes.append("max")
 else:
     shown = sandbox[:30] or "unreadable"
@@ -315,15 +315,16 @@ switch_to() {
         say "    $agent: $(agent_order "$agent")"
     done
 
-    # deep's sandbox moves with the lane: the Max patch turns it off with an allow list; here the API
-    # lane removes both, so deep is sandboxed as before.
-    if [ "$target" = api ]; then
-        for path in agents.entries.deep.sandbox agents.entries.deep.tools.allow; do
-            if [ "$(config_json "$path")" != null ]; then
-                oc config unset "$path" >/dev/null 2>&1 || fail "could not remove $path"
-            fi
-        done
-    fi
+    # deep's sandbox moves with the lane: the Max patch turns it off; the API lane removes that, so
+    # deep is sandboxed as before. Since 2026-11-25 deep has main's tools (deep-consult.patch.json5),
+    # so both lanes remove the allow list the Max patch used to set.
+    paths="agents.entries.deep.tools.allow"
+    [ "$target" = api ] && paths="agents.entries.deep.sandbox $paths"
+    for path in $paths; do
+        if [ "$(config_json "$path")" != null ]; then
+            oc config unset "$path" >/dev/null 2>&1 || fail "could not remove $path"
+        fi
+    done
     say "    deep sandbox: $(config_json agents.entries.deep.sandbox.mode | tr -d '"' | sed 's/^null$/on (default)/')"
 
     say "6/6 Validating and reading it back"

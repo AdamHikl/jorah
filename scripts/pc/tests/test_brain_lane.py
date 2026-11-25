@@ -78,7 +78,6 @@ elif cmd == "config patch":
         state["agents"]["deep"] = os.environ["FAKE_KEY"] if lane == "openclaw" else "none"
         if lane == "claude-cli":
             state["deep_sandbox"] = "off"
-            state["deep_allow"] = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"]
         save()
         print("Applied 13 config update(s). Change will apply without restarting the gateway.")
 elif cmd == "gateway call" and args[2] == "models.authStatus":
@@ -313,7 +312,21 @@ class BrainLane(unittest.TestCase):
         self.assertEqual(state["agents"], {"main": KEY, "deep": "none", "background": KEY})
         self.assertNotIn("models auth order", self.calls.read_text().replace("models auth order get", ""))
         self.assertEqual(state["deep_sandbox"], "off")
-        self.assertIn("deep sandbox: off (Max lane, tools limited to its allow list)", lines)
+        # Since 2026-11-25 the Max patch gives deep main's tools: no allow list.
+        self.assertIsNone(state["deep_allow"])
+        self.assertIn("deep sandbox: off (Max lane, the tools main has, no shell)", lines)
+
+    def test_max_again_removes_deeps_old_allow_list(self):
+        # The live config before 2026-11-25 has the Max lane's old allow list for deep.
+        self.set_state(lane_state("max"))
+        code, lines, err = self.run_script("max")
+        self.assertEqual(code, 0, "\n".join(lines) + err)
+        state = json.loads(self.state.read_text())
+        self.assertIsNone(state["deep_allow"])
+        self.assertEqual(state["deep_sandbox"], "off")
+        calls = self.calls.read_text()
+        self.assertIn("config unset agents.entries.deep.tools.allow", calls)
+        self.assertNotIn("config unset agents.entries.deep.sandbox", calls)
 
     def test_max_with_deep_still_sandboxed_is_mixed(self):
         state = lane_state("max")

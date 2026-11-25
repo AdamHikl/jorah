@@ -34,8 +34,8 @@ function fresh() {
     taintOf: (k) => state.taintOf(k), hasSeen: (k, u) => state.hasSeen(k, u), wordsOf: (k) => state.wordsOf(k),
     readRepos: (k) => state.readRepos(k), countAcp: (k) => state.countAcp(k), frozen: () => state.frozen(), parentOf: (k) => state.parentOf(k),
   };
-  const run = (tool, params, ctx = ADAM, trigger = "user") => {
-    const d = decide({ tool, params, ctx, matrix, view, settings, run: { trigger } });
+  const run = (tool, params, ctx = ADAM, trigger = "user", m = matrix) => {
+    const d = decide({ tool, params, ctx, matrix: m, view, settings, run: { trigger } });
     if (d.taint && d.verdict !== "block") state.markTainted(ctx.sessionKey, d.taint);
     return d;
   };
@@ -105,8 +105,10 @@ test("by voice, a save is a card; deep may use price_compare but never saves", (
   const { run } = fresh();
   assert.equal(run("supply_save", SAVE, VOICE).verdict, "confirm");
   assert.equal(run("price_compare", { offers: [] }, DEEP).verdict, "allow");
-  // deep is a consult agent (matrix.consultAgents): it only reads, searches and fetches.
-  assert.equal(run("supply_save", SAVE, DEEP).verdict, "block");
+  // As a consult agent (matrix.consultAgents) deep only read, searched and fetched.
+  assert.equal(run("supply_save", SAVE, DEEP, "user", { ...matrix, consultAgents: ["deep"], extensionAgents: [] }).verdict, "block");
+  // As an extension of main (2026-11-25) a save from a session not linked to Adam's clean chat is a card.
+  assert.equal(run("supply_save", SAVE, DEEP).verdict, "confirm");
 });
 
 test("a reminder whose own text mentions the web is a card even in a clean chat", () => {

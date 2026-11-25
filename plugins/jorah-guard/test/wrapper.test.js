@@ -30,8 +30,8 @@ function fresh() {
     wordsOf: (k) => state.wordsOf(k), readRepos: (k) => state.readRepos(k), countAcp: (k) => state.countAcp(k),
     frozen: () => state.frozen(), parentOf: (k) => state.parentOf(k),
   };
-  const run = (tool, params, ctx = TELEGRAM) => {
-    const d = decide({ tool, params, ctx, matrix, view, settings });
+  const run = (tool, params, ctx = TELEGRAM, m = matrix) => {
+    const d = decide({ tool, params, ctx, matrix: m, view, settings });
     if (d.taint && d.verdict !== "block") state.markTainted(ctx.sessionKey, d.taint);
     return d;
   };
@@ -160,8 +160,13 @@ test("view_image takes at most 5 pictures a call, directly or through either wra
 
 const DEEP = { agentId: "deep", sessionKey: "agent:deep:subagent:1", requester: { senderIsOwner: false } };
 
-test("deep looks only at the pictures Adam sent, by absolute path, never a web address (Adam's yes, 2026-11-25)", () => {
-  const { run } = fresh();
+// deep was a consult agent when this was written; since the same day it is an extension of main, and
+// these rules hold for any agent named in consultAgents.
+const CONSULT_MATRIX = { ...matrix, consultAgents: ["deep"], extensionAgents: [] };
+
+test("a consult agent looks only at the pictures Adam sent, by absolute path, never a web address (Adam's yes, 2026-11-25)", () => {
+  const { run: plain } = fresh();
+  const run = (tool, params, ctx) => plain(tool, params, ctx, CONSULT_MATRIX);
   for (const path of [
     "/home/jorah/workspace/files/pictures/inventory-01.jpg",
     "/home/jorah/.openclaw-jorah/media/inbound/a1b2.JPEG",

@@ -16,7 +16,16 @@ export const VOICE_CARD_HINT = "Say 'yes, go ahead' or tap here.";
 // runs a command, reads other chats or starts work.
 const CONSULT_CLASSES = new Set(["read", "search", "url"]);
 const CONSULT_TOOLS = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe", "view_image"];
-export const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
+export const isConsultAgent = (matrix, agentId) => (matrix?.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
+// An extension of main (matrix.extensionAgents; Adam, 2026-11-25: "deep should act as an extension
+// of main, so I want it to be able to access the same files and have the same permissions"). It
+// gets main's rules for its own actions, and its session is as clean as the chat that started it:
+// clean only when index.js saw the spawn come from Adam's own clean chat (State.markCleanChild),
+// otherwise it counts as a chat that has read outside text. Main asks it without a card.
+export const isExtensionAgent = (matrix, agentId) => (matrix?.extensionAgents ?? []).includes(String(agentId ?? "").toLowerCase());
+// Main asks these without a card, and their finds go up to the chat that asked (issue #13).
+export const isHelperAgent = (matrix, agentId) => isConsultAgent(matrix, agentId) || isExtensionAgent(matrix, agentId);
+const actsAsMain = (matrix, agent) => agent === "main" || isExtensionAgent(matrix, agent);
 
 export function classify(matrix, tool) {
   for (const cls of ["read", "taintRead", "viewRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
@@ -112,11 +121,14 @@ const isCronSession = (key) => sessionRest(key).startsWith("cron:");
 const WEBCHAT = "typed in the HUD or the web chat";
 
 // Session state as the policy needs it.
-export function sessionState(view, ctx, settings, run = {}) {
+export function sessionState(view, ctx, settings, run = {}, matrix = {}) {
   const who = speaker(ctx, settings, run);
   const recorded = view.taintOf(ctx.sessionKey);
   let source = null;
   if (recorded?.tainted) source = recorded.source;
+  else if (isExtensionAgent(matrix, ctx.agentId)) {
+    if (!view.cleanChild?.(ctx.sessionKey)) source = `not started from Adam's own clean chat (${ctx.sessionKey ?? "no session key"})`;
+  }
   else if (who.voice) source = "asked by voice";
   else if (who.webchat) source = WEBCHAT;
   else if (!who.cleanEligible) source = ctx.sessionKey ? `not Adam's own chat (${ctx.sessionKey})` : "no session key";
@@ -371,7 +383,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
 
   const named = classify(matrix, tool);
   const cls = named === "viewRead" ? (cleanView(params) ? "read" : "taintRead") : named;
-  const state = sessionState(view, ctx, settings, run);
+  const state = sessionState(view, ctx, settings, run, matrix);
   const key = ctx.sessionKey;
   const agent = ctx.agentId ?? "unknown";
   const action = typeof params.action === "string" ? params.action : "";
@@ -452,7 +464,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     }
 
     case "fileWrite": {
-      if (agent !== "main") return { verdict: "allow" }; // other agents write only inside their sandbox
+      if (!actsAsMain(matrix, agent)) return { verdict: "allow" }; // other agents write only inside their sandbox
       const paths = targetPaths(tool, params, derivedPaths, settings.workspace);
       const kinds = paths.map((p) => fileKind(p, matrix));
       if (paths.length === 0) {
@@ -508,7 +520,11 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       // are web_search and web_fetch, which this guard checks in its session as in main's: a child
       // is never Adam's own chat. A brief can't send data anywhere main couldn't send it itself. The
       // brief's URLs are still checked, and the answer still marks this chat.
-      if (!acp && isConsultAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
+      // An extension agent (deep since 2026-11-25) may write and use main's tools, but its session is
+      // only as clean as this chat was when it asked (index.js marks it), so after outside text its
+      // writes and sends get the same cards main's would. Adam: "just make it so that the main agent
+      // can elevate the issue to opus and he then tries to solve it".
+      if (!acp && isHelperAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
       // background has a sandboxed shell with internet access, so a brief written after outside
       // text could carry data out past the URL rule. Show it to Adam first.
       if (!acp && state.tainted) return { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
@@ -538,7 +554,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     }
 
     case "sandboxShell":
-      return agent === "main" ? { verdict: "block", reason: "main has no shell; background does shell work" } : { verdict: "allow" };
+      return actsAsMain(matrix, agent) ? { verdict: "block", reason: `${agent} has no shell; background does shell work` } : { verdict: "allow" };
 
     case "blocked":
       return { verdict: "block", reason: `${tool} is not allowed` };

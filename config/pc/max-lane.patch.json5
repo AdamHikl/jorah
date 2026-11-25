@@ -22,6 +22,8 @@
 // stay out of its reach. OpenClaw lets only an unsandboxed session start an unsandboxed child, so on
 // this lane deep is reachable from Adam's main conversation (agent:main:main: Telegram, voice, the
 // HUD's Main), not from a separate HUD conversation, which is sandboxed (main's mode is non-main).
+// view_image added 2026-11-25 (Adam: "Yes, add it"): deep studies the photos Adam sends; jorah-guard
+// lets it open only picture files in Adam's picture folders, never a URL (consultPictureProblem).
 // brain-lane.sh api removes both again, so on the API lane deep is sandboxed as before.
 // Undo: api-lane.patch.json5 through brain-lane.sh api.
 {
@@ -50,7 +52,7 @@
       deep: {
         models: { "anthropic/claude-opus-5-5": { agentRuntime: { id: "claude-cli" } } },
         sandbox: { mode: "off" },
-        tools: { allow: ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"] },
+        tools: { allow: ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe", "view_image"] },
       },
     },
   },

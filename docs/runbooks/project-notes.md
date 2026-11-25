@@ -156,7 +156,7 @@ step 5, a note or `project_run_now` starts that run.
 
 - `view_image` takes at most 5 pictures a call (jorah-guard). 14 at once broke claude-cli's 8 MB
   line limit and failed the turn. `AGENTS.md`, "Pictures Adam Sends": batches of 5, notes on each;
-  `deep` can't see pictures, so "use Opus" gets Jorah's notes.
+  `deep` couldn't see pictures then; the next section changes that.
 - The plugin's YAML reader reads strings wrapped over several lines, in every PyYAML style, and the
   runner writes each string on one line. jorah-arm's questions had shown as unknown.
 
@@ -169,6 +169,24 @@ Acceptance (fresh `/new` in the HUD main chat):
    in one call, the guard refuses that call and Jorah retries in batches.
 
 Evidence: `docs/evidence/project-notes/yamlfix-2026-11-25.md`.
+
+## deep looks at pictures (2026-11-25, Adam: "Yes, add it")
+
+`deep` (Opus 5.5) may use `view_image`, so "use Opus" on photos means Opus sees the photos, not
+Jorah's notes.
+
+| Where | What |
+|---|---|
+| `plugins/jorah-guard/lib/policy.js` | For a consult agent, `view_image` opens only picture files (jpg, png, webp, gif, heic) by plain absolute path under `/home/jorah/.openclaw-jorah/media/inbound`, `/home/jorah/workspace/media/inbound` or `/home/jorah/workspace/files/pictures` (`matrix.consultPictureRoots` overrides), never a URL, `file:` or `data:`, and no link that leads out of them. deep reads the web, so a page could otherwise make it send Adam's data in an address or open another file. The 5-a-call cap holds. |
+| same | Main's `view_image` of a web address now follows the `web_fetch` URL rule (no private addresses; after outside text, only addresses Adam wrote or a result showed) and taints the chat. It was a plain read before: a gap that let a page's text send data out in a picture address. |
+| `config/permission-matrix.json`, `config/pc/max-lane.patch.json5` | `view_image` in `consultTools` and in deep's `tools.allow`. |
+| `workspace/AGENTS.md`, `workspace-deep/AGENTS.md` | Jorah gives deep full paths and the 5-a-call limit; deep knows it has the tool. |
+
+Live: deep's `agents.entries.deep.tools.allow` gets `view_image` (config patch, dry run first).
+
+Acceptance (fresh `/new`): "Use Opus to look at the inventory photos in files/pictures and list
+what's in each." Expected: Jorah spawns deep with `/home/jorah/workspace/files/pictures/...` paths;
+deep's answer names things only visible in the photos; no "Not opened" refusals, no 8 MB failure.
 
 ## Tiers
 

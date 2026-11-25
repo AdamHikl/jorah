@@ -3,6 +3,7 @@
 // it. Everything not explicitly allowed is blocked; anything the guard can't tell is treated as
 // "this chat has read outside text".
 
+import { realpathSync } from "node:fs";
 import { posix } from "node:path";
 import { forbidden, linkHygiene, normalise, onSiteAllowlist, urlCores, urlsIn, writtenTokens } from "./urls.js";
 import { siteDecision } from "./sites.js";
@@ -14,7 +15,7 @@ export const VOICE_CARD_HINT = "Say 'yes, go ahead' or tap here.";
 // What a consult agent (matrix.consultAgents) may do: read, search, fetch. Nothing that writes,
 // runs a command, reads other chats or starts work.
 const CONSULT_CLASSES = new Set(["read", "search", "url"]);
-const CONSULT_TOOLS = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe"];
+const CONSULT_TOOLS = ["web_search", "x_search", "web_fetch", "browser", "price_compare", "tool_search", "tool_describe", "view_image"];
 export const isConsultAgent = (matrix, agentId) => (matrix.consultAgents ?? []).includes(String(agentId ?? "").toLowerCase());
 
 export function classify(matrix, tool) {
@@ -300,12 +301,40 @@ export const MAX_IMAGES_PER_CALL = 5;
 
 // The pictures a view_image call names: its `path` and the distinct strings in `paths`, as
 // OpenClaw's image tool reads them (2026.11.6, src/agents/tools/image-tool.ts).
-export function imageCount(params) {
+export function imagePaths(params) {
   const all = [
     ...(typeof params?.path === "string" ? [params.path] : []),
     ...(Array.isArray(params?.paths) ? params.paths.filter((p) => typeof p === "string") : []),
   ];
-  return new Set(all.map((p) => p.trim()).filter(Boolean)).size;
+  return [...new Set(all.map((p) => p.trim()).filter(Boolean))];
+}
+export const imageCount = (params) => imagePaths(params).length;
+
+const hasScheme = (p) => /^[a-z][a-z0-9+.-]*:/i.test(p);
+
+// Where Adam's pictures are (2026-11-25): OpenClaw's attachment store, the workspace's copy of
+// it, and the pictures Jorah kept (picture_save). matrix.consultPictureRoots overrides it.
+const CONSULT_PICTURE_ROOTS = ["/home/jorah/.openclaw-jorah/media/inbound", "/home/jorah/workspace/media/inbound", "/home/jorah/workspace/files/pictures"];
+const PICTURE_EXT = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
+
+// A consult agent's view_image (Adam's yes, 2026-11-25, so deep can study the photos he sends):
+// local picture files in those folders, by absolute path, never a URL. deep reads the web, so a
+// page could ask it to fetch an address with Adam's data in it, or to open another file on the PC.
+export function consultPictureProblem(paths, roots = CONSULT_PICTURE_ROOTS) {
+  for (const p of paths) {
+    if (hasScheme(p)) return `${short(p, 60)}: deep looks only at picture files on the PC, never a web address`;
+    const n = posix.normalize(p);
+    if (!p.startsWith("/") || p.includes("\0") || n !== p.replace(/\/+$/, "")) return `${short(p, 60)}: not a plain absolute path`;
+    if (!roots.some((r) => n.startsWith(`${r.replace(/\/+$/, "")}/`))) return `${short(p, 60)}: deep looks only at the pictures Adam sent (${roots.join(", ")})`;
+    if (!PICTURE_EXT.test(n)) return `${short(p, 60)}: not a picture file (jpg, png, webp, gif, heic)`;
+    // A link inside those folders mustn't lead out of them. A file that isn't there fails in the tool.
+    const real = realOrNull(n);
+    if (real && !roots.some((r) => real.startsWith(`${realOrNull(r) ?? r}/`))) return `${short(p, 60)}: leads out of Adam's picture folders`;
+  }
+  return null;
+}
+function realOrNull(p) {
+  try { return realpathSync(p); } catch { return null; }
 }
 
 export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {}, run = {} }) {
@@ -362,6 +391,22 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
   // a search query. On the Max lane the config says the same (config/pc/max-lane.patch.json5, tools.allow).
   if (isConsultAgent(matrix, agent) && !(matrix.consultTools ?? CONSULT_TOOLS).includes(tool)) {
     return { verdict: "block", reason: `${agent} uses only ${(matrix.consultTools ?? CONSULT_TOOLS).join(", ")}; ${tool} isn't one` };
+  }
+  if (tool === "view_image") {
+    const pics = imagePaths(params);
+    if (isConsultAgent(matrix, agent)) {
+      const bad = consultPictureProblem(pics, matrix.consultPictureRoots ?? CONSULT_PICTURE_ROOTS);
+      if (bad) return { verdict: "block", reason: `Not opened: ${bad}.` };
+    } else {
+      // A picture from the web is fetched like a page: the same URL rule as web_fetch, and its
+      // content is outside text.
+      const urls = pics.filter(hasScheme);
+      if (urls.length) {
+        const bad = checkUrls({ paths: urls }, state, view, key, matrix, tool);
+        if (bad) return { verdict: "block", reason: `Not opened: ${bad}.` };
+        return { verdict: "allow", taint: `view_image ${short(urls[0], 60)}` };
+      }
+    }
   }
   // A consult agent's browser only reads (issue #15: shops that render prices with JavaScript):
   // open, navigate, snapshot, text and screenshot in Jorah's own headless profile. No clicking,

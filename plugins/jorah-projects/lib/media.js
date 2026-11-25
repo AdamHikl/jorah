@@ -85,19 +85,26 @@ function typeOf(path, contentType) {
 
 /**
  * Turn the tool's `files` into checked sources. Each entry is "last" (every attachment of the
- * newest message with attachments in this chat) or a path OpenClaw gave for an attachment.
+ * newest message with attachments in this chat, or the newer pictures `inbound` gives) or a path
+ * OpenClaw gave for an attachment.
  * Returns [{ path (real), ext, bytes }]; throws MediaError saying which entry was refused and why.
  */
-export function resolveFiles(files, { sessionKey, tracker, roots, workspace, max = MAX_FILES }) {
+export function resolveFiles(files, { sessionKey, tracker, roots, workspace, max = MAX_FILES, inbound = null }) {
   if (files === undefined || files === null) return [];
   if (!Array.isArray(files)) throw new MediaError("files must be a list");
   const wanted = [];
   for (const f of files) {
     if (typeof f !== "string" || f.trim() === "") throw new MediaError("each file must be a path or \"last\"");
     if (f.trim().toLowerCase() === "last") {
-      const last = sessionKey ? tracker.last(sessionKey) : [];
-      if (last.length === 0) throw new MediaError("there's no recent attachment in this chat: ask Adam to send the photo again");
-      wanted.push(...last.map((x) => ({ given: x.path, rec: x })));
+      // The tracker lives in memory, so a Gateway restart empties it, and a picture pasted in the
+      // HUD may never reach message_received. `inbound(recordedAt)` gives the newest pictures in the
+      // inbound-media folders when they are newer than this chat's last recorded attachment (or
+      // there is none); they still pass every check below.
+      const recorded = sessionKey ? tracker.recent(sessionKey).at(-1) : undefined;
+      const newer = inbound ? inbound(recorded?.at) : null;
+      if (newer?.length) wanted.push(...newer.map((x) => ({ given: x.path, rec: null })));
+      else if (recorded) wanted.push(...recorded.files.map((x) => ({ given: x.path, rec: x })));
+      else throw new MediaError("there's no recent attachment in this chat: ask Adam to send the photo again");
     } else {
       const p = f.trim();
       wanted.push({ given: p, rec: sessionKey ? tracker.find(sessionKey, p) : null });

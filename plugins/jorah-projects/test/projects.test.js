@@ -423,6 +423,35 @@ test("project_task_result: Telegram photos from this chat go into inbox/results 
   assert.match((await call("project_task_result", { project: "tree-watering-robot", task_id: "A-0001", files: [photo] }, other)).reason, /not an attachment from this chat/);
 });
 
+test("project_task_result: \"last\" after a restart takes the newest photos from the inbound folder (24 hours)", async () => {
+  const fx = fixture();
+  const { call, hooks } = load(fx); // a fresh load: the tracker is empty, as after a Gateway restart
+  const sent = new Date(NOW.getTime() - 90 * 60_000); // 2026-11-25: photos sent an hour and a half before
+  for (const n of ["IMG_4984---88b9.jpg", "IMG_4985---86f1.jpg"]) { writeFileSync(join(fx.media, n), n); utimesSync(join(fx.media, n), sent, sent); }
+  const older = join(fx.media, "IMG_4000---aaaa.jpg");
+  writeFileSync(older, "older");
+  utimesSync(older, new Date(sent.getTime() - 60_000), new Date(sent.getTime() - 60_000));
+  const r = await call("project_task_result", { project: "tree-watering-robot", task_id: "A-0001", text: "servo and camera", files: ["last"] });
+  assert.equal(r.status, "recorded");
+  assert.equal(r.files.length, 2);
+  const results = join(fx.sdir, "inbox", "results", "files");
+  assert.deepEqual(r.files.map((f) => readFileSync(join(results, f), "utf8")).sort(), ["IMG_4984---88b9.jpg", "IMG_4985---86f1.jpg"]);
+  // A newer attachment recorded in this chat wins over older inbound photos.
+  const photo = join(fx.root, "elsewhere", "file_9.jpg");
+  mkdirSync(dirname(photo), { recursive: true });
+  writeFileSync(photo, "telegram");
+  hooks.message_received[0]({ media: [{ path: photo, contentType: "image/jpeg" }], messageId: "m9" }, { sessionKey: "agent:main:main" });
+  const t = await call("project_task_result", { project: "tree-watering-robot", task_id: "A-0001", files: ["last"] });
+  assert.deepEqual(t.files.map((f) => readFileSync(join(results, f), "utf8")), ["telegram"]);
+  // Photos older than 24 hours aren't taken.
+  const fx2 = fixture();
+  const two = load(fx2);
+  const stale = join(fx2.media, "IMG_1---old.jpg");
+  writeFileSync(stale, "stale");
+  utimesSync(stale, new Date(NOW.getTime() - 25 * 3600_000), new Date(NOW.getTime() - 25 * 3600_000));
+  assert.match((await two.call("project_task_result", { project: "tree-watering-robot", task_id: "A-0001", files: ["last"] })).reason, /no recent attachment/);
+});
+
 test("project_task_result: never a file outside the inbound-media folders, a symlink out, or a wrong type", async () => {
   const fx = fixture();
   const { call } = load(fx);

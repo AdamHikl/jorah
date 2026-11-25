@@ -34,6 +34,7 @@ import { ghCache } from "./lib/ghcache.js";
 import { unpushed } from "./lib/git.js";
 import { MediaError, MediaTracker, resolveFiles } from "./lib/media.js";
 import { BURST_MS, MAX_PER_CALL as PICTURES_MAX, MAX_WHY, newestInbound, PictureError, savePictures } from "./lib/pictures.js";
+const RESULT_INBOUND_MS = 24 * 3600_000;
 import { listImages, MAX_FILES as PREVIEW_MAX, PreviewError, stage } from "./lib/preview.js";
 import { checkIntake, checkNote, intakeText, IntakeError, MAX_ANSWER, MAX_ANSWERS, MAX_INTAKE_BYTES, MAX_NOTE, MAX_QUESTION, MAX_WORDS, withNote } from "./lib/intake.js";
 import { BACKLOG_STATUS, charterExists, counts, readCharter, readAdamTasks, readDecisions, readLogs, readProject, readQuestions } from "./lib/project.js";
@@ -259,6 +260,14 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
   });
 
   const caller = (id) => calls.get(id) ?? { sessionKey: null, via: "chat" };
+  // "last" for a task result after a Gateway restart emptied the tracker (2026-11-25: Adam's
+  // photos from an hour before were refused): the newest pictures in the inbound-media folders
+  // from the last 24 hours, the tracker's own span, when they are newer than this chat's last
+  // recorded attachment.
+  const inboundSince = (recordedAt) => {
+    const r = newestInbound(s.mediaRoots, now().getTime(), RESULT_INBOUND_MS);
+    return r.files.length > 0 && (recordedAt === undefined || r.newestMs > recordedAt + BURST_MS) ? r.files : null;
+  };
   const base = (at, via) => ({ v: 1, id: newId(), by: "adam", via, at: at.toISOString() });
   const pauseOf = (entry, dir) => pauseState(entry, readState(dir), readRequests(dir));
   const lockOf = (dir) => readLock(dir, s.procRoot);
@@ -511,7 +520,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
     name: "project_task_result",
     label: "Record what Adam sent back",
     catalogMode: "direct-only",
-    description: "Record what Adam sent back for one of his tasks (A-xxxx): his words as text, and photos or files he sent in this chat. For files pass \"last\" (every attachment of his newest message with attachments) or the attachment's path as OpenClaw gave it; nothing else is accepted. The runner files them into the project at its next run.",
+    description: "Record what Adam sent back for one of his tasks (A-xxxx): his words as text, and photos or files he sent in this chat. For files pass \"last\" (every attachment of his newest message with attachments; after a restart, the newest photos received in the last 24 hours) or the attachment's path as OpenClaw gave it; nothing else is accepted. The runner files them into the project at its next run.",
     parameters: {
       type: "object", additionalProperties: false, required: ["project", "task_id"],
       properties: {
@@ -531,7 +540,7 @@ export function register(api, { now = () => new Date(), fetch: fetchImpl = globa
       const who = caller(id);
       let files;
       try {
-        files = resolveFiles(p.files, { sessionKey: who.sessionKey, tracker, roots: s.mediaRoots, workspace: s.workspace });
+        files = resolveFiles(p.files, { sessionKey: who.sessionKey, tracker, roots: s.mediaRoots, workspace: s.workspace, inbound: inboundSince });
       } catch (e) {
         if (e instanceof MediaError) return refuse(e.message);
         return refuse("the files couldn't be checked");

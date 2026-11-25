@@ -30,10 +30,10 @@ const extOf = (file) => {
 
 /**
  * The newest pictures in the inbound-media folders: those within BURST_MS of the newest one, when
- * that one is at most RECENT_MS old. Flat folders only, regular files only, at most MAX_PER_CALL.
+ * that one is at most maxAgeMs (default RECENT_MS) old. Flat folders only, regular files only, at most MAX_PER_CALL.
  * Returns { files: [{ path, ext, bytes }], newestMs } (newestMs null when there is none).
  */
-export function newestInbound(roots, nowMs) {
+export function newestInbound(roots, nowMs, maxAgeMs = RECENT_MS) {
   const found = [];
   for (const root of roots ?? []) {
     let names;
@@ -49,7 +49,7 @@ export function newestInbound(roots, nowMs) {
     }
   }
   found.sort((a, b) => b.mtime - a.mtime);
-  if (found.length === 0 || nowMs - found[0].mtime > RECENT_MS) return { files: [], newestMs: null };
+  if (found.length === 0 || nowMs - found[0].mtime > maxAgeMs) return { files: [], newestMs: null };
   const newest = found[0].mtime;
   const files = found.filter((f) => newest - f.mtime <= BURST_MS).slice(0, MAX_PER_CALL)
     .map(({ path, ext, bytes }) => ({ path: realpathSync(path), ext, bytes }));

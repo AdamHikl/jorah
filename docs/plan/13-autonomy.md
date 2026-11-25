@@ -254,8 +254,8 @@ Every program shares these "What NOT to do" rules:
 | # | Step | Where | Adam's yes |
 |---|---|---|---|
 | 1 | This file, committed and pushed to `main` | Repo | Done 2026-11-25 (build session rule) |
-| 2 | Rules text: the tiers (§3, §4) in `SOUL.md`, because `AGENTS.md` is at its size budget; in `AGENTS.md` the programs (§5), Execute/Verify/Report, one question up front, declined proposals remembered, dated promises as reminders, the schedule red line reworded for one-off reminders, "Local notes" moved to `TOOLS.md`. Diff the live copy first, then deploy with `deploy_reviewed.py` and `record-live` | Source done | Deploy to the live workspace |
-| 3 | Guard: (1) `selfFiles` always get a card, `DEEP.md` included, (2) an open loop from Adam's own words gets no card, (3) `/jorah-careful`, (4) `/jorah-today`. Source and unit tests | Source done | Deploy to `/opt/jorah` and Gateway restart |
+| 2 | Rules text: the tiers (§3, §4) in `SOUL.md`, because `AGENTS.md` is at its size budget; in `AGENTS.md` the programs (§5), Execute/Verify/Report, one question up front, declined proposals remembered, dated promises as reminders, the schedule red line reworded for one-off reminders, "Local notes" moved to `TOOLS.md`. Diff the live copy first, then deploy with `deploy_reviewed.py` and `record-live` | Live 2026-11-25 21:18 | Given 2026-11-25 (`docs/evidence/autonomy-2026-11-25/deploy.md`) |
+| 3 | Guard: (1) `selfFiles` always get a card, `DEEP.md` included, (2) an open loop from Adam's own words gets no card, (3) `/jorah-careful`, (4) `/jorah-today`. Source and unit tests | Live 2026-11-25 21:18 | Given 2026-11-25 (same evidence) |
 | 4 | The §5 spike | `jorah-dev` | None (scratch profile) |
 | 5 | The weekly upkeep automation | Live | The schedule and its time |
 | 6 | Brief and wrap, with the proactive install after Adam's Telegram pass | Live | Per `docs/runbooks/proactive.md` |

@@ -34,6 +34,7 @@ DRIFT = ["/usr/bin/python3", "-I", f"{TREE}/services/jorah-watchdog/drift.py"]
 # Repo rules files and where the agents' live copies are.
 LIVE = {f"{d}/{n}": f"/home/jorah/{d}/{n}" for d in ("workspace", "workspace-deep", "workspace-background")
         for n in ("AGENTS.md", "SOUL.md", "IDENTITY.md")}
+LIVE["workspace/DEEP.md"] = "/home/jorah/workspace/DEEP.md"  # deep's rules since 2026-11-25
 
 
 def git(*args, input=None):

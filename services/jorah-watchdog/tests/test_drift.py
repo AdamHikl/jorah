@@ -62,6 +62,12 @@ class Drift(unittest.TestCase):
             self.assertFalse(ok, path)
             self.assertTrue(any("not a path the manifest may hold" in line for line in lines), path)
 
+    def test_deeps_rules_file_can_be_recorded(self):
+        Path(self.live, "DEEP.md").write_text("deep rules\n")
+        ok, lines = self.record(self.payload({f"{self.live}DEEP.md": {"sha256": sha("deep rules\n"),
+                                                                      "source": "workspace/DEEP.md"}}))
+        self.assertTrue(ok, lines)
+
     def test_live_rules_file_can_be_recorded(self):
         ok, _ = self.record(self.payload({f"{self.live}AGENTS.md": {"sha256": sha("rules\n"),
                                                                     "source": "workspace/AGENTS.md"}}))

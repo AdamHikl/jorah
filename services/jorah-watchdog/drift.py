@@ -22,7 +22,7 @@ hashes on the Mac from the commit, so the manifest never just trusts what is on 
 
 Never reads files that hold secrets: it hashes only manifest paths, which come from git (secrets are
 never committed), and refuses the name patterns in SECRET_NAMES even then. In the live workspaces
-only AGENTS.md, SOUL.md and IDENTITY.md may be recorded: never USER.md, MEMORY.md or memory/. Files not in the manifest
+only AGENTS.md, SOUL.md, IDENTITY.md and DEEP.md may be recorded: never USER.md, MEMORY.md or memory/. Files not in the manifest
 are listed by name and never opened.
 """
 
@@ -41,7 +41,8 @@ REPORT = "/var/lib/jorah-drift/report.json"
 TREE = "/opt/jorah"
 # Live files that may be recorded besides /opt/jorah: the agents' reviewed rules files.
 LIVE_ALLOWED = ("/home/jorah/workspace/", "/home/jorah/workspace-deep/", "/home/jorah/workspace-background/")
-LIVE_NAMES = ("AGENTS.md", "SOUL.md", "IDENTITY.md")
+# DEEP.md since 2026-11-25: deep's rules, in main's workspace.
+LIVE_NAMES = ("AGENTS.md", "SOUL.md", "IDENTITY.md", "DEEP.md")
 SECRET_NAMES = ("openclaw.json", "*.token", "*.key", "*.pem", ".env", ".env.*", "*credentials*",
                 "id_rsa*", "id_ed25519*")
 MAX_LISTED = 20

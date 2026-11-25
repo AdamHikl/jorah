@@ -153,6 +153,38 @@ export function coveredByWords(content, words) {
   return hit / c.length >= 0.8 && String(content).length <= 3 * String(words).length + 40;
 }
 
+// Does every sentence of the text come from one of Adam's own typed messages in this chat (Adam,
+// 2026-11-25: "can't we make a system that decides")? Only messages that asked to remember
+// something, or are short (300 characters or fewer), count: a long one may be a pasted email or
+// page. Each sentence needs 80% of its words in one such message, and every number, address, path
+// or dotted name must appear in his messages as typed (dates excepted): those are what carry data.
+const TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}._@\/:+-]*[\p{L}\p{N}]|\p{N}/gu;
+const EXACT = /[\p{N}@\/:]|\p{L}\.\p{L}/u;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const NEG = /\b(not|no|never|none|nothing|without|nie|nikdy|bez)\b|n['’]t\b/i;
+
+export function ownChatWords(content, messages) {
+  const text = String(content ?? "");
+  if (text.trim().length === 0 || text.length > 600) return false;
+  const own = (Array.isArray(messages) ? messages : []).map(String).filter((m) => m.length <= 300 || ASKED.test(m));
+  if (own.length === 0) return false;
+  const typed = new Set(own.join("\n").toLowerCase().match(TOKEN_RE) ?? []);
+  for (const t of text.match(TOKEN_RE) ?? []) {
+    if (EXACT.test(t) && !DATE.test(t) && !typed.has(t.toLowerCase())) return false;
+  }
+  const vocab = own.map((m) => ({ len: m.length, neg: NEG.test(m), words: new Set(m.toLowerCase().match(WORD_RE) ?? []) }));
+  let any = false;
+  for (const s of text.split(/[.!?;]+(?=\s|$)|\n+/).map((x) => x.trim()).filter(Boolean)) {
+    const words = s.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").toLowerCase().match(WORD_RE)?.filter((w) => !STOP.has(w)) ?? [];
+    if (words.length === 0) continue;
+    any = true;
+    // A "not" dropped or added turns his words around.
+    const from = vocab.some((m) => words.filter((w) => m.words.has(w)).length / words.length >= 0.8 && s.length <= 3 * m.len + 40 && NEG.test(s) === m.neg);
+    if (!from) return false;
+  }
+  return any;
+}
+
 function textOf(value) {
   if (typeof value === "string") return value;
   try { return JSON.stringify(value ?? ""); } catch { return ""; }
@@ -438,6 +470,12 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       return { verdict: "allow" };
 
     case "taintRead": {
+      // The transcript of a clean extension child (deep asked from Adam's clean chat) that has read
+      // no outside text holds only this guard's clean words: reading it marks nothing (2026-11-25).
+      const target = params.sessionKey ?? params.key;
+      if (tool === "sessions_history" && typeof target === "string" && view.cleanChild?.(target) && view.taintOf?.(target)?.tainted !== true) {
+        return { verdict: "allow" };
+      }
       const repo = params.repo ?? params.project;
       const full = named === "viewRead" ? ` (view: ${short(textOf(params.view ?? "?"), 20)})` : "";
       return { verdict: "allow", taint: `${tool}${full}${repo ? ` ${short(repo, 40)}` : ""}`, readRepo: typeof repo === "string" ? repo : undefined };
@@ -476,7 +514,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
         return card("Jorah wants to change its own rules", [why(state), `Files: ${short(paths.join(", "), 120)}`, `Adds: ${short(added, 300)}`], cardOpts);
       }
       if (kinds.includes("memory")) {
-        if (state.typedByOwner && coveredByWords(added, view.wordsOf(key))) return { verdict: "allow", reason: "Adam's own words" };
+        if (state.typedByOwner && (coveredByWords(added, view.wordsOf(key)) || ownChatWords(added, view.typedOf?.(key)))) return { verdict: "allow", reason: "Adam's own words" };
         return card("Jorah wants to save to memory", [why(state), `File: ${short(paths.join(", "), 80)}`, `Text: ${short(added, 320)}`], cardOpts);
       }
       return { verdict: "allow" };
@@ -485,7 +523,7 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     case "memoryWrite": {
       if (!state.tainted || readAction) return { verdict: "allow" };
       const added = addedText(tool, params);
-      if (state.typedByOwner && coveredByWords(added, view.wordsOf(key))) return { verdict: "allow", reason: "Adam's own words" };
+      if (state.typedByOwner && (coveredByWords(added, view.wordsOf(key)) || ownChatWords(added, view.typedOf?.(key)))) return { verdict: "allow", reason: "Adam's own words" };
       return card("Jorah wants to save to memory", [why(state), `Tool: ${tool}`, `Text: ${short(added, 320)}`], cardOpts);
     }
 
@@ -519,11 +557,13 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
       // permission, just make it work"). It has no shell and no writes (above), so its only ways out
       // are web_search and web_fetch, which this guard checks in its session as in main's: a child
       // is never Adam's own chat. A brief can't send data anywhere main couldn't send it itself. The
-      // brief's URLs are still checked, and the answer still marks this chat.
+      // brief's URLs are still checked, and the answer marks this chat.
       // An extension agent (deep since 2026-11-25) may write and use main's tools, but its session is
       // only as clean as this chat was when it asked (index.js marks it), so after outside text its
       // writes and sends get the same cards main's would. Adam: "just make it so that the main agent
-      // can elevate the issue to opus and he then tries to solve it".
+      // can elevate the issue to opus and he then tries to solve it". A clean one's answer marks this
+      // chat only once the child itself has read outside text (state.taintedChildOf); any other
+      // spawn's answer marks it at once.
       if (!acp && isHelperAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
       // background has a sandboxed shell with internet access, so a brief written after outside
       // text could carry data out past the URL rule. Show it to Adam first.

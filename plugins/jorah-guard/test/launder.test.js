@@ -453,7 +453,33 @@ test("extension: asked from Adam's clean chat, deep writes like main, without a 
   // main's own limits hold for deep: no shell, no 6-picture call.
   assert.equal(p.call("exec", { command: "ls" }, undefined, c), "block");
   assert.equal(p.call("view_image", { paths: Array.from({ length: 6 }, (_, i) => `${WS}/files/pictures/p${i}.jpg`) }, undefined, c), "block");
-  // The answer still marks main's chat ("worker result"), so main's own next memory write is a card.
+  // deep read nothing outside, so its answer leaves main's chat clean (Adam, 2026-11-25: the memory
+  // card after such a job was noise), even when main reads deep's session history.
+  assert.equal(p.call("sessions_history", { sessionKey: c.sessionKey }, { messages: [] }), "allow");
+  assert.equal(p.call("write", MEMO), "allow");
+  // Another chat's history is outside text as before.
+  p.call("sessions_history", { sessionKey: "agent:main:telegram:group:7" }, { messages: [] });
+  assert.equal(p.call("write", MEMO), "confirm");
+});
+
+test("extension: once deep reads outside text, main's chat counts as having read it too", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "use opus to price the servos in parts.md" });
+  spawnDeep(p, 46, "Price the servos in inventory/parts.md");
+  assert.equal(p.call("write", MEMO), "allow");
+  p.call("web_fetch", { url: SHOP }, { content: "MG996R 7.90 EUR" }, childCtx(46));
+  assert.equal(p.call("write", MEMO), "confirm");
+  assert.equal(p.call("write", RULES), "confirm");
+  // A new session of main's chat starts clean again.
+  const next = { ...TELEGRAM, sessionId: "s2" };
+  p.hook("before_agent_run", { prompt: "hi" }, next);
+  assert.equal(p.call("write", MEMO, undefined, next), "allow");
+});
+
+test("extension: a spawn whose result names no child marks main's chat", () => {
+  const p = loadPlugin();
+  p.hook("before_agent_run", { prompt: "use opus to tidy parts.md" });
+  p.call("sessions_spawn", { agentId: "deep", task: "Tidy inventory/parts.md" }, { details: { status: "error" } });
   assert.equal(p.call("write", MEMO), "confirm");
 });
 

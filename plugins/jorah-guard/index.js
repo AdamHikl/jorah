@@ -73,6 +73,7 @@ export default {
       hasSeen: (k, u) => state.hasSeen(k, u),
       typedSeen: (k, u) => state.typedSeen(k, u),
       wordsOf: (k) => state.wordsOf(k),
+      typedOf: (k) => state.typedOf(k),
       readRepos: (k) => state.readRepos(k),
       countAcp: (k) => state.countAcp(k),
       frozen: () => state.frozen(),
@@ -161,20 +162,24 @@ export default {
         const before = sessionState(view, ctx ?? {}, settings, run, matrix ?? {});
         const taintedBefore = before.tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
+        const spawnCall = event?.toolCallId ?? ctx?.toolCallId;
+        let cleanSpawn = false;
+        if (tool === "sessions_spawn" && matrix && isExtensionAgent(matrix, event?.params?.agentId) && d.verdict !== "block" && typeof spawnCall === "string") {
+          const pro = proactiveRun({ ctx: ctx ?? {}, run, matrix, parentOf: (k) => state.parentOf(k) });
+          cleanSpawn = !taintedBefore && !pro.proactive;
+          extensionSpawns.set(spawnCall, { clean: cleanSpawn, why: taintedBefore ? before.source : pro.why });
+          if (extensionSpawns.size > 200) extensionSpawns.delete(extensionSpawns.keys().next().value);
+        }
         // Record before the tool runs, so its output can never arrive in a session still marked clean.
-        if (d.taint && d.verdict !== "block") state.markTainted(ctx?.sessionKey, d.taint);
+        // A clean extension spawn is the exception: its answer marks this chat only once the child
+        // reads outside text (State.taintedChildOf), or now in after_tool_call if it isn't marked clean.
+        if (d.taint && d.verdict !== "block" && !cleanSpawn) state.markTainted(ctx?.sessionKey, d.taint);
         if (d.readRepo && d.verdict !== "block") state.markReadPrivateRepo(ctx?.sessionKey, d.readRepo);
         // What the model writes after outside text may come back in a later result (a page that
         // echoes a search, the shared browser): remember it so it is never taken as seen.
         // A brief to a consult agent is recorded whatever the taint: what the child finds may go up
         // to this chat (issue #13), so a URL main wrote in the brief must never come back as found.
         const brief = tool === "sessions_spawn" && !!matrix && isHelperAgent(matrix, event?.params?.agentId);
-        const spawnCall = event?.toolCallId ?? ctx?.toolCallId;
-        if (tool === "sessions_spawn" && matrix && isExtensionAgent(matrix, event?.params?.agentId) && d.verdict !== "block" && typeof spawnCall === "string") {
-          const pro = proactiveRun({ ctx: ctx ?? {}, run, matrix, parentOf: (k) => state.parentOf(k) });
-          extensionSpawns.set(spawnCall, { clean: !taintedBefore && !pro.proactive, why: taintedBefore ? before.source : pro.why });
-          if (extensionSpawns.size > 200) extensionSpawns.delete(extensionSpawns.keys().next().value);
-        }
         if ((taintedBefore || brief) && d.verdict !== "block") state.addWritten(ctx?.sessionKey, writtenTokens(event?.params ?? {}));
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
@@ -232,9 +237,19 @@ export default {
           if (asked) {
             extensionSpawns.delete(callId);
             if (asked.clean && !refused) state.markCleanChild(child, key);
-            else state.markTainted(child, `asked from a chat that wasn't clean: ${asked.why}`);
+            else {
+              state.markTainted(child, `asked from a chat that wasn't clean: ${asked.why}`);
+              if (asked.clean) state.markTainted(key, "worker result");
+            }
+          } else if (matrix && isExtensionAgent(matrix, event?.params?.agentId)) {
+            // No record of how clean the asking chat was: its answer marks this chat, as before.
+            state.markTainted(key, "worker result");
           }
           if (matrix && isHelperAgent(matrix, event?.params?.agentId)) state.addSeen(key, state.ownOutsideSeen(child).filter((u) => upHygienic(u, matrix)));
+        } else if (event?.toolName === "sessions_spawn" && typeof callId === "string" && extensionSpawns.get(callId)?.clean) {
+          // A clean spawn whose result names no child: whatever it started can't be tracked.
+          extensionSpawns.delete(callId);
+          state.markTainted(key, "worker result");
         }
       } catch (e) {
         api.logger.warn(`jorah-guard: after_tool_call: ${e?.message}`);
@@ -261,6 +276,7 @@ export default {
         // Jorah's own earlier words.
         const prompt = ownTypedText(rawPrompt);
         state.setWords(key, prompt);
+        state.addTyped(key, prompt);
         state.addSeen(key, findUrls(prompt).flatMap(seenForms), "adam");
       } catch (e) {
         api.logger.warn(`jorah-guard: before_agent_run: ${e?.message}`);

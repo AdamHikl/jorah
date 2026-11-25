@@ -21,6 +21,7 @@ export class GuardState {
     this.seen = new Map(); // sessionKey -> Map(normalised URL -> "adam" | "outside")
     this.written = new Map(); // sessionKey -> { tokens: Set, full: boolean }: what the model wrote after outside text
     this.words = new Map(); // sessionKey -> { text, at }
+    this.typed = new Map(); // sessionKey -> Adam's own typed messages in this session, newest last
     this.acp = new Map(); // sessionKey -> [timestamps]
     this.current = new Map(); // sessionKey -> sessionId last seen in a hook
     try {
@@ -72,7 +73,24 @@ export class GuardState {
       if (p?.tainted) return { tainted: true, source: `parent ${parent}: ${p.source}`, at: p.at };
       parent = this.data.parents[parent];
     }
-    return own ?? null;
+    return this.taintedChildOf(sessionKey) ?? own ?? null;
+  }
+
+  // A clean extension child's answer comes back into the chat that asked it, so that chat reads
+  // outside text once the child does, and not before (Adam, 2026-11-25: memory cards after a deep
+  // job that read nothing outside were noise). Only children asked in the chat's current session
+  // count; a mark without a session id counts always.
+  taintedChildOf(parentKey) {
+    const marks = this.data.cleanChildren;
+    if (!marks) return null;
+    const cur = this.current.get(parentKey) ?? this.data.sessions[parentKey]?.sessionId;
+    for (const [child, m] of Object.entries(marks)) {
+      if (m?.parent !== parentKey) continue;
+      if (cur !== undefined && m.parentSession !== undefined && m.parentSession !== cur) continue;
+      const c = this.data.sessions[child];
+      if (c?.tainted) return { tainted: true, source: `worker result: ${String(c.source).slice(0, 80)}`, at: c.at };
+    }
+    return null;
   }
 
   // A chat starts a new session on the daily and idle resets (a new sessionId, OpenClaw's
@@ -96,6 +114,7 @@ export class GuardState {
     this.seen.delete(sessionKey);
     this.written.delete(sessionKey);
     this.words.delete(sessionKey);
+    this.typed.delete(sessionKey);
     this.acp.delete(sessionKey);
     if (this.data.sessions[sessionKey]) {
       delete this.data.sessions[sessionKey];
@@ -154,7 +173,7 @@ export class GuardState {
   markCleanChild(childKey, parentKey) {
     if (!childKey || !parentKey) return;
     const marks = (this.data.cleanChildren ??= {});
-    marks[childKey] = { parent: parentKey, at: this.now() };
+    marks[childKey] = { parent: parentKey, parentSession: this.current.get(parentKey) ?? this.data.sessions[parentKey]?.sessionId, at: this.now() };
     const keys = Object.keys(marks);
     for (const k of keys.slice(0, Math.max(0, keys.length - 1000))) delete marks[k];
     this.persist();
@@ -224,6 +243,19 @@ export class GuardState {
 
   wordsOf(sessionKey) {
     return this.words.get(sessionKey)?.text ?? "";
+  }
+
+  // Kept in memory only: after a Gateway restart the chat's earlier words are gone (stricter).
+  addTyped(sessionKey, text) {
+    const t = String(text ?? "").trim();
+    if (!sessionKey || t.length === 0) return;
+    const list = this.typed.get(sessionKey) ?? [];
+    list.push(t.slice(0, 4000));
+    this.typed.set(sessionKey, list.slice(-30));
+  }
+
+  typedOf(sessionKey) {
+    return this.typed.get(sessionKey) ?? [];
   }
 
   // Counts ACP spawns in the last hour, including this one.

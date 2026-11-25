@@ -225,4 +225,4 @@ Acceptance (Telegram or the HUD main chat, a fresh `/new`):
 
 Source and tests (`just check`, 2026-11-24). PC deploy and Gateway restart on 2026-11-25
 (`docs/evidence/project-notes/deploy-2026-11-25.md`). Pictures cap and wrapped YAML deployed the same day (`yamlfix-2026-11-25.md`). Not yet: the
-acceptance above, all three lists. deep's pictures deployed and restarted the same day (`deep-pictures-2026-11-25.md`).
+acceptance above, all three lists. deep's pictures deployed and restarted the same day (`deep-pictures-2026-11-25.md`). deep as an extension of main deployed and restarted the same day (`deep-extension-2026-11-25.md`).

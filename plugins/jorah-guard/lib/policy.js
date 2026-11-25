@@ -296,6 +296,18 @@ export function resultSeeds({ tool, params = {}, result, matrix, wrote = () => f
  * @returns {{ verdict: "allow"|"block"|"confirm", reason?: string, title?: string, description?: string,
  *             taint?: string, readRepo?: string }}
  */
+export const MAX_IMAGES_PER_CALL = 5;
+
+// The pictures a view_image call names: its `path` and the distinct strings in `paths`, as
+// OpenClaw's image tool reads them (2026.11.6, src/agents/tools/image-tool.ts).
+export function imageCount(params) {
+  const all = [
+    ...(typeof params?.path === "string" ? [params.path] : []),
+    ...(Array.isArray(params?.paths) ? params.paths.filter((p) => typeof p === "string") : []),
+  ];
+  return new Set(all.map((p) => p.trim()).filter(Boolean)).size;
+}
+
 export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, settings = {}, run = {} }) {
   if (!matrix || typeof matrix !== "object") return { verdict: "block", reason: "permission matrix unreadable" };
   if (typeof tool !== "string" || tool.length === 0) return { verdict: "block", reason: "no tool name" };
@@ -317,6 +329,15 @@ export function decide({ tool, params = {}, ctx = {}, derivedPaths, matrix, view
     if (w.malformed) return { verdict: "block", reason: w.malformed };
     const d = decide({ tool: w.inner, params: w.args, ctx, matrix, view, settings, run });
     return d.verdict === "block" ? d : { verdict: "allow", reason: `wrapper for ${w.inner}` };
+  }
+
+  // Pictures per view_image call (2026-11-25): claude-cli hands each result to the Gateway as one
+  // JSON line of at most 8 MB, and 14 pictures broke that, failing the whole turn. Five fit.
+  if (tool === "view_image") {
+    const n = imageCount(params);
+    if (n > MAX_IMAGES_PER_CALL) {
+      return { verdict: "block", reason: `view_image takes at most ${MAX_IMAGES_PER_CALL} pictures a call and this one has ${n}. Look at them in batches of ${MAX_IMAGES_PER_CALL} or fewer, note what each shows, then go on with the next batch.` };
+    }
   }
 
   const named = classify(matrix, tool);

@@ -68,3 +68,81 @@ test("yaml: every contract example and template reads as the contract's Python l
   }
   assert.ok(compared >= 10, `only ${compared} files compared`);
 });
+
+// Wrapped scalars: PyYAML (the runner's dump, and runs that write YAML with it) wraps long plain
+// and quoted strings over several lines. The plugin must read every way it wraps them, or a
+// project's questions show as unknown (jorah-arm's questions.yaml, 2026-11-25).
+const WRAP = `
+import json, sys, yaml
+sys.path.insert(0, sys.argv[1])
+from jorah_projects import fsio
+words = "Decides safety rules, what v1 builds and leaves out, and whether anything is reachable from the internet."
+strings = [
+    words * 3,
+    'You want an arm "that you can then control". Who may move the real arm in v1, from where, and under what conditions?',
+    "Jorah's proposal for every option: below 12 V DC from a CE-marked adapter, no mains wiring #1, slow moves. " * 2,
+    "costs 5 - 10 EUR each " * 8,
+    "  leading and trailing spaces  " * 4,
+    "tab\\there and a backslash \\\\ and a quote \\" here " * 4,
+    "Unicode: Zürich, €12, naïve café, 日本語, emoji 🤖 " * 4,
+    "control \\x07 bell and \\x1b escape and \\u2028 separator " * 3,
+    "x" * 150 + " short",
+    "first line\\nsecond line that is long enough to need a wrap if it were plain " * 2,
+    "a" + " " * 30 + "b " * 60,
+    "- starts like an item, then goes on for long enough that PyYAML has to wrap it somewhere",
+]
+doc = {"questions": [{"id": f"Q-{i:04d}", "question": s, "why_it_matters": s[::-1],
+                      "options": [{"key": "A", "consequence": s}]} for i, s in enumerate(strings)]}
+out = []
+for width in (20, 40, 80, 100):
+    for name, dumper in (("runner", fsio.Dumper), ("safe", yaml.SafeDumper)):
+        for style in (None, "'", '"'):
+            if style:
+                class D(dumper):
+                    pass
+                D.add_representer(str, lambda d, v, st=style: d.represent_scalar("tag:yaml.org,2002:str", v, style=st))
+            else:
+                D = dumper
+            text = yaml.dump(doc, Dumper=D, sort_keys=False, allow_unicode=True, default_flow_style=False, width=width)
+            out.append({"case": f"{name} width={width} style={style}", "text": text, "value": yaml.load(text, Loader=fsio.Loader)})
+print(json.dumps(out))
+`;
+
+test("yaml: long strings PyYAML wraps over several lines read as PyYAML reads them", (t) => {
+  let cases;
+  try {
+    cases = JSON.parse(execFileSync("python3", ["-I", "-c", WRAP, join(repo, "services", "jorah-projects")], { stdio: ["ignore", "pipe", "pipe"] }).toString());
+  } catch {
+    return t.skip("python3 with PyYAML isn't available");
+  }
+  let wrapped = 0;
+  for (const c of cases) {
+    if (/\n {4,}\S/.test(c.text)) wrapped++;
+    assert.deepEqual(parseYaml(c.text), c.value, `${c.case}:\n${c.text}`);
+  }
+  assert.ok(wrapped >= 12, `only ${wrapped} dumps wrapped a line`);
+});
+
+test("yaml: jorah-arm's questions.yaml as it was on 2026-11-25", () => {
+  const text = [
+    "questions:",
+    "- id: Q-0005",
+    "  question: You want an arm \"that you can then control\". Who may move the real arm in v1, from where,",
+    "    and under what conditions?",
+    "  why_it_matters: 'Decides safety rules, what v1 builds and leaves out, and whether anything is reachable",
+    "    from the internet. A hobby arm can pinch fingers. Jorah''s proposal",
+    "",
+    "    for every option: below 12 V DC.'",
+    "  wrapped_double: \"one \\",
+    "    \\ two\\tthree",
+    "    four\" # a comment after it",
+    "  status: open",
+    "",
+  ].join("\n");
+  const q = parseYaml(text).questions[0];
+  assert.equal(q.question, "You want an arm \"that you can then control\". Who may move the real arm in v1, from where, and under what conditions?");
+  assert.equal(q.why_it_matters, "Decides safety rules, what v1 builds and leaves out, and whether anything is reachable from the internet. A hobby arm can pinch fingers. Jorah's proposal\nfor every option: below 12 V DC.");
+  assert.equal(q.wrapped_double, "one  two\tthree four");
+  assert.equal(q.status, "open");
+  for (const bad of ["a: 'open\nb: 1\n", "a:\n  b: \"x\n  c\n", "a: 'x\n  y' z\n"]) assert.throws(() => parseYaml(bad), undefined, bad);
+});

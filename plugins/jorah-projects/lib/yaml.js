@@ -1,10 +1,11 @@
 // A small YAML reader for the project folder's files (docs/plan/11-project-mode.md section 3), so
 // the plugin needs no install. It reads the subset those files use: block mappings and sequences,
 // compact mappings inside sequences, flow [..] and {..} (also over several lines), plain, single-
-// and double-quoted scalars, block scalars (| and >, with chomping), comments, null, booleans and
-// numbers. Dates and times stay strings. Anything else (anchors, aliases, tags, complex keys,
-// several documents, duplicate keys, bad indentation) throws, so the caller shows the file as
-// unknown instead of guessing. Flow mappings follow YAML: `{ a: x, y }` gives { a: "x", y: null }.
+// and double-quoted scalars (also wrapped over several lines, as PyYAML writes long ones), block
+// scalars (| and >, with chomping), comments, null, booleans and numbers. Dates and times stay
+// strings. Anything else (anchors, aliases, tags, complex keys, several documents, duplicate keys,
+// bad indentation) throws, so the caller shows the file as unknown instead of guessing. Flow
+// mappings follow YAML: `{ a: x, y }` gives { a: "x", y: null }.
 
 export class YamlError extends Error {
   constructor(line, why) {
@@ -58,38 +59,67 @@ function plainValue(raw, line) {
   return s;
 }
 
-function unescapeDouble(body, line) {
-  return body.replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/g, (_, e) => {
-    switch (e[0]) {
-      case "n": return "\n";
-      case "t": return "\t";
-      case "r": return "\r";
-      case "0": return "\0";
-      case "\\": return "\\";
-      case '"': return '"';
-      case "/": return "/";
-      case " ": return " ";
-      case "u": case "x": return String.fromCharCode(parseInt(e.slice(1), 16));
-      default: throw new YamlError(line, `unknown escape \\${e}`);
-    }
-  });
+const ESCAPES = {
+  "0": "\0", a: "\x07", b: "\b", t: "\t", "\t": "\t", n: "\n", v: "\v", f: "\f", r: "\r", e: "\x1b",
+  " ": " ", '"': '"', "/": "/", "\\": "\\", N: "\x85", _: "\xa0", L: " ", P: " ",
+};
+
+// One escape at s[j] (a backslash) in a double-quoted scalar; returns [text, length].
+function readEscape(s, j, line) {
+  const e = s[j + 1];
+  const hex = { x: 2, u: 4, U: 8 }[e];
+  if (hex) {
+    const h = s.slice(j + 2, j + 2 + hex);
+    if (!new RegExp(`^[0-9a-fA-F]{${hex}}$`).test(h)) throw new YamlError(line, `bad escape \\${e}${h}`);
+    return [String.fromCodePoint(parseInt(h, 16)), 2 + hex];
+  }
+  if (e !== undefined && Object.hasOwn(ESCAPES, e)) return [ESCAPES[e], 2];
+  throw new YamlError(line, `unknown escape \\${e ?? ""}`);
 }
 
-// A quoted scalar starting at s[i]; returns [value, index after the closing quote].
-function readQuoted(s, i, line) {
+// A quoted scalar starting at s[i]; returns [value, index after the closing quote], or null when
+// `open` is set and the quote doesn't close in s. s may hold several lines joined with "\n" (a
+// scalar PyYAML wrapped): each line break folds as YAML says (one break is a space, each blank line
+// a newline, the whitespace around the break goes), and in double quotes a backslash before the
+// break joins the lines with nothing between them.
+function readQuoted(s, i, line, open = false) {
   const q = s[i];
   let j = i + 1;
   let out = "";
+  let kept = 0; // out[0, kept) is escaped or folded text that a line break mustn't trim
   while (j < s.length) {
     const c = s[j];
-    if (q === '"' && c === "\\") { out += c + s[j + 1]; j += 2; continue; }
+    if (c === "\n" || (q === '"' && c === "\\" && s[j + 1] === "\n")) {
+      const escaped = c === "\\";
+      if (!escaped) out = out.slice(0, kept) + out.slice(kept).replace(/[ \t]+$/, "");
+      j += escaped ? 2 : 1;
+      let breaks = 0;
+      for (;;) {
+        while (s[j] === " " || s[j] === "\t") j++;
+        if (s[j] !== "\n") break;
+        breaks++;
+        j++;
+      }
+      out += breaks ? "\n".repeat(breaks) : escaped ? "" : " ";
+      kept = out.length;
+      continue;
+    }
+    if (q === '"' && c === "\\") {
+      if (j + 1 >= s.length) break; // a backslash ending the line escapes the line break after it
+      const [t, n] = readEscape(s, j, line);
+      out += t;
+      kept = out.length;
+      j += n;
+      continue;
+    }
     if (c === q) {
-      if (q === "'" && s[j + 1] === "'") { out += "'"; j += 2; continue; }
-      return [q === '"' ? unescapeDouble(out, line) : out, j + 1];
+      if (q === "'" && s[j + 1] === "'") { out += "'"; kept = out.length; j += 2; continue; }
+      return [out, j + 1];
     }
     out += c;
     j++;
   }
+  if (open) return null;
   throw new YamlError(line, "unterminated quoted string");
 }
 
@@ -281,9 +311,18 @@ export function parseYaml(text) {
       return parseFlow(s, line);
     }
     if (rest[0] === '"' || rest[0] === "'") {
-      const [v, j] = readQuoted(rest, 0, line);
-      if (rest.slice(j).trim() !== "") throw new YamlError(line, "text after a quoted string");
-      return v;
+      // A quoted scalar may go on over more-indented (or blank) lines, as PyYAML wraps long ones.
+      let s = rest;
+      let r;
+      while (!(r = readQuoted(s, 0, line, true))) {
+        if (pos >= lines.length || (lines[pos].trim() !== "" && indentOf(lines[pos]) <= ownIndent)) {
+          throw new YamlError(line, "unterminated quoted string");
+        }
+        s += `\n${lines[pos]}`;
+        pos++;
+      }
+      if (stripComment(s.slice(r[1])).trim() !== "") throw new YamlError(line, "text after a quoted string");
+      return r[0];
     }
     // Plain scalar, possibly continued on more-indented lines that aren't keys or items.
     let s = rest;
@@ -294,14 +333,15 @@ export function parseYaml(text) {
         // A blank line inside a plain scalar folds to a newline only if more text follows.
         let k = pos;
         while (k < lines.length && stripComment(lines[k]).trim() === "") k++;
-        if (k < lines.length && indentOf(lines[k]) > ownIndent && !splitKey(stripComment(lines[k]).trim(), k) && !isSeqItem(stripComment(lines[k]).trim())) {
+        if (k < lines.length && indentOf(lines[k]) > ownIndent && !splitKey(stripComment(lines[k]).trim(), k)) {
           s += "\n";
           pos = k;
           continue;
         }
         break;
       }
-      if (indentOf(l) <= ownIndent || splitKey(c, pos) || isSeqItem(c)) break;
+      // A more-indented line goes on the scalar, "- " at its start too (YAML reads it so).
+      if (indentOf(l) <= ownIndent || splitKey(c, pos)) break;
       s += s.endsWith("\n") ? c : ` ${c}`;
       pos++;
     }

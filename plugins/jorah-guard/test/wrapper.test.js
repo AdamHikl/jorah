@@ -140,3 +140,20 @@ test("plugin: links in a wrapped outside reader's result are seen, its echoed ar
   assert.match(log, /"tool":"dispatch_action","verdict":"allow","reason":"wrapper for web_search"/);
   assert.ok(!log.includes("JORAH-CANARY"));
 });
+
+test("view_image takes at most 5 pictures a call, directly or through either wrapper", () => {
+  const { run } = fresh();
+  const pics = (n) => Array.from({ length: n }, (_, i) => `/home/jorah/workspace/inbox/pic-${i}.jpg`);
+  assert.equal(run("view_image", { paths: pics(5) }).verdict, "allow");
+  assert.equal(run("view_image", { path: "/home/jorah/workspace/inbox/one.jpg" }).verdict, "allow");
+  assert.equal(run("view_image", { paths: [...pics(5), ...pics(5)] }).verdict, "allow"); // repeats count once
+  for (const params of [{ paths: pics(6) }, { path: "/x/a.jpg", paths: pics(5) }, { paths: pics(14), maxImages: 20 }]) {
+    const d = run("view_image", params);
+    assert.equal(d.verdict, "block", JSON.stringify(params));
+    assert.match(d.reason, /at most 5 pictures a call.*batches of 5 or fewer/);
+  }
+  for (const w of WRAPPERS) {
+    assert.equal(run(w, { id: "view_image", args: { paths: pics(14) } }).verdict, "block", w);
+    assert.equal(run(w, { id: "openclaw:core:view_image", input: { paths: pics(3) } }).verdict, "allow", w);
+  }
+});

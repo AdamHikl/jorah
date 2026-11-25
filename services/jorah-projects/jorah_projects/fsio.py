@@ -135,7 +135,11 @@ def parse_yaml(data):
 
 
 def dump_yaml(value):
-    return yaml.dump(value, Dumper=Dumper, sort_keys=False, allow_unicode=True, default_flow_style=False, width=100).encode("utf-8")
+    # One line per scalar: a wrapped string is valid YAML, but plain readers (the plugin's) and
+    # people reading a diff handle one line better.
+    return yaml.dump(
+        value, Dumper=Dumper, sort_keys=False, allow_unicode=True, default_flow_style=False, width=float("inf")
+    ).encode("utf-8")
 
 
 def json_safe(value):

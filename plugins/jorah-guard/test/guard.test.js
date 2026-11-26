@@ -317,6 +317,47 @@ test("plugin: /jorah-freeze only from the owner, and it blocks until the flag is
   assert.match((await p.commands["jorah-status"].handler({ sessionKey: "agent:main:main" })).text, /Frozen: yes/);
 });
 
+// Adam's paired Mac HUD (2026-11-26): careful mode on and /jorah-today work there; careful off and
+// freeze stay on Telegram. Voice and other webchat callers don't count.
+const HUD_CMD = { channel: "webchat", isAuthorizedSender: true, senderIsOwner: false, sessionKey: "agent:main:main",
+  gatewayClientScopes: ["operator.read", "operator.write", "operator.approvals"], commandBody: "/jorah-careful" };
+
+test("plugin: from the HUD, careful mode can be turned on but not off; freeze stays on Telegram", async () => {
+  const p = loadPlugin();
+  const careful = (ctx, args = "") => p.commands["jorah-careful"].handler({ ...ctx, args });
+  const on = await careful(HUD_CMD);
+  assert.match(on.text, /Careful mode on until/);
+  assert.match(on.text, /off on Telegram ends it/);
+  assert.ok(existsSync(join(p.dir, "CAREFUL")));
+  assert.match(readFileSync(join(p.dir, "decisions.jsonl"), "utf8"), /typed in the HUD/);
+  assert.match((await careful(HUD_CMD, "off")).text, /only from Telegram/);
+  assert.ok(existsSync(join(p.dir, "CAREFUL")), "the HUD can't lift it");
+  assert.match((await p.commands["jorah-freeze"].handler(HUD_CMD)).text, /only from Telegram/);
+  assert.ok(!existsSync(join(p.dir, "FROZEN")));
+  assert.match((await careful({ senderIsOwner: true, channel: "telegram", senderId: "owner-id" }, "off")).text, /Careful mode off/);
+  assert.ok(!existsSync(join(p.dir, "CAREFUL")));
+});
+
+test("plugin: /jorah-today answers in the HUD; voice, read-only clients and other channels are refused", async () => {
+  const p = loadPlugin();
+  const today = (ctx) => p.commands["jorah-today"].handler(ctx);
+  assert.doesNotMatch((await today(HUD_CMD)).text, /Only Adam/);
+  const refused = [
+    { ...HUD_CMD, commandBody: "[Spoken turn.]\n\n/jorah-today" },
+    { ...HUD_CMD, gatewayClientScopes: ["operator.read"] },
+    { ...HUD_CMD, gatewayClientScopes: undefined },
+    { ...HUD_CMD, isAuthorizedSender: false },
+    { ...HUD_CMD, channel: "voice" },
+    { ...HUD_CMD, channel: "telegram" },
+    { senderIsOwner: false, channel: "telegram", senderId: "someone" },
+  ];
+  for (const ctx of refused) {
+    assert.match((await today(ctx)).text, /Only Adam/, JSON.stringify(ctx));
+    assert.match((await p.commands["jorah-careful"].handler({ ...ctx, args: "" })).text, /Only Adam/, JSON.stringify(ctx));
+  }
+  assert.ok(!existsSync(join(p.dir, "CAREFUL")));
+});
+
 // Bypasses found in the P5.3 self-review, each closed and kept closed.
 test("review: after outside text, briefs to background (which has a shell with internet) need a confirmation", () => {
   const { run } = fresh();

@@ -66,9 +66,16 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
 - Jorah's tool hooks see these turns as Adam's (`senderIsOwner: true`, ADR 0011). Jorah's own
   rules (`workspace/AGENTS.md`) are unchanged by this.
 - Plugin commands don't count the HUD as Adam. OpenClaw treats a command's sender as owner only
-  with `operator.admin` or a match in `commands.ownerAllowFrom`, and the HUD has neither, so
-  `/jorah-careful`, `/jorah-freeze` and `/jorah-today` answer "Only Adam…" from the HUD, typed by
-  Adam or through drive mode (seen 2026-11-26, `docs/evidence/hud-drive-2026-11-26/`).
+  with `operator.admin` or a match in `commands.ownerAllowFrom`, and the HUD has neither, so the
+  guard's commands answered "Only Adam…" from the HUD (seen 2026-11-26,
+  `docs/evidence/hud-drive-2026-11-26/`). Adam then chose (2026-11-26, "Yes, do it here") to let
+  the two safe-direction ones work there: `/jorah-careful` (on only) and `/jorah-today`. The guard
+  recognises the HUD by channel `webchat`, an authorised sender and the `operator.write` scope in
+  the command's `gatewayClientScopes` (`typedInOwnApp` in `plugins/jorah-guard/lib/policy.js`).
+  So drive mode can turn careful mode on and read the day's count too. `/jorah-careful off` and
+  `/jorah-freeze` stay on Telegram, so a line typed in the HUD can't lift careful mode. Voice can't
+  run either: its words arrive after "[Spoken turn.", and OpenClaw runs only messages that start
+  with "/".
 
 ## If ADR 0011 option B or C is ever built
 

@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { summarizeDay, readTail } from "./lib/today.js";
-import { decide, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, viewBackstop } from "./lib/policy.js";
+import { decide, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -335,7 +335,9 @@ export default {
       description: "Freeze Jorah: every action beyond reading is blocked until Adam clears it at a terminal.",
       requireAuth: true,
       handler: async (ctx) => {
-        if (ctx?.senderIsOwner !== true) return { text: "Only Adam can freeze Jorah." };
+        if (ctx?.senderIsOwner !== true) {
+          return { text: typedInOwnApp(ctx) ? "Freezing works only from Telegram." : "Only Adam can freeze Jorah." };
+        }
         state.freeze(ctx?.channel ?? "command");
         log({ session: ctx?.sessionKey ?? null, tool: "/jorah-freeze", verdict: "freeze" });
         return { text: "Frozen. Jorah can still read and answer, nothing more. Clear it at a terminal with scripts/pc/guard-unfreeze.sh." };
@@ -349,17 +351,23 @@ export default {
       acceptsArgs: true,
       requireAuth: true,
       handler: async (ctx) => {
-        if (ctx?.senderIsOwner !== true) return { text: "Only Adam can change careful mode." };
+        // Turning it on only tightens, so Adam's paired HUD may do it too; turning it off stays on
+        // Telegram (2026-11-26), so a line typed in the HUD (or by drive mode) can't lift it.
+        const owner = ctx?.senderIsOwner === true;
+        const inApp = !owner && typedInOwnApp(ctx);
+        if (!owner && !inApp) return { text: "Only Adam can change careful mode." };
         const arg = String(ctx?.args ?? "").trim().toLowerCase();
         if (arg === "off") {
+          if (!owner) return { text: "Careful mode can be turned off only from Telegram: /jorah-careful off." };
           state.clearCareful();
           log({ session: ctx?.sessionKey ?? null, tool: "/jorah-careful", verdict: "careful-off" });
           return { text: "Careful mode off. Jorah's usual rules apply again." };
         }
         if (arg !== "" && arg !== "on") return { text: "Use /jorah-careful to turn it on for 24 hours, or /jorah-careful off." };
         const until = state.setCareful(ctx?.channel ?? "command");
-        log({ session: ctx?.sessionKey ?? null, tool: "/jorah-careful", verdict: "careful" });
-        return { text: `Careful mode on until ${localTime(until)}. Every write Jorah would make alone (files, memory, skills, schedules, records, coding and background jobs) asks you first. Reading, searching and asking deep stay free. /jorah-careful off ends it.` };
+        log({ session: ctx?.sessionKey ?? null, tool: "/jorah-careful", verdict: "careful", reason: inApp ? "typed in the HUD" : undefined });
+        const off = inApp ? "/jorah-careful off on Telegram ends it." : "/jorah-careful off ends it.";
+        return { text: `Careful mode on until ${localTime(until)}. Every write Jorah would make alone (files, memory, skills, schedules, records, coding and background jobs) asks you first. Reading, searching and asking deep stay free. ${off}` };
       },
     });
 
@@ -368,7 +376,8 @@ export default {
       description: "What Jorah did alone today, cards shown and calls blocked, from the guard's log.",
       requireAuth: true,
       handler: async (ctx) => {
-        if (ctx?.senderIsOwner !== true) return { text: "Only Adam can see this." };
+        // Read-only, so Adam's paired HUD may ask too (2026-11-26); voice can't (typedInOwnApp).
+        if (ctx?.senderIsOwner !== true && !typedInOwnApp(ctx)) return { text: "Only Adam can see this." };
         try {
           return { text: summarizeDay(readTail(join(stateDir, "decisions.jsonl")), { matrix }) };
         } catch (e) {

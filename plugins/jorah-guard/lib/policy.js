@@ -52,6 +52,20 @@ export function typedByOwner(r) {
   return r.channel === undefined && r.senderId === undefined;
 }
 
+// A plugin command typed in Adam's paired Mac HUD or Control UI (2026-11-26, ADR 0012). OpenClaw
+// counts a command's sender as owner only with operator.admin or commands.ownerAllowFrom, and the
+// HUD pairs with operator.read, .write and .approvals, so senderIsOwner is false there. A chat.send
+// command carries the client's scopes in gatewayClientScopes (OpenClaw's own device-pair and
+// talk-voice commands read the same field). Spoken turns can't get here: jorah-voice and
+// jorah-phone put "[Spoken turn." before the words, and OpenClaw runs only messages that start
+// with "/". Used only for the safe-direction commands: careful mode on, and /jorah-today.
+export function typedInOwnApp(c) {
+  if (c?.channel !== "webchat" || c?.isAuthorizedSender !== true) return false;
+  const scopes = c?.gatewayClientScopes;
+  if (!Array.isArray(scopes) || !scopes.includes("operator.write")) return false;
+  return !String(c?.commandBody ?? "").includes("[Spoken turn.");
+}
+
 export function speaker(ctx = {}, settings = {}, run = {}) {
   const r = ctx.requester ?? null;
   const webchatRaw = r?.channel === "webchat";

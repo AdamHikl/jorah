@@ -26,6 +26,18 @@ struct JorahHUDApp: App {
             Text(menuStatus)
             Divider()
             Button("Show or hide the HUD  (⌃⌥J)") { HotKey.toggle() }
+            if !model.isDemo {
+                Divider()
+                // Drive mode (ADR 0012): only this click turns it on.
+                if let until = model.driveUntil {
+                    Text("Claude Code is driving until \(until.hudTime)")
+                    Button("Stop Claude Code driving") { model.stopDrive(reason: "you clicked Stop") }
+                } else {
+                    Button("Let Claude Code drive (30 min)") { model.armDrive() }
+                }
+                if let error = model.driveError { Text(error) }
+            }
+            Divider()
             Button("Quit Jorah HUD") { NSApp.terminate(nil) }
         } label: {
             Image(systemName: model.phase == .connected ? "circle.hexagongrid.fill" : "circle.hexagongrid")
@@ -75,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { AppState.model.stopDrive(reason: "the HUD quit") }
+    }
 }
 
 /// A system-wide shortcut, Control-Option-J, to show or hide the HUD. Carbon hot keys need no permission.

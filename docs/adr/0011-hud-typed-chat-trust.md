@@ -116,4 +116,5 @@ which is why C would work if OpenClaw exposed it.
 ## Related
 
 ADR 0005 (native HUD), ADR 0007 (HUD answers cards), ADR 0010 (voice confirms cards, being built
-in its own session on `feat/voice-confirm`).
+in its own session on `feat/voice-confirm`). ADR 0012 (drive mode): a command line Adam arms in the HUD sends through
+the HUD's device; building option B or C needs ADR 0012's condition first.

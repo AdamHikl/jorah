@@ -10,6 +10,8 @@ enum Theme {
     static let amber = Color(red: 1.0, green: 0.74, blue: 0.30)
     static let red = Color(red: 1.0, green: 0.45, blue: 0.45)
     static let green = Color(red: 0.47, green: 0.95, blue: 0.68)
+    /// Drive mode only (ADR 0012): a colour nothing else uses.
+    static let orange = Color(red: 1.0, green: 0.55, blue: 0.18)
     static let text = Color(white: 0.93)
     static let dim = Color(white: 0.66)
 

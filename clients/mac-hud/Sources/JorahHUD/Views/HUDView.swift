@@ -8,6 +8,7 @@ struct HUDView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 12) {
+            if model.driveUntil != nil { DriveBanner() }
             TopBar()
             HStack(spacing: 12) {
                 ConversationView()
@@ -713,6 +714,11 @@ struct ChatLineView: View {
                 if line.streaming {
                     Text("LIVE").font(Theme.label(8)).foregroundStyle(Theme.amber)
                 }
+                if line.viaDrive {
+                    Text("⌨ CLAUDE CODE").font(Theme.label(8)).tracking(1.0).foregroundStyle(Theme.orange)
+                        .help("Claude Code typed this through drive mode, not Adam")
+                        .accessibilityLabel("Typed by Claude Code")
+                }
             }
             if !line.images.isEmpty {
                 HStack(spacing: 6) {
@@ -745,6 +751,7 @@ struct ChatLineView: View {
             var header = ChatLineView(line: line).who
             if let at = line.at { header += " · " + at.hudTime }
             if line.streaming { header += " (still writing)" }
+            if line.viaDrive { header += " (typed by Claude Code)" }
             var body = line.text
             if !line.images.isEmpty {
                 let pictures = line.images.count == 1 ? "[1 picture]" : "[\(line.images.count) pictures]"
@@ -769,6 +776,36 @@ struct ChatLineView: View {
         case .assistant: return Theme.accent
         case .notice: return Theme.amber
         }
+    }
+}
+
+// MARK: - Drive mode
+
+/// Shown whenever drive mode is on (ADR 0012), above everything else, with its own Stop.
+struct DriveBanner: View {
+    @Environment(HUDModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("⌨").font(.system(size: 15))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CLAUDE CODE IS DRIVING").font(Theme.label(10)).tracking(1.4)
+                Text("It can type here as you, read this chat and deny cards until \(model.driveUntil?.hudTime ?? "now"). It can't allow cards, pair, pause or resume the PC, or change the model.")
+                    .font(.system(size: 11))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("STOP") { model.stopDrive(reason: "you clicked Stop") }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.red)
+                .help("End drive mode now. The command line is refused from then on.")
+        }
+        .foregroundStyle(Color.black)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Theme.orange)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Claude Code is driving the HUD until \(model.driveUntil?.hudTime ?? "now")")
     }
 }
 

@@ -13,6 +13,8 @@ struct ChatLine: Identifiable, Equatable {
     var streaming = false
     /// Thumbnails of pictures sent from this HUD (history has none: it shows `pictures` instead).
     var images: [LineImage] = []
+    /// Typed by Claude Code through drive mode (ADR 0012), not by Adam's hands: shown with ⌨.
+    var viaDrive = false
 }
 
 /// A thumbnail on a transcript line. Equal by id, so a redraw doesn't compare pixels.
@@ -348,6 +350,15 @@ final class HUDModel {
     private var approvalsRefresh: Task<Void, Never>?
     private var approvalsPoll: Task<Void, Never>?
 
+    // MARK: Drive mode (ADR 0012), see HUDModel+Drive.swift
+    /// When drive mode ends; nil while it's off. Only a click in the HUD menu sets it.
+    var driveUntil: Date?
+    var driveError: String?
+    /// Texts sent through drive mode, newest last, so a history reload keeps their ⌨ mark.
+    @ObservationIgnored var driveSent: [String] = []
+    @ObservationIgnored var driveServer: DriveServer?
+    @ObservationIgnored var driveTimer: Task<Void, Never>?
+
     let client = GatewayClient()
     private var cronRefresh: Task<Void, Never>?
     private var sessionsRefresh: Task<Void, Never>?
@@ -451,6 +462,7 @@ final class HUDModel {
         guard !isDemo, !powerBusy else { return }
         powerBusy = true
         powerLog = []
+        if action != .status { stopDrive(reason: "the PC was paused or resumed") }
         if action == .pause {
             voice.setWake(false)
             voice.endSession()
@@ -646,6 +658,7 @@ final class HUDModel {
     }
 
     func forgetPairing() {
+        stopDrive(reason: "the pairing was forgotten")
         client.stop()
         GatewayClient.forgetPairing()
         resetLiveState()
@@ -787,31 +800,57 @@ final class HUDModel {
               let shown = approvalFirstShown[id],
               ApprovalRules.mayAnswer(card: card, decision: decision, firstShownAt: shown, now: Date())
         else { return }
+        Task { _ = await resolveApproval(card, decision: decision, via: "") }
+    }
+
+    /// Drive mode's only card answer (ADR 0012): "deny", written here as a literal, after the same
+    /// checks and hold time as a click. There is no drive path to "allow-once".
+    func denyApprovalFromDrive(id: String) async -> (ok: Bool, message: String) {
+        guard !isDemo, phase == .connected else { return (false, "The HUD isn't linked.") }
+        guard canAnswerApprovals else { return (false, "This HUD has no card access.") }
+        guard !approvalBusy.contains(id) else { return (false, "That card is being answered already.") }
+        guard let card = approvals.first(where: { $0.id == id }), let shown = approvalFirstShown[id] else {
+            return (false, "No such card on the HUD now (answered, expired or never shown).")
+        }
+        let wait = ApprovalRules.holdSeconds - Date().timeIntervalSince(shown)
+        if wait > 0 { try? await Task.sleep(for: .milliseconds(Int(wait * 1000) + 50)) }
+        guard let fresh = approvals.first(where: { $0.id == id }), !approvalBusy.contains(id),
+              DriveRules.mayDeny(card: fresh, firstShownAt: shown, now: Date())
+        else { return (false, "That card can't be denied now (expired, answered, or it offers no Deny).") }
+        return await resolveApproval(card, decision: "deny", via: " by Claude Code")
+    }
+
+    private func resolveApproval(_ card: ApprovalCard, decision: String, via: String) async -> (ok: Bool, message: String) {
+        let id = card.id
         approvalBusy.insert(id)
         approvalCardErrors[id] = nil
-        Task {
-            defer { approvalBusy.remove(id) }
-            do {
-                let result = try await client.request("plugin.approval.resolve", .object([
-                    "id": .string(id), "decision": .string(decision),
-                ]))
-                let recorded = result["decision"].string
-                if let recorded, recorded != decision {
-                    approvalNote = "Already answered elsewhere (\(recorded)): \(card.title)"
-                } else {
-                    approvalNote = "\(decision == "deny" ? "Denied" : "Allowed once"): \(card.title)"
-                }
-                approvals.removeAll { $0.id == id }
-            } catch let error as GatewayClient.RequestError
-                where error.message.contains("already resolved") || error.message.contains("unknown or expired") {
-                // Someone else answered first (Telegram), or it timed out. The first answer stands.
-                approvalNote = "Not sent: already answered elsewhere or expired: \(card.title)"
-                approvals.removeAll { $0.id == id }
-            } catch {
-                approvalCardErrors[id] = "Not answered: \(error.localizedDescription)"
+        defer { approvalBusy.remove(id) }
+        var outcome: (ok: Bool, message: String)
+        do {
+            let result = try await client.request("plugin.approval.resolve", .object([
+                "id": .string(id), "decision": .string(decision),
+            ]))
+            let recorded = result["decision"].string
+            if let recorded, recorded != decision {
+                approvalNote = "Already answered elsewhere (\(recorded)): \(card.title)"
+                outcome = (false, approvalNote ?? "")
+            } else {
+                approvalNote = "\(decision == "deny" ? "Denied" : "Allowed once")\(via): \(card.title)"
+                outcome = (true, approvalNote ?? "")
             }
-            await refreshApprovals()
+            approvals.removeAll { $0.id == id }
+        } catch let error as GatewayClient.RequestError
+            where error.message.contains("already resolved") || error.message.contains("unknown or expired") {
+            // Someone else answered first (Telegram), or it timed out. The first answer stands.
+            approvalNote = "Not sent: already answered elsewhere or expired: \(card.title)"
+            approvals.removeAll { $0.id == id }
+            outcome = (false, approvalNote ?? "")
+        } catch {
+            approvalCardErrors[id] = "Not answered: \(error.localizedDescription)"
+            outcome = (false, approvalCardErrors[id] ?? "")
         }
+        await refreshApprovals()
+        return outcome
     }
 
     // MARK: - Voice cards
@@ -1177,7 +1216,7 @@ final class HUDModel {
                 guard let line = Self.line(from: message, fallbackId: "h\(index)") else { continue }
                 loaded.append(line)
             }
-            lines = withSentPictures(loaded)
+            lines = withDriveMarks(withSentPictures(loaded))
             historyAsOf = Date()
             if let run = result["inFlightRun"]["runId"].string {
                 activeRuns.insert(run)
@@ -1227,9 +1266,39 @@ final class HUDModel {
         pendingImages = []
         attachNote = nil
         sendError = nil
+        Task {
+            do {
+                _ = try await deliver(text: text, images: images, key: key, viaDrive: false)
+            } catch {
+                sendError = "Not sent: \(error.localizedDescription)"
+                // Give the pictures back, so a retry doesn't need pasting them again.
+                if pendingImages.isEmpty { pendingImages = images }
+            }
+        }
+    }
+
+    /// Drive mode's send (ADR 0012): text only, to the conversation open on screen, never the
+    /// home session, through the same `chat.send` as the composer. Adam's draft is left alone.
+    func sendFromDrive(_ text: String) async -> (ok: Bool, message: String, runId: String?) {
+        guard !isDemo, phase == .connected else { return (false, "The HUD isn't linked.", nil) }
+        guard canWrite else { return (false, "This HUD can't send messages.", nil) }
+        guard let key = currentSessionKey else { return (false, "No conversation is open.", nil) }
+        guard !isHomeSession(key: key) else { return (false, "Not sent: cannot message the HUD home session.", nil) }
+        driveSent.append(text)
+        if driveSent.count > 20 { driveSent.removeFirst(driveSent.count - 20) }
+        do {
+            let run = try await deliver(text: text, images: [], key: key, viaDrive: true)
+            return (true, key, run)
+        } catch {
+            return (false, "Not sent: \(error.localizedDescription)", nil)
+        }
+    }
+
+    /// Shows the line and sends it. The composer and drive mode both come here.
+    private func deliver(text: String, images: [PendingImage], key: String, viaDrive: Bool) async throws -> String? {
         let idempotencyKey = UUID().uuidString
         let thumbs = images.map { LineImage(id: $0.id, image: $0.thumbnail) }
-        lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date(), images: thumbs))
+        lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date(), images: thumbs, viaDrive: viaDrive))
         if !thumbs.isEmpty {
             sentPictures.append((text, thumbs))
             if sentPictures.count > 20 { sentPictures.removeFirst(sentPictures.count - 20) }
@@ -1255,16 +1324,10 @@ final class HUDModel {
             })
         }
         if let mainSessionId { params["sessionId"] = .string(mainSessionId) }
-        Task {
-            do {
-                let ack = try await client.request("chat.send", .object(params))
-                if let run = ack["runId"].string { activeRuns.insert(run) }
-            } catch {
-                sendError = "Not sent: \(error.localizedDescription)"
-                // Give the pictures back, so a retry doesn't need pasting them again.
-                if pendingImages.isEmpty { pendingImages = images }
-            }
-        }
+        let ack = try await client.request("chat.send", .object(params))
+        let run = ack["runId"].string
+        if let run { activeRuns.insert(run) }
+        return run
     }
 
     // MARK: - Pictures in the composer

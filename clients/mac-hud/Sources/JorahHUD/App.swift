@@ -28,12 +28,9 @@ struct JorahHUDApp: App {
             Button("Show or hide the HUD  (⌃⌥J)") { HotKey.toggle() }
             if !model.isDemo {
                 Divider()
-                // Drive mode (ADR 0012): only this click turns it on.
-                if let until = model.driveUntil {
-                    Text("Claude Code is driving until \(until.hudTime)")
-                    Button("Stop Claude Code driving") { model.stopDrive(reason: "you clicked Stop") }
-                } else {
-                    Button("Let Claude Code drive (30 min)") { model.armDrive() }
+                // Drive mode (ADR 0012): this and the top bar's ⌨ button are the only switches.
+                Button(model.driveSince == nil ? "Let Claude Code drive" : "Stop Claude Code driving") {
+                    model.toggleDrive()
                 }
                 if let error = model.driveError { Text(error) }
             }

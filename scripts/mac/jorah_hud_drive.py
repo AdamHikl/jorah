@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drives the Jorah HUD from a command line while Adam has drive mode on (docs/adr/0012).
 
-Adam turns it on in the HUD: menu bar icon > "Let Claude Code drive (30 min)". Until it ends, this
-talks to the HUD's private socket and can do only what the HUD lets it:
+Adam switches it on with the ⌨ CLAUDE CODE button in the HUD's top bar. Until Adam switches it
+off, this talks to the HUD's private socket and can do only what the HUD lets it:
 
     python3 -I scripts/mac/jorah_hud_drive.py status
     python3 -I scripts/mac/jorah_hud_drive.py send "/jorah-status"        # waits for Jorah's answer
@@ -27,8 +27,8 @@ from pathlib import Path
 
 DONE, FAILED, TIMEOUT, CARD = 0, 1, 2, 3
 MAX_TEXT = 4000
-OFF_HINT = ("The HUD's drive socket isn't there: drive mode is off. Adam turns it on from the HUD's "
-            "menu bar icon > \"Let Claude Code drive (30 min)\".")
+OFF_HINT = ("The HUD's drive socket isn't there: drive mode is off. Adam switches it on with the "
+            "⌨ CLAUDE CODE button in the HUD's top bar.")
 
 
 def profile_name(environ=os.environ):
@@ -235,7 +235,7 @@ def main(argv=None):
         if args.json:
             return {"card": CARD, "timeout": TIMEOUT}.get(reply.get("result"), DONE)
         if args.command == "status":
-            print(f"Drive mode on until {clock(reply.get('armedUntil'))}; {reply.get('phase')}; "
+            print(f"Drive mode on since {clock(reply.get('onSince'))}; {reply.get('phase')}; "
                   f"conversation {reply.get('sessionKey')}; "
                   f"{'Jorah is working' if reply.get('running') else 'Jorah is idle'}; "
                   f"cards waiting: {reply.get('cards') if reply.get('cards') is not None else 'unknown'}")

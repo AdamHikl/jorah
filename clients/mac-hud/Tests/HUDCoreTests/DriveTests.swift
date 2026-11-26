@@ -78,15 +78,6 @@ final class DriveTests: XCTestCase {
         if case .success = DriveRequest.parse(huge) { XCTFail("an oversized request parsed") }
     }
 
-    func testArmingLastsThirtyMinutes() {
-        let click = Date(timeIntervalSince1970: 1_800_000_000)
-        let until = DriveRules.armedUntil(clickedAt: click)
-        XCTAssertEqual(until.timeIntervalSince(click), 30 * 60)
-        XCTAssertTrue(DriveRules.isArmed(until: until, now: click.addingTimeInterval(60)))
-        XCTAssertFalse(DriveRules.isArmed(until: until, now: until))
-        XCTAssertFalse(DriveRules.isArmed(until: nil, now: click))
-    }
-
     private func card(_ decisions: String, expiresAtMs: Int = 1763700300000) throws -> ApprovalCard {
         let json = #"[{"id":"plugin:x","createdAtMs":1763700000000,"expiresAtMs":\#(expiresAtMs),"request":{"title":"t","allowedDecisions":\#(decisions)}}]"#
         let list = try JSONSerialization.jsonObject(with: Data(json.utf8))

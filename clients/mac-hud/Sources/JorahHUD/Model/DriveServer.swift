@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import HUDCore
 
-/// The drive socket (ADR 0012). It exists only while Adam has drive mode armed: `start` creates
+/// The drive socket (ADR 0012). It exists only while Adam has drive mode on: `start` creates
 /// it, `stop` removes it. It lives in a folder only Adam's user can open, the socket itself is
 /// mode 600, and a connection from another user id is closed unread. One request per connection:
 /// a JSON line in, a JSON line out.

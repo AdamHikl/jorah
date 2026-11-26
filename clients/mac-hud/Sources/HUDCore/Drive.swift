@@ -1,12 +1,10 @@
 import Foundation
 
-/// Drive mode (ADR 0012). While Adam has armed it with a click in the HUD menu, a command line on
+/// Drive mode (ADR 0012). While Adam has it switched on in the HUD, a command line on
 /// this Mac may type in the open conversation, read it and its cards, and deny cards. There is no
 /// command to allow a card, pair, run power or brain actions, change the model or start a
 /// conversation, so the socket can't ask for them. Pure, so it can be tested.
 public enum DriveRules {
-    /// One click arms drive mode for this long. Arming again starts a new 30 minutes from that click.
-    public static let armSeconds: TimeInterval = 30 * 60
     public static let maxText = 4000
     public static let maxRequestBytes = 16 * 1024
     public static let maxCardId = 200
@@ -14,13 +12,6 @@ public enum DriveRules {
     public static let maxReadLines = 40
     public static let defaultWaitSeconds: Double = 120
     public static let maxWaitSeconds: Double = 600
-
-    public static func armedUntil(clickedAt: Date) -> Date { clickedAt.addingTimeInterval(armSeconds) }
-
-    public static func isArmed(until: Date?, now: Date) -> Bool {
-        guard let until else { return false }
-        return now < until
-    }
 
     /// The command line can only deny, under the same hold time and expiry as a click.
     public static func mayDeny(card: ApprovalCard, firstShownAt: Date, now: Date) -> Bool {

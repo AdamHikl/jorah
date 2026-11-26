@@ -2,15 +2,19 @@ import AppKit
 import Foundation
 import HUDCore
 
-/// Drive mode (ADR 0012): Adam clicks "Let Claude Code drive" in the HUD menu, and for 30 minutes,
-/// or until Stop, a power action, forgetting the pairing or quitting, a command line on this Mac
-/// can send messages in the open conversation, read it and its cards, and deny cards. It can't
-/// allow a card, pair, pause or resume the PC, switch the brain or model, or open a conversation.
-/// While it's on, an orange bar says so and every line it sent carries ⌨.
+/// Drive mode (ADR 0012): Adam switches it on with the ⌨ button in the HUD's top bar (or the menu
+/// bar item), and until Adam switches it off, forgets the pairing or quits the HUD, a command line on
+/// this Mac can send messages in the open conversation, read it and its cards, and deny cards. It
+/// can't allow a card, pair, pause or resume the PC, switch the brain or model, or open a
+/// conversation. While it's on, the button and a bar are orange and every line it sent carries ⌨.
 extension HUDModel {
-    var isDriving: Bool { DriveRules.isArmed(until: driveUntil, now: Date()) }
+    var isDriving: Bool { driveSince != nil && driveServer != nil }
 
-    /// Only the HUD menu item calls this: a click by Adam.
+    /// Only Adam's clicks call this: the top bar's ⌨ button and the menu bar item.
+    func toggleDrive() {
+        if driveSince == nil { armDrive() } else { stopDrive(reason: "you switched it off") }
+    }
+
     func armDrive() {
         guard !isDemo else { driveError = "Drive mode is off in the demo."; return }
         stopDrive(reason: nil)
@@ -24,38 +28,30 @@ extension HUDModel {
             driveError = "Drive mode didn't start: \(error)"
             return
         }
-        let until = DriveRules.armedUntil(clickedAt: Date())
         driveServer = server
-        driveUntil = until
+        driveSince = Date()
         driveError = nil
-        driveLog("armed until \(Self.iso(until))")
+        driveLog("switched on")
         lines.append(ChatLine(id: UUID().uuidString, role: .notice,
-                              text: "Drive mode on until \(until.hudTime): Claude Code can type here as you, read this chat and deny cards. It can't allow cards.",
+                              text: "Drive mode on: Claude Code can type here as you, read this chat and deny cards until you switch it off. It can't allow cards.",
                               at: Date()))
-        driveTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(DriveRules.armSeconds))
-            guard !Task.isCancelled else { return }
-            self?.stopDrive(reason: "its 30 minutes ended")
-        }
     }
 
-    /// Ends drive mode and removes the socket. `reason` nil: say nothing (re-arming).
+    /// Ends drive mode and removes the socket. `reason` nil: say nothing (switching on again).
     func stopDrive(reason: String?) {
-        driveTimer?.cancel()
-        driveTimer = nil
         driveServer?.stop()
         driveServer = nil
-        guard driveUntil != nil else { return }
-        driveUntil = nil
+        guard driveSince != nil else { return }
+        driveSince = nil
         if let reason {
             driveLog("stopped: \(reason)")
             lines.append(ChatLine(id: UUID().uuidString, role: .notice, text: "Drive mode off: \(reason).", at: Date()))
         }
     }
 
-    /// One request from the socket. Refused unless armed at this moment.
+    /// One request from the socket. Refused unless drive mode is on at this moment.
     func drive(_ command: DriveCommand) async -> [String: Any] {
-        guard isDriving else { return ["ok": false, "error": "Drive mode is off. Adam turns it on from the HUD's menu bar icon."] }
+        guard isDriving else { return ["ok": false, "error": "Drive mode is off. Adam switches it on with the ⌨ button in the HUD's top bar."] }
         switch command {
         case .status:
             return driveStatus()
@@ -83,7 +79,7 @@ extension HUDModel {
     private func driveStatus() -> [String: Any] {
         [
             "ok": true,
-            "armedUntil": driveUntil.map(Self.iso) ?? NSNull(),
+            "onSince": driveSince.map(Self.iso) ?? NSNull(),
             "phase": String(describing: phase),
             "sessionKey": currentSessionKey ?? NSNull(),
             "canWrite": canWrite,

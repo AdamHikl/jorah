@@ -351,13 +351,13 @@ final class HUDModel {
     private var approvalsPoll: Task<Void, Never>?
 
     // MARK: Drive mode (ADR 0012), see HUDModel+Drive.swift
-    /// When drive mode ends; nil while it's off. Only a click in the HUD menu sets it.
-    var driveUntil: Date?
+    /// When Adam turned drive mode on; nil while it's off. Only a click in the HUD sets it, and
+    /// every launch starts with it off.
+    var driveSince: Date?
     var driveError: String?
     /// Texts sent through drive mode, newest last, so a history reload keeps their ⌨ mark.
     @ObservationIgnored var driveSent: [String] = []
     @ObservationIgnored var driveServer: DriveServer?
-    @ObservationIgnored var driveTimer: Task<Void, Never>?
 
     let client = GatewayClient()
     private var cronRefresh: Task<Void, Never>?
@@ -462,7 +462,6 @@ final class HUDModel {
         guard !isDemo, !powerBusy else { return }
         powerBusy = true
         powerLog = []
-        if action != .status { stopDrive(reason: "the PC was paused or resumed") }
         if action == .pause {
             voice.setWake(false)
             voice.endSession()

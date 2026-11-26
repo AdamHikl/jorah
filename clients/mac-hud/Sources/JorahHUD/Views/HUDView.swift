@@ -8,7 +8,7 @@ struct HUDView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 12) {
-            if model.driveUntil != nil { DriveBanner() }
+            if model.driveSince != nil { DriveBanner() }
             TopBar()
             HStack(spacing: 12) {
                 ConversationView()
@@ -100,6 +100,18 @@ struct TopBar: View {
             .tint(model.pausedAt == nil ? Theme.red : Theme.amber)
             .disabled(model.isDemo)
             .help("Pause Jorah on the PC to free its GPU, memory and CPU, or bring it back")
+            if !model.isDemo {
+                // Drive mode (ADR 0012): grey when off, orange when on, like COMMAND beside it.
+                Toggle(isOn: Binding(get: { model.driveSince != nil }, set: { _ in model.toggleDrive() })) {
+                    Text(model.driveSince == nil ? "⌨ CLAUDE CODE" : "⌨ CLAUDE DRIVING").font(Theme.label(10))
+                }
+                .toggleStyle(.button)
+                .tint(Theme.orange)
+                .help(model.driveSince == nil
+                      ? "Let Claude Code type here as you, read this chat and deny cards (never allow) until you switch it off"
+                      : "Claude Code is driving. Click to switch it off.")
+                .accessibilityLabel(model.driveSince == nil ? "Let Claude Code drive" : "Stop Claude Code driving")
+            }
             Toggle(isOn: $model.commandMode) {
                 Text(model.commandMode ? "COMMAND" : "CALM").font(Theme.label(10))
             }
@@ -790,22 +802,22 @@ struct DriveBanner: View {
             Text("⌨").font(.system(size: 15))
             VStack(alignment: .leading, spacing: 2) {
                 Text("CLAUDE CODE IS DRIVING").font(Theme.label(10)).tracking(1.4)
-                Text("It can type here as you, read this chat and deny cards until \(model.driveUntil?.hudTime ?? "now"). It can't allow cards, pair, pause or resume the PC, or change the model.")
+                Text("On since \(model.driveSince?.hudTime ?? "now"). It can type here as you, read this chat and deny cards until you switch it off. It can't allow cards, pair, pause or resume the PC, or change the model.")
                     .font(.system(size: 11))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Button("STOP") { model.stopDrive(reason: "you clicked Stop") }
+            Button("SWITCH OFF") { model.stopDrive(reason: "you switched it off") }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.red)
-                .help("End drive mode now. The command line is refused from then on.")
+                .help("Switch drive mode off now. The command line is refused from then on.")
         }
         .foregroundStyle(Color.black)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Theme.orange)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Claude Code is driving the HUD until \(model.driveUntil?.hudTime ?? "now")")
+        .accessibilityLabel("Claude Code is driving the HUD")
     }
 }
 

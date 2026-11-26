@@ -19,6 +19,7 @@ JORAH_HUD_PROFILE picks the same test profile the HUD uses.
 """
 
 import argparse
+import datetime
 import json
 import os
 import socket
@@ -94,8 +95,14 @@ def after_sent(lines, sent):
     return []
 
 
-def clock(iso):
-    return iso[11:16] if isinstance(iso, str) and len(iso) >= 16 else "--:--"
+def clock(iso, now=None):
+    """The HUD sends UTC; show this Mac's local time, with the date when it isn't today."""
+    try:
+        when = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone()
+    except (AttributeError, TypeError, ValueError):
+        return "--:--"
+    today = (now or datetime.datetime.now().astimezone()).date()
+    return when.strftime("%H:%M") if when.date() == today else when.strftime("%d %b %H:%M")
 
 
 def format_line(line):

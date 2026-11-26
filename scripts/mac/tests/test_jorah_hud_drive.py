@@ -1,6 +1,7 @@
 """Tests for scripts/mac/jorah_hud_drive.py against a fake HUD socket. No HUD or Gateway needed."""
 
 import contextlib
+import datetime
 import importlib.util
 import io
 import json
@@ -8,6 +9,7 @@ import os
 import socket
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -85,6 +87,23 @@ class RequestShapeTest(unittest.TestCase):
                          f"{home}/Library/Application Support/JorahHUD-test/drive.sock")
         for bad in ("../x", "a b", "x" * 21, ""):
             self.assertTrue(drive.socket_path({"JORAH_HUD_PROFILE": bad}, home).endswith("/JorahHUD/drive.sock"), bad)
+
+    def test_clock_is_local_time_with_the_date_when_not_today(self):
+        old = os.environ.get("TZ")
+        os.environ["TZ"] = "Europe/Bratislava"
+        time.tzset()
+        try:
+            now = datetime.datetime(2026, 11, 26, 18, 0).astimezone()
+            self.assertEqual(drive.clock("2026-11-26T16:48:00Z", now), "17:48")
+            self.assertEqual(drive.clock("2026-11-25T18:46:00Z", now), "25 Nov 19:46")
+            for bad in (None, "", "yesterday", 5):
+                self.assertEqual(drive.clock(bad, now), "--:--")
+        finally:
+            if old is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = old
+            time.tzset()
 
     def test_after_sent(self):
         lines = [{"role": "user", "text": "hi"}, {"role": "assistant", "text": "old"},

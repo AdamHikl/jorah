@@ -63,8 +63,12 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
   Adam and deny cards. That is the same reach such a process already has over Adam's Telegram
   desktop or Terminal. With no time limit, a switch left on stays open until the HUD quits; the
   orange button and bar and the log keep it visible.
-- Jorah sees these turns as Adam's (`senderIsOwner`). Jorah's own rules (`workspace/AGENTS.md`)
-  are unchanged by this.
+- Jorah's tool hooks see these turns as Adam's (`senderIsOwner: true`, ADR 0011). Jorah's own
+  rules (`workspace/AGENTS.md`) are unchanged by this.
+- Plugin commands don't count the HUD as Adam. OpenClaw treats a command's sender as owner only
+  with `operator.admin` or a match in `commands.ownerAllowFrom`, and the HUD has neither, so
+  `/jorah-careful`, `/jorah-freeze` and `/jorah-today` answer "Only Adam…" from the HUD, typed by
+  Adam or through drive mode (seen 2026-11-26, `docs/evidence/hud-drive-2026-11-26/`).
 
 ## If ADR 0011 option B or C is ever built
 

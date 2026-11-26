@@ -45,12 +45,40 @@ included. Tool hooks for the same turns do get `senderIsOwner: true` (ADR 0011).
 
 Careful mode was not set, so it stays off. Its live test needs Telegram.
 
+### After the fix, 19:04 CET
+
+Adam chose ("Yes, do it here") to let `/jorah-careful` (on only) and `/jorah-today` work from the
+HUD, with `/jorah-careful off` and `/jorah-freeze` staying on Telegram. Commit `0040435`
+(`typedInOwnApp`: channel `webchat`, authorised sender, `operator.write` in the command's
+`gatewayClientScopes`, no `[Spoken turn.`). Guard tests 174/174, `just check` passed.
+
+Adam's yes: "Yes, commit and deploy (Recommended)".
+
+| Step | Result |
+|---|---|
+| Preflight | live `index.js`, `lib/policy.js`, `test/guard.test.js` matched `0040435~1` (sha256) |
+| Backup | `/root/opt-jorah-pre-hud-commands-2026-11-26.tgz` (3 files, mode 600) |
+| Files | `deploy_reviewed.py deploy` of the 3 files: deployed and recorded from `0040435` |
+| Restart | `jorah-gateway-recycle.service`; Gateway listening 19:03:45 with 16 plugins; `jorah-guard: matrix loaded; state ok` 19:03:58 |
+| `/jorah-today` (drive mode) | `Today (2026-11-26), from the guard's log: Done without a card: no writes. Reads and searches: 5. Cards shown: 1 (edit 1). Blocked: 0. By agent: main 6.` The one card is the `AGENTS.md` edit denied above |
+| `/jorah-careful off` (drive mode) | `Careful mode can be turned off only from Telegram: /jorah-careful off.` |
+| `/jorah-status` (drive mode) | `Frozen: no. Careful mode: off. …` |
+| PC check | no `CAREFUL` or `FROZEN` file; no `/jorah-careful` line in `decisions.jsonl` |
+
+Not run live: `/jorah-careful` (on) from the HUD, because Adam hadn't chosen to have careful mode on
+for 24 hours; `/jorah-freeze` from the HUD, because a wrong answer would freeze Jorah until a
+terminal clears it. Both are covered by the guard's unit tests.
+
+Undo: as root, `tar -xzf /root/opt-jorah-pre-hud-commands-2026-11-26.tgz -C /opt/jorah && sync`,
+`systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.
+
 ## Tiers
 
 - Source, tests and install: done.
 - Launch: done (Adam reopened the HUD; drive mode answered).
-- Signed-in acceptance through the HUD: the own-rules card shows and a deny holds.
-  Careful mode and `/jorah-today` are refused from the HUD, so their live test is still open.
+- Signed-in acceptance through the HUD: the own-rules card shows and a deny holds. After
+  `0040435`, `/jorah-today` answers in the HUD and `/jorah-careful off` is refused there.
+  Careful mode on from the HUD is still open.
 - Not checked: `/jorah-careful`, `/jorah-today` and `/jorah-careful off` on Telegram.
 
 ## Found and fixed during the test

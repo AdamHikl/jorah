@@ -35,21 +35,38 @@ export function classify(matrix, tool) {
   return null;
 }
 
-// Who is asking, from the hook's context (G-S1, 2026-11-11; P5.4, 2026-11-13; 2026-11-22).
-// Chat Completions callers arrive as "webchat", or as whatever x-openclaw-message-channel says, but
-// never with a sender id. So Adam's own typing is Telegram *with* a sender id, or the CLI on the PC
-// (no channel, no sender id, which a Chat Completions caller can't produce). OpenClaw 2026.10.9
-// refuses plugin approval cards from the "voice" surface, so jorah-voice (the HUD's voice too)
-// and jorah-phone send x-openclaw-message-channel: "webchat" and start the prompt with
-// "[Spoken turn.". index.js recognises that marker in before_agent_run and passes run.voice = true
-// so cards get voice wording ("Asked by voice", VOICE_CARD_HINT); the "voice" channel still counts
-// as voice for old clients. "webchat" without the marker is typing in the Mac HUD or Control UI:
-// it gets the exact same checks as voice, only the card says it was typed (so typing "[Spoken turn."
-// by hand only changes wording). Any other channel is treated as not Adam's own chat.
-export function typedByOwner(r) {
+// Who is asking, from the hook's context (G-S1, 2026-11-11; P5.4, 2026-11-13; 2026-11-22;
+// ADR 0011, 2026-11-26). Adam's own typing is Telegram *with* a sender id, the CLI on the PC (no
+// channel, no sender id, which a Chat Completions caller can't produce), or, since Adam's decision
+// of 2026-11-26 ("Same as Telegram"), the Mac HUD: a "webchat" turn OpenClaw marks as the owner's,
+// sorted by index.js in before_agent_run as run.hud === "typed". That needs a run id the Gateway
+// didn't give its HTTP APIs ("chatcmpl_", "resp_": jorah-voice and jorah-phone use Chat
+// Completions), no "[Spoken turn." (their marker) and no "[Typed by Claude Code" (HUD drive mode's
+// marker, ADR 0012) near the start. A run index.js never saw stays untrusted. Spoken webchat
+// turns get voice checks and wording (run.voice or run.hud === "spoken"); drive turns keep every
+// card; other webchat turns keep them too (WEBCHAT). Any other channel is not Adam's own chat.
+// settings.hudTypingIsAdam === false turns the HUD rule off (cards for all webchat, as before).
+export const HTTP_RUN_ID = /^(chatcmpl|resp)_/;
+
+export function typedByOwner(r, run = {}, settings = {}) {
   if (r?.senderIsOwner !== true) return false;
   if (r.channel === "telegram") return typeof r.senderId === "string" && r.senderId.length > 0;
+  if (r.channel === "webchat") return settings?.hudTypingIsAdam !== false && run?.hud === "typed";
   return r.channel === undefined && r.senderId === undefined;
+}
+
+// How before_agent_run sorts a webchat turn (ADR 0011): by the Gateway-set run id, the run's
+// trigger and the markers near the start of the raw prompt or of the typed text (a metadata block
+// may come first). A run started by a heartbeat, cron job or event ("background") is never typing,
+// even when it carries a webchat requester.
+export function hudKind(runId, heads, trigger) {
+  const near = (m) => heads.some((h) => String(h ?? "").slice(0, 200).includes(m));
+  if (near("[Spoken turn.")) return "spoken";
+  if (near("[Typed by Claude Code")) return "drive";
+  if (typeof trigger === "string" && trigger !== "user") return "background";
+  if (typeof runId !== "string" || runId.length === 0) return "unknown";
+  if (HTTP_RUN_ID.test(runId)) return "http";
+  return "typed";
 }
 
 // A plugin command typed in Adam's paired Mac HUD or Control UI (2026-11-26, ADR 0012). OpenClaw
@@ -69,13 +86,14 @@ export function typedInOwnApp(c) {
 export function speaker(ctx = {}, settings = {}, run = {}) {
   const r = ctx.requester ?? null;
   const webchatRaw = r?.channel === "webchat";
-  const voice = r?.channel === "voice" || (webchatRaw && run?.voice === true);
+  const voice = r?.channel === "voice" || (webchatRaw && (run?.voice === true || run?.hud === "spoken"));
   const webchat = webchatRaw && !voice;
+  const drive = webchat && run?.hud === "drive";
   const owner = r?.senderIsOwner === true;
-  const typed = typedByOwner(r);
+  const typed = !voice && !drive && typedByOwner(r, run, settings);
   const cleanKeys = settings.cleanSessionKeys ?? ["agent:main:main"];
   const cleanEligible = typed && cleanKeys.includes(ctx.sessionKey) && (ctx.agentId ?? "main") === "main";
-  return { voice, webchat, owner, cleanEligible, typedByOwner: typed };
+  return { voice, webchat, drive, owner, cleanEligible, typedByOwner: typed };
 }
 
 // Proactive runs (docs/runbooks/proactive.md, spike of 2026-11-15 on OpenClaw 2026.10.9 source):
@@ -132,7 +150,8 @@ export function viewBackstop({ tool, params, result, error, matrix }) {
 
 const isCronSession = (key) => sessionRest(key).startsWith("cron:");
 
-const WEBCHAT = "typed in the HUD or the web chat";
+const WEBCHAT = "from the HUD or the web chat, not known to be typed by Adam";
+const DRIVE = "typed by Claude Code in HUD drive mode";
 
 // Session state as the policy needs it.
 export function sessionState(view, ctx, settings, run = {}, matrix = {}) {
@@ -144,7 +163,8 @@ export function sessionState(view, ctx, settings, run = {}, matrix = {}) {
     if (!view.cleanChild?.(ctx.sessionKey)) source = `not started from Adam's own clean chat (${ctx.sessionKey ?? "no session key"})`;
   }
   else if (who.voice) source = "asked by voice";
-  else if (who.webchat) source = WEBCHAT;
+  else if (who.drive) source = DRIVE;
+  else if (who.webchat && !who.typedByOwner) source = WEBCHAT;
   else if (!who.cleanEligible) source = ctx.sessionKey ? `not Adam's own chat (${ctx.sessionKey})` : "no session key";
   return { ...who, tainted: source !== null, source };
 }
@@ -235,7 +255,8 @@ function paramLines(params = {}) {
 }
 
 const why = (s) => (s.voice ? "Asked by voice: confirm only if this was you."
-  : s.source === WEBCHAT ? "Typed in the HUD or the web chat, not Telegram: confirm only if this was you."
+  : s.source === DRIVE ? "Typed by Claude Code in HUD drive mode, not by Adam: only Adam allows, in the HUD or Telegram."
+  : s.source === WEBCHAT ? "From the HUD or the web chat, but not known to be Adam's typing: confirm only if this was you."
     : `This chat has read outside text (${short(s.source, 80)}).`);
 
 // Paths an edit or patch touches, relative to the workspace when possible.

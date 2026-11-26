@@ -140,7 +140,8 @@ extension HUDModel {
         return ["ok": true, "result": "timeout"]
     }
 
-    /// History lines for messages sent through drive mode get their ⌨ mark back.
+    /// History lines for messages sent through drive mode get their ⌨ mark back. Marked lines
+    /// get it in `line(from:)`; this catches the commands drive mode sends unmarked.
     func withDriveMarks(_ loaded: [ChatLine]) -> [ChatLine] {
         guard !driveSent.isEmpty else { return loaded }
         var out = loaded

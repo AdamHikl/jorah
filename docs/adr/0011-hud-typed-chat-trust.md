@@ -1,13 +1,81 @@
 # ADR 0011: May typing in the paired Mac HUD count as Adam's own clean chat?
 
-**Status:** proposed on 2026-11-22 (issue #22, part 2). Not decided, not built. Adam decides.
+**Status:** proposed on 2026-11-22 (issue #22, part 2). Decided by Adam on 2026-11-26: option B,
+on a weaker anchor than the device id (a waived gate, below). Built on `claude/hud-drive`.
 
-**Question:** jorah-guard treats typing in the Mac HUD (`webchat`) like voice: every guarded call
+**Question:** jorah-guard treated typing in the Mac HUD (`webchat`) like voice: every guarded call
 gets a card, even in a chat that has read nothing from outside (`plugins/jorah-guard/lib/policy.js`,
 `typedByOwner` and `sessionState`). Telegram typing with Adam's sender id is "clean" until the chat
 reads outside text. Should the paired HUD's typing be clean too?
 
-## Why the guard can't tell today
+## Decision, 2026-11-26
+
+Adam asked for Jorah to work more on its own, "like jarvis", without confirming each step. Asked
+"How far should HUD typing in your main conversation count as you?", Adam chose "Same as Telegram
+(Recommended)". That option read: "HUD typing counts as your clean chat, like Telegram. Background
+jobs, project records, memory notes in your words and one-off reminders run without a card. About
+16 of the last 21 HUD cards go away. Cards stay for tool installs, project access changes, anything
+after Jorah reads outside text, and anything leaving the PC. Lines Claude Code types in drive mode
+get a visible marker and keep their cards."
+
+**What counts as Adam's typing.** A `webchat` turn counts when all of these hold
+(`typedByOwner` and `hudKind` in `plugins/jorah-guard/lib/policy.js`, `before_agent_run` in
+`index.js`):
+
+- `senderIsOwner` is `true`.
+- The guard saw the run start in `before_agent_run`. A tool call from a run it never saw, or from a
+  turn without a run id, keeps its card.
+- The run isn't a heartbeat, cron job or event: its `trigger` is `user` (or absent). In the PC's
+  guard log every `webchat` row so far has `trigger: "user"`; heartbeats run in their own
+  `…:heartbeat` sessions with no channel.
+- Its run id isn't one the Gateway's HTTP APIs give: `chatcmpl_…` (Chat Completions) or `resp_…`
+  (Responses). The Gateway makes these ids itself from a random UUID (`openai-http-*.mjs` and
+  `openresponses-http-*.mjs` in the 2026.11.6 dist), so a caller of those APIs can't choose a
+  HUD-looking id. jorah-voice and jorah-phone use Chat Completions, so they never count, even if
+  their spoken marker were lost.
+- Neither `[Spoken turn.` nor `[Typed by Claude Code` is in the first 200 characters of the prompt or
+  of the typed text (OpenClaw may put a timestamp or a metadata block first).
+- The plugin setting `hudTypingIsAdam` isn't `false` (default: on).
+
+The turn is then clean only in `agent:main:main` (`cleanSessionKeys`), exactly like Telegram: a "+"
+chat in the HUD keeps its cards, and the chat is no longer clean once it reads outside text. The
+guard's log shows these turns as `from: "hud-typed"`. Plugin commands are unchanged (ADR 0012):
+`/jorah-careful off` and `/jorah-freeze` still answer only on Telegram.
+
+**Drive mode** (ADR 0012) puts `[Typed by Claude Code in HUD drive mode.]` in front of every line it
+types, so those turns keep every card, and the card says Claude Code typed it. It may send only a
+short list of commands unmarked, and nothing while a run is active (so a drive line can't join a
+run Adam typed).
+
+### Waived gate: the device-id anchor
+
+The 2026-11-22 recommendation made B and C wait until OpenClaw passes the sending device's id to
+hooks. OpenClaw 2026.11.6 still doesn't. Adam accepted the weaker anchor above on 2026-11-26 by
+choosing "Same as Telegram". This is a waived gate, written here: B is built without the device id.
+After every OpenClaw upgrade, re-check whether the device id reaches `before_agent_run` (search the
+dist for `approvalReviewerDeviceId` in `buildAgentHookContext`); once it does, pin the HUD's device
+id and keep the run-id rule as a second check.
+
+### Risks accepted
+
+- **Other paired devices count too.** The Control UI in a browser, or any device paired with
+  `operator.write`, sends turns that look the same to a hook and now counts as Adam. List and revoke
+  devices with `openclaw --profile jorah devices list` and `devices revoke` (ADR 0007).
+- **Credential holders.** Whoever holds the Gateway token or a paired device's key can open a
+  WebSocket and type as Adam. That credential already gives operator access to the Gateway, so this
+  widens little, but it now skips some cards.
+- **Someone at Adam's unlocked Mac** can type in the HUD as them, as they could in Telegram there.
+- **Voice joining a typed run.** If a spoken turn is steered into a run Adam typed while it is still
+  going, its tool calls carry the typed run's id. Narrow: the voice clients start their own runs,
+  and the spoken words don't become Adam's words for memory notes.
+
+### Undo
+
+Set `hudTypingIsAdam: false` in the jorah-guard plugin config (a config change: Adam's yes first)
+and recycle the Gateway: every HUD turn gets its card again. Or redeploy the previous guard files
+from the backup made at deploy time.
+
+## Why the guard couldn't tell (2026-11-22)
 
 - The hook context for a HUD turn carries `requester.channel: "webchat"`, `senderIsOwner: true`, and
   no sender id (P5.4 and 2026-11-22 notes in `policy.js`).
@@ -25,14 +93,14 @@ reads outside text. Should the paired HUD's typing be clean too?
 | | What | Gains | Costs and risks |
 |---|---|---|---|
 | A | Keep it as now | Nothing new to trust | Cards on every guarded HUD action, even in a clean chat |
-| B | Clean when the turn comes from the HUD's own paired device id, pinned in the guard's config | HUD typing works like Telegram: memory saves in Adam's words, `project_start`, `supply_save` and small records need no card in a clean chat | Needs a device id the Gateway sets and the model can't, in the hook context. A stolen HUD device token (Mac login Keychain) then acts as Adam typing. Anyone at Adam's unlocked Mac can type as him, as they could in Telegram on that Mac |
+| B | Clean when the turn comes from the HUD's own paired device id, pinned in the guard's config | HUD typing works like Telegram: memory saves in Adam's words, `project_start`, `supply_save` and small records need no card in a clean chat | Needs a device id the Gateway sets and the model can't, in the hook context. A stolen HUD device token (Mac login Keychain) then acts as Adam typing. Anyone at Adam's unlocked Mac can type as them, as they could in Telegram on that Mac |
 | C | B, but only for the small classes (`memoryWrite` in Adam's words, `localWrite`) | Most of the friction gone | Spawns, schedules, pushes and `confirmAlways` keep their cards from the HUD; two rules to explain |
 
 A stolen device token is about as strong as a stolen Telegram session on the same Mac. The
 difference is that Telegram also checks the sender id on its own servers, while the HUD's token is
 checked only by the Gateway. Revoking it is `openclaw --profile jorah devices revoke` (ADR 0007).
 
-## Recommendation
+## Recommendation, 2026-11-22 (superseded by the decision above)
 
 A, on OpenClaw 2026.10.9 (updated after the spike of 2026-11-22). C stays the target, but it is
 not buildable: the one field that would tell the HUD apart, the paired device's id, is verified by
@@ -49,7 +117,7 @@ context. That is an upstream change; re-check it after every OpenClaw upgrade (s
 
 1. ~~A spike: which fields differ between the three callers, and whether any is set only by the
    Gateway.~~ Done 2026-11-22 by source read (below): none that a hook can see.
-2. Adam's yes to an option, in writing, here.
+2. ~~Adam's yes to an option, in writing, here.~~ Done 2026-11-26: B on the weaker anchor.
 3. If C, once OpenClaw exposes the device id: the sketch at the end of the spike section.
 
 ## Spike, 2026-11-22

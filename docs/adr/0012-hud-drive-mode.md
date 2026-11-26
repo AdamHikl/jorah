@@ -2,7 +2,8 @@
 
 **Status:** decided by Adam on 2026-11-25 ("Armed by a click (Recommended)"), built on
 `claude/hud-drive`. Changed by Adam on 2026-11-26: an on/off button in the top bar instead of a
-30-minute window ("make it so that I can toggle it off and on").
+30-minute window ("make it so that I can toggle it off and on"). Marker added on 2026-11-26,
+when Adam made HUD typing count as theirs (ADR 0011, "Same as Telegram (Recommended)").
 
 **Question:** Claude Code build sessions need to test Jorah the way Adam uses it, through the HUD,
 without being given computer use (screen control). How can a command line on the Mac talk to Jorah
@@ -23,9 +24,14 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
   (`getpeereid`). One JSON line in, one JSON line out. The socket is removed when drive mode ends.
 - **What it can do** (`DriveRequest` in `clients/mac-hud/Sources/HUDCore/Drive.swift`):
   `status`; `send` text (no pictures) to the conversation open on screen, never the HUD home
-  session; `read` the last 1–40 lines; `cards` (unknown is an error, never an empty list); `deny`
+  session, and not while Jorah is still answering; `read` the last 1–40 lines; `cards` (unknown is an error, never an empty list); `deny`
   one card, after the same 1.5 s hold and expiry check as a click; `wait` until Jorah has answered
   and stopped, a card shows, or a timeout.
+- **The marker:** every line it sends starts with `[Typed by Claude Code in HUD drive mode.]`
+  (`DriveRules.wireText`). Only these commands go as they are: `/jorah-status`, `/jorah-today`,
+  `/jorah-careful` (on, off), `/status`, `/help`, `/commands`, `/whoami`. Any other line starting
+  with "/" is refused, so drive mode can't run `/new`, `/model`, `/approve` or `/jorah-freeze`.
+  Jorah and the transcript see the marker; the HUD hides it and shows `⌨ CLAUDE CODE` instead.
 - **What it can't:** allow a card, pair, pause, resume or kill the PC, switch the brain or model,
   open or start a conversation. These have no command; asking for them (`allow`, `approve`,
   `resolve`, `pair`, `power`, `brain`, `model`, …) gets a refusal naming Adam. A request with any
@@ -46,10 +52,11 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
 - **Not a script with the HUD's credential.** The device key lives in the HUD's Keychain item. A
   script reading it would be credential use outside the app Adam paired; the HUD acting on a
   request it can see and stop is not.
-- **No new authority.** Lines sent this way go through the same `chat.send` as Adam's typing.
-  jorah-guard treats HUD typing (`webchat`) like voice today: every guarded call gets a card (ADR
-  0011, option A, undecided). So a drive-mode message can make Jorah ask, but never act on a
-  guarded step alone, and drive mode can only say no to the card.
+- **No new authority.** Lines sent this way go through the same `chat.send` as Adam's typing. Since
+  2026-11-26 Adam's own HUD typing counts as their clean chat (ADR 0011), but a turn carrying the
+  drive marker never does: jorah-guard gives it every card, saying Claude Code typed it. So a
+  drive-mode message can make Jorah ask, but never act on a guarded step alone, and drive mode can
+  only say no to the card.
 - **Deny only.** Saying no can't widen what Jorah does; saying yes can. Allowing stays a click by
   Adam (ADR 0007), or Telegram.
 - **A switch Adam clicks.** A socket that always listened would let any process running as Adam
@@ -63,8 +70,10 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
   Adam and deny cards. That is the same reach such a process already has over Adam's Telegram
   desktop or Terminal. With no time limit, a switch left on stays open until the HUD quits; the
   orange button and bar and the log keep it visible.
-- Jorah's tool hooks see these turns as Adam's (`senderIsOwner: true`, ADR 0011). Jorah's own
-  rules (`workspace/AGENTS.md`) are unchanged by this.
+- Jorah's tool hooks see these turns with `senderIsOwner: true`, like Adam's; only the marker sets
+  them apart. A process that could send through the HUD without the marker would get Adam's clean
+  chat, so the marker is added inside the HUD, not by the client, and the socket has no way to skip
+  it. Jorah's own rules (`workspace/AGENTS.md`) are unchanged by this.
 - Plugin commands don't count the HUD as Adam. OpenClaw treats a command's sender as owner only
   with `operator.admin` or a match in `commands.ownerAllowFrom`, and the HUD has neither, so the
   guard's commands answered "Only Adam…" from the HUD (seen 2026-11-26,
@@ -77,17 +86,19 @@ The HUD gets a **drive mode**. Adam switches it on with a click; nothing else ca
   run either: its words arrive after "[Spoken turn.", and OpenClaw runs only messages that start
   with "/".
 
-## If ADR 0011 option B or C is ever built
+## ADR 0011 option B, built 2026-11-26
 
-Then HUD typing from the pinned device would count as Adam's clean chat and some guarded steps
-would run without a card. Before that ships, drive mode must either stop sending through the HUD's
-device, or mark its turns so the guard treats them as not clean (cards as now). Building B or C
-without one of these would give a command line card-free writes.
+This section used to say: before HUD typing counts as Adam's clean chat, drive mode must stop
+sending through the HUD's device or mark its turns. It now marks them (above), and jorah-guard sorts
+a marked turn as `drive` (`hudKind` in `plugins/jorah-guard/lib/policy.js`), with every card kept.
+Removing the marker would give a command line card-free writes, so it stays as long as option B
+does.
 
 ## Undo
 
 Remove the top-bar button, the menu item and `armDrive` (or the whole `DriveServer`), rebuild and reinstall the HUD
-(`just mac-hud-install`). Nothing runs on the PC and no config changed for this.
+(`just mac-hud-install`). Nothing runs on the PC and no config changed for this. While ADR 0011
+option B is on, keep the marker for as long as drive mode exists.
 
 ## Related
 

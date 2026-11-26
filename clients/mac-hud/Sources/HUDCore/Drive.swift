@@ -18,6 +18,42 @@ public enum DriveRules {
         ApprovalRules.mayAnswer(card: card, decision: "deny", firstShownAt: firstShownAt, now: now)
     }
 
+    /// Put in front of every line drive mode types (ADR 0011 and 0012, 2026-11-26). HUD typing
+    /// counts as Adam's own chat in jorah-guard; a turn whose text starts with this doesn't, so
+    /// it keeps its cards. Jorah and the transcript see it; the HUD shows ⌨ CLAUDE CODE instead.
+    public static let marker = "[Typed by Claude Code in HUD drive mode.]"
+    static let markerStart = "[Typed by Claude Code"
+
+    /// Commands drive mode may send as they are. OpenClaw runs a command only when the message
+    /// starts with "/", so a marked line never runs one. None of these starts a turn for Jorah or
+    /// lifts a check: the guard refuses `/jorah-careful off` from the HUD.
+    public static let commands = ["/jorah-status", "/jorah-today", "/jorah-careful", "/jorah-careful on",
+                                  "/jorah-careful off", "/status", "/help", "/commands", "/whoami"]
+
+    /// What drive mode sends for `text`: an allowed command as it is, any other line with the
+    /// marker in front, and nothing (nil) for any other line starting with "/".
+    public static func wireText(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if t.hasPrefix("/") {
+            let command = t.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            return commands.contains(command) ? command : nil
+        }
+        return marker + "\n\n" + t
+    }
+
+    /// A history line without the marker, and whether it had one (near the start: the Gateway
+    /// may put a timestamp first).
+    public static func unmarked(_ text: String) -> (text: String, marked: Bool) {
+        guard let start = text.range(of: markerStart),
+              text.distance(from: text.startIndex, to: start.lowerBound) < 120,
+              let end = text[start.upperBound...].firstIndex(of: "]")
+        else { return (text, false) }
+        let words = (text[..<start.lowerBound] + text[text.index(after: end)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (words, true)
+    }
+
     /// Whether a transcript line is the text that was sent. History may carry a prefix the Gateway
     /// added, so the end of the line counts too.
     public static func sameText(_ line: String, _ sent: String) -> Bool {
@@ -101,6 +137,9 @@ public enum DriveRequest {
             guard !text.isEmpty else { return .failure(DriveRefusal("send needs some text.")) }
             guard text.count <= DriveRules.maxText else { return .failure(DriveRefusal("The text is over \(DriveRules.maxText) characters.")) }
             guard !text.unicodeScalars.contains(where: { $0.value == 0 }) else { return .failure(DriveRefusal("The text has a NUL character.")) }
+            guard DriveRules.wireText(text) != nil else {
+                return .failure(DriveRefusal("Drive mode sends only these commands: \(DriveRules.commands.joined(separator: ", ")). Other lines starting with \"/\" are Adam's."))
+            }
             return .success(.send(text: text))
         case "read":
             guard let limit = intValue(object["limit"], default: DriveRules.defaultReadLines),

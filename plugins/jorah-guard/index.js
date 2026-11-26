@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { summarizeDay, readTail } from "./lib/today.js";
-import { decide, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
+import { decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -45,6 +45,8 @@ export default {
     const settings = {
       workspace: cfg.workspace ?? join(homedir(), "workspace"),
       cleanSessionKeys: cfg.cleanSessionKeys ?? ["agent:main:main"],
+      // ADR 0011 (Adam, 2026-11-26): typing in the Mac HUD counts as Adam's own chat. false = off.
+      hudTypingIsAdam: cfg.hudTypingIsAdam !== false,
     };
     const matrixFile = cfg.matrixFile ?? "/opt/jorah/config/permission-matrix.json";
     // Site readers (lib/sites.js): the site files and the private file, re-read every 30 s so a new
@@ -141,6 +143,17 @@ export default {
         capSet(spokenSessions, key);
       }
     };
+    // How each webchat run was sorted in before_agent_run (ADR 0011): "typed" (Adam in the HUD),
+    // "spoken", "drive", "background", "http" or "unknown". Tool calls take it by run id; a run missing here
+    // (never seen, or forgotten after 500 newer ones) is not Adam's typing.
+    const hudRuns = new Map(); // runId -> kind
+    const rememberHud = (runId, kind) => {
+      if (typeof runId !== "string" || !runId) return;
+      hudRuns.delete(runId);
+      hudRuns.set(runId, kind);
+      if (hudRuns.size > 500) hudRuns.delete(hudRuns.keys().next().value);
+    };
+
     const isSpokenRun = (ctx) =>
       Boolean((ctx?.runId && spokenRuns.has(ctx.runId)) || (ctx?.sessionKey && spokenSessions.has(ctx.sessionKey)));
 
@@ -160,7 +173,7 @@ export default {
       try {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
-        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx) };
+        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx), hud: (ctx?.runId && hudRuns.get(ctx.runId)) || null };
         const before = sessionState(view, ctx ?? {}, settings, run, matrix ?? {});
         const taintedBefore = before.tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
@@ -186,7 +199,8 @@ export default {
         if (d.verdict === "block") noteBlocked(event?.toolCallId ?? ctx?.toolCallId);
         // For the review: how the sender was classed, and the channel's name only (never ids).
         const who = speaker(ctx ?? {}, settings, run);
-        const from = who.voice ? "voice" : who.webchat ? "webchat" : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
+        const from = who.voice ? "voice" : who.drive ? "drive" : who.webchat ? (who.typedByOwner ? "hud-typed" : "webchat")
+          : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
         log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params), readAction: (matrix?.readActions ?? []).includes(event?.params?.action) || undefined });
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
@@ -269,14 +283,17 @@ export default {
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
         const r = ctx?.requester;
         const rawPrompt = promptText(event?.prompt);
-        // Near the start, not only at it: OpenClaw may put an envelope such as a timestamp first.
-        const spoken = r?.channel === "webchat" && rawPrompt.slice(0, 200).includes("[Spoken turn.");
-        rememberSpoken(ctx, key, spoken);
-        // Only Adam's own typed turns count; voice, the Control UI, children and unknown senders don't.
-        if (!typedByOwner(r)) { state.setWords(key, ""); return undefined; }
         // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
         // Jorah's own earlier words.
         const prompt = ownTypedText(rawPrompt);
+        // Markers near the start, not only at it: OpenClaw may put an envelope such as a timestamp
+        // or a metadata block first, so the typed text is checked too (ADR 0011).
+        const hud = r?.channel === "webchat" ? hudKind(ctx?.runId, [rawPrompt, prompt], ctx?.trigger) : null;
+        if (hud) rememberHud(ctx?.runId, hud);
+        rememberSpoken(ctx, key, hud === "spoken");
+        // Only Adam's own typed turns count (Telegram, the CLI, the HUD); voice, drive mode,
+        // children and unknown senders don't.
+        if (!typedByOwner(r, { hud }, settings)) { state.setWords(key, ""); return undefined; }
         state.setWords(key, prompt);
         state.addTyped(key, prompt);
         state.addSeen(key, findUrls(prompt).flatMap(seenForms), "adam");

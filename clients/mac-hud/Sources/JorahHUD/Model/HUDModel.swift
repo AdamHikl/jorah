@@ -1283,18 +1283,23 @@ final class HUDModel {
         guard canWrite else { return (false, "This HUD can't send messages.", nil) }
         guard let key = currentSessionKey else { return (false, "No conversation is open.", nil) }
         guard !isHomeSession(key: key) else { return (false, "Not sent: cannot message the HUD home session.", nil) }
+        // Marked so jorah-guard keeps the cards for this turn (ADR 0011). Sent only while Jorah is
+        // idle: a line sent mid-run could join Adam's own run instead of starting a marked one.
+        guard let wire = DriveRules.wireText(text) else { return (false, "Not sent: drive mode can't send that command.", nil) }
+        guard activeRuns.isEmpty else { return (false, "Not sent: Jorah is still answering. Run wait, then send.", nil) }
         driveSent.append(text)
         if driveSent.count > 20 { driveSent.removeFirst(driveSent.count - 20) }
         do {
-            let run = try await deliver(text: text, images: [], key: key, viaDrive: true)
+            let run = try await deliver(text: text, wire: wire, images: [], key: key, viaDrive: true)
             return (true, key, run)
         } catch {
             return (false, "Not sent: \(error.localizedDescription)", nil)
         }
     }
 
-    /// Shows the line and sends it. The composer and drive mode both come here.
-    private func deliver(text: String, images: [PendingImage], key: String, viaDrive: Bool) async throws -> String? {
+    /// Shows the line and sends it. The composer and drive mode both come here. `wire` is what
+    /// goes to the Gateway when it differs from what the screen shows (drive mode's marker).
+    private func deliver(text: String, wire: String? = nil, images: [PendingImage], key: String, viaDrive: Bool) async throws -> String? {
         let idempotencyKey = UUID().uuidString
         let thumbs = images.map { LineImage(id: $0.id, image: $0.thumbnail) }
         lines.append(ChatLine(id: "u-\(idempotencyKey)", role: .user, text: text, at: Date(), images: thumbs, viaDrive: viaDrive))
@@ -1304,7 +1309,7 @@ final class HUDModel {
         }
         var params: [String: JSONValue] = [
             "sessionKey": .string(key),
-            "message": .string(text),
+            "message": .string(wire ?? text),
             "idempotencyKey": .string(idempotencyKey),
         ]
         if !images.isEmpty {
@@ -1718,15 +1723,18 @@ final class HUDModel {
         }
         var text = text(of: message) ?? ""
         var pictures = imageBlocks(in: message)
+        var viaDrive = false
         if role == .user {
             let stripped = HistoryPictures.strippingMarkers(text)
-            text = withoutSpokenNote(stripped.text)
+            let drive = DriveRules.unmarked(stripped.text)
+            viaDrive = drive.marked
+            text = withoutSpokenNote(drive.text)
             pictures += stripped.count
         }
         if pictures > 0 { text = text.isEmpty ? HistoryPictures.label(pictures) : "\(HistoryPictures.label(pictures))\n\(text)" }
         guard !text.isEmpty else { return nil }
         let id = message["__openclaw"]["id"].string.map { "\($0)-\(fallbackId)" } ?? fallbackId
-        return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs)
+        return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs, viaDrive: viaDrive)
     }
 
     /// jorah-voice puts a bracketed "[Spoken turn. …]" instruction (its TURN_NOTE) in front of

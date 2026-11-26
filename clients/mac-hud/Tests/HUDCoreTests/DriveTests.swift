@@ -55,6 +55,37 @@ final class DriveTests: XCTestCase {
         XCTAssertNotNil(command(#"{"cmd":"send","text":"\#(String(repeating: "a", count: DriveRules.maxText))"}"#))
     }
 
+    /// ADR 0011: HUD typing counts as Adam's own chat, so every drive line carries the marker that
+    /// keeps jorah-guard's cards. Only a short list of commands goes as it is.
+    func testMarksEveryLineButAllowedCommands() {
+        XCTAssertEqual(DriveRules.wireText("save a note"), DriveRules.marker + "\n\nsave a note")
+        XCTAssertEqual(DriveRules.wireText("  hi there \n"), DriveRules.marker + "\n\nhi there")
+        XCTAssertTrue(DriveRules.wireText("x /jorah-status")?.hasPrefix(DriveRules.marker) == true)
+        XCTAssertEqual(DriveRules.wireText("/jorah-status"), "/jorah-status")
+        XCTAssertEqual(DriveRules.wireText(" /jorah-careful   on "), "/jorah-careful on")
+        XCTAssertEqual(DriveRules.wireText("/jorah-today"), "/jorah-today")
+        for text in ["/jorah-freeze", "/new", "/reset", "/model x", "/jorah-status now", "/approve abc",
+                     "/jorah-careful maybe", "/think high", "/"] {
+            XCTAssertNil(DriveRules.wireText(text), text)
+            XCTAssertTrue(refusal(#"{"cmd":"send","text":"\#(text)"}"#)?.contains("only these commands") == true, text)
+        }
+        XCTAssertNil(DriveRules.wireText("   "))
+        XCTAssertTrue(DriveRules.marker.hasPrefix(DriveRules.markerStart))
+    }
+
+    func testHistoryHidesTheMarker() {
+        let sent = DriveRules.wireText("save a note")!
+        XCTAssertEqual(DriveRules.unmarked(sent).text, "save a note")
+        XCTAssertTrue(DriveRules.unmarked(sent).marked)
+        let stamped = DriveRules.unmarked("[Thu 2026-11-26 20:01 GMT+1] " + sent)
+        XCTAssertTrue(stamped.marked)
+        XCTAssertTrue(DriveRules.sameText(stamped.text, "save a note"))
+        XCTAssertFalse(DriveRules.unmarked("save a note").marked)
+        XCTAssertEqual(DriveRules.unmarked("save a note").text, "save a note")
+        let late = String(repeating: "a", count: 130) + " " + DriveRules.marker
+        XCTAssertFalse(DriveRules.unmarked(late).marked)
+    }
+
     func testRefusesBadIdsAndNumbers() {
         XCTAssertNotNil(refusal(#"{"cmd":"deny"}"#))
         XCTAssertNotNil(refusal(#"{"cmd":"deny","id":""}"#))

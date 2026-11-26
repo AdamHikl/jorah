@@ -42,6 +42,10 @@
         "type": "string",
         "description": "main's workspace, for classifying file writes"
       },
+      "hudTypingIsAdam": {
+        "type": "boolean",
+        "description": "Typing in the Mac HUD counts as Adam's own chat (ADR 0011); false gives every HUD turn cards"
+      },
       "cleanSessionKeys": {
         "type": "array",
         "items": {

@@ -114,7 +114,8 @@ test("webchat spoken marker gives voice wording without leaking to next run, voi
     on: (name, fn) => { (hooks[name] ??= []).push(fn); },
     registerCommand() {},
   });
-  const start = (ev, ctx) => hooks.before_agent_run[0](ev, ctx);
+  // As OpenClaw 2026.11.6 runs a turn: before_prompt_build sees the line as sent first.
+  const start = (ev, ctx) => { hooks.before_prompt_build[0](ev, ctx); return hooks.before_agent_run[0](ev, ctx); };
   const call = (ev, ctx) => hooks.before_tool_call[0](ev, ctx);
 
   const webchatBase = { agentId: "main", sessionKey: "agent:main:main", requester: { channel: "webchat", senderIsOwner: true } };

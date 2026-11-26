@@ -23,8 +23,9 @@ get a visible marker and keep their cards."
 `index.js`):
 
 - `senderIsOwner` is `true`.
-- The guard saw the run start in `before_agent_run`. A tool call from a run it never saw, or from a
-  turn without a run id, keeps its card.
+- The guard saw the run start in `before_agent_run`, and saw the line as sent in
+  `before_prompt_build` for the same run id (see below). A tool call from a run it never saw, a
+  turn without a run id, or a `webchat` run without that line keeps its card.
 - The run isn't a heartbeat, cron job or event: its `trigger` is `user` (or absent). In the PC's
   guard log every `webchat` row so far has `trigger: "user"`; heartbeats run in their own
   `…:heartbeat` sessions with no channel.
@@ -33,8 +34,9 @@ get a visible marker and keep their cards."
   `openresponses-http-*.mjs` in the 2026.11.6 dist), so a caller of those APIs can't choose a
   HUD-looking id. jorah-voice and jorah-phone use Chat Completions, so they never count, even if
   their spoken marker were lost.
-- Neither `[Spoken turn.` nor `[Typed by Claude Code` is in the first 200 characters of the prompt or
-  of the typed text (OpenClaw may put a timestamp or a metadata block first).
+- Neither `[Spoken turn.` nor `[Typed by Claude Code` is in the first 200 characters of the line as
+  sent, of the prompt `before_agent_run` gets, or of the typed text in either (OpenClaw may put a
+  timestamp or a metadata block first).
 - The plugin setting `hudTypingIsAdam` isn't `false` (default: on).
 - The run is in the main agent's `agent:main:main` (`cleanSessionKeys`). A "+" chat in the HUD, or
   a run OpenClaw starts itself on `webchat` (a skill review), isn't Adam's typing, not even for
@@ -49,6 +51,21 @@ shows these turns as `from: "hud-typed"`. OpenClaw 2026.11.6 puts no requester o
 guard rebuilds the run's requester from the context's channel and the event's sender and hands it
 to that run's tool calls by run id (`agentRunRequester`, `rememberRun`). Plugin commands are unchanged (ADR 0012):
 `/jorah-careful off` and `/jorah-freeze` still answer only on Telegram.
+
+**The line as sent, not the composed prompt (fix of 2026-11-26, after the third drive test).** For
+Claude CLI runs OpenClaw 2026.11.6 hands `before_agent_run` the prompt it built for the hooks:
+`${prependContext}\n\n${prompt}\n\n${appendContext}` (`promptForHooks` in the CLI runner).
+memory-core's standing intents and active memory come before the line; runtime context, delivery
+guidance and part of the system prompt come after it. In the live test a drive line's marker sat
+past the first 200 characters, so the guard logged it `from: "hud-typed"` (its write still got a
+card because the chat had read outside text), and Adam's "own words" included the appended text.
+`before_prompt_build` runs earlier with the line as sent and the same run id (skipped only for side
+questions and control operations; prompt-build hooks are allowed unless
+`hooks.allowPromptInjection` is `false`). The guard keeps that line by run id, uses it for the
+markers and for Adam's words, and takes it once. The guard's handler returns nothing, so it never
+changes the prompt. If a future OpenClaw stops calling `before_prompt_build` for HUD turns, every
+HUD turn keeps its card again (safe side); re-check after each upgrade with a drive line and a
+typed line.
 
 **Drive mode** (ADR 0012) puts `[Typed by Claude Code in HUD drive mode.]` in front of every line it
 types, so those turns keep every card, and the card says Claude Code typed it. It may send only a

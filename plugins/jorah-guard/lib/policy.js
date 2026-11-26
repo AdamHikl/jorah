@@ -42,7 +42,10 @@ export function classify(matrix, tool) {
 // sorted by index.js in before_agent_run as run.hud === "typed". That needs a run id the Gateway
 // didn't give its HTTP APIs ("chatcmpl_", "resp_": jorah-voice and jorah-phone use Chat
 // Completions), no "[Spoken turn." (their marker) and no "[Typed by Claude Code" (HUD drive mode's
-// marker, ADR 0012) near the start. A run index.js never saw stays untrusted. Spoken webchat
+// marker, ADR 0012) near the start, and the line as sent, which index.js takes from
+// before_prompt_build: OpenClaw 2026.11.6 hands before_agent_run the line with other plugins'
+// context before and after it, so a webchat run without that line is never typing. A run index.js
+// never saw stays untrusted. Spoken webchat
 // turns get voice checks and wording (run.voice or run.hud === "spoken"); drive turns keep every
 // card; other webchat turns keep them too (WEBCHAT). Any other channel is not Adam's own chat.
 // settings.hudTypingIsAdam === false turns the HUD rule off (cards for all webchat, as before).

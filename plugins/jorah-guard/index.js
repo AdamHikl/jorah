@@ -166,6 +166,21 @@ export default {
       hudRuns.set(runId, kind);
       if (hudRuns.size > 500) hudRuns.delete(hudRuns.keys().next().value);
     };
+    // The line as sent, by run id. OpenClaw 2026.11.6 gives before_agent_run the prompt with other
+    // plugins' context around it (cli-runner promptForHooks: memory-core's standing intents and
+    // active memory before the line, runtime context and part of the system prompt after), so a
+    // drive or spoken marker could sit past where hudKind looks, and the text held more than Adam
+    // typed (live drive test, 2026-11-26: a drive line was logged "hud-typed"). before_prompt_build
+    // runs first with the line as sent. Each before_agent_run takes its run's line once; a webchat
+    // run without one (a side question, a control operation, a path that skips the hook) is never
+    // typing.
+    const sentPrompts = new Map(); // runId -> prompt as sent
+    const takeSent = (runId) => {
+      if (typeof runId !== "string" || !sentPrompts.has(runId)) return undefined;
+      const text = sentPrompts.get(runId);
+      sentPrompts.delete(runId);
+      return text;
+    };
 
     const isSpokenRun = (ctx) =>
       Boolean((ctx?.runId && spokenRuns.has(ctx.runId)) || (ctx?.sessionKey && spokenSessions.has(ctx.sessionKey)));
@@ -286,6 +301,20 @@ export default {
       return undefined;
     });
 
+    // Only records the line; it never changes the prompt.
+    api.on("before_prompt_build", (event, ctx) => {
+      try {
+        const runId = ctx?.runId;
+        if (typeof runId !== "string" || !runId) return undefined;
+        sentPrompts.delete(runId);
+        sentPrompts.set(runId, promptText(event?.prompt));
+        if (sentPrompts.size > 100) sentPrompts.delete(sentPrompts.keys().next().value);
+      } catch (e) {
+        api.logger.warn(`jorah-guard: before_prompt_build: ${e?.message}`);
+      }
+      return undefined;
+    });
+
     // Adam's own words for this turn: URLs in them count as seen, and a memory line taken from them
     // saves without asking. Needs hooks.allowConversationAccess; without it every such save asks.
     api.on("before_agent_run", (event, ctx) => {
@@ -295,13 +324,19 @@ export default {
         const r = agentRunRequester(event, ctx);
         rememberRun(ctx?.runId, r);
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
-        const rawPrompt = promptText(event?.prompt);
+        // The line as sent (before_prompt_build) when there is one, else the hook's prompt.
+        const composed = promptText(event?.prompt);
+        const sent = takeSent(ctx?.runId);
+        const rawPrompt = sent ?? composed;
         // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
         // Jorah's own earlier words.
         const prompt = ownTypedText(rawPrompt);
         // Markers near the start, not only at it: OpenClaw may put an envelope such as a timestamp
-        // or a metadata block first, so the typed text is checked too (ADR 0011).
-        const hud = r?.channel === "webchat" ? hudKind(ctx?.runId, [rawPrompt, prompt], ctx?.trigger) : null;
+        // or a metadata block first, so the typed text is checked too (ADR 0011). A marker near the
+        // start of the composed prompt counts as well; it can only take trust away.
+        const kind = r?.channel === "webchat"
+          ? hudKind(ctx?.runId, [rawPrompt, prompt, composed, ownTypedText(composed)], ctx?.trigger) : null;
+        const hud = kind === "typed" && sent === undefined ? "unknown" : kind;
         if (hud) rememberHud(ctx?.runId, hud);
         rememberSpoken(ctx, key, hud === "spoken");
         // Only Adam's own typed turns count (Telegram, the CLI, the HUD); voice, drive mode,

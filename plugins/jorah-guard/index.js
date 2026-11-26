@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { summarizeDay, readTail } from "./lib/today.js";
-import { decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
+import { agentRunRequester, decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -281,7 +281,7 @@ export default {
         remember(ctx);
         rememberTrigger(ctx);
         state.enter(key, ctx?.sessionId ?? event?.sessionId);
-        const r = ctx?.requester;
+        const r = agentRunRequester(event, ctx);
         const rawPrompt = promptText(event?.prompt);
         // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
         // Jorah's own earlier words.

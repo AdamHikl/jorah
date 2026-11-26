@@ -570,6 +570,48 @@ test("typing in the HUD counts as Adam's own chat, like Telegram (ADR 0011, Adam
   assert.match(p.call("before_tool_call", planted, later).requireApproval.description, /outside text/);
 });
 
+test("OpenClaw 2026.11.6: before_agent_run has no requester, so it is rebuilt from the channel and the event's sender", () => {
+  // The shapes the live Gateway passes (hook-agent-context, runBeforeAgentRunGate): tool hooks
+  // carry the requester; before_agent_run carries channel and trigger on the context and the
+  // sender on the event. Until this fix every run was sorted as not typed (2026-11-22 to 11-26).
+  const p = loadPlugin();
+  const base = { agentId: "main", sessionKey: "agent:main:main", sessionId: "n1" };
+  const agent = (runId, channel, extra = {}) => ({ ...base, runId, trigger: "user", ...(channel ? { channel, messageProvider: channel } : {}), ...extra });
+  const tool = (runId, requester) => ({ ...base, runId, requester });
+  const HUD = { channel: "webchat", senderIsOwner: true };
+  const TG = { channel: "telegram", senderId: "owner-id", senderIsOwner: true };
+  const note = { toolName: "project_note", params: { project: "garden", note: "watered" } };
+  const memory = { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "the plant needs water on Fridays" }] } };
+  const ask = "Remember: the plant needs water on Fridays";
+  const log = () => readFileSync(join(p.dir, "decisions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+  p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, agent("A9973460-hud", "webchat"));
+  assert.equal(p.call("before_tool_call", note, tool("A9973460-hud", HUD)), undefined, "Adam typing in the HUD");
+  assert.equal(log().at(-1).from, "hud-typed");
+
+  p.call("before_agent_run", { prompt: "[Typed by Claude Code in HUD drive mode.]\n\n" + ask, senderIsOwner: true }, agent("B1-drive", "webchat"));
+  assert.match(p.call("before_tool_call", memory, tool("B1-drive", HUD)).requireApproval.description, /Typed by Claude Code in HUD drive mode/);
+  assert.equal(log().at(-1).from, "drive");
+
+  p.call("before_agent_run", { prompt: "[Spoken turn.]\n\n" + ask, senderIsOwner: true }, agent("chatcmpl_9f", "webchat"));
+  assert.match(p.call("before_tool_call", note, tool("chatcmpl_9f", HUD)).requireApproval.description, /Asked by voice/);
+
+  for (const [id, ctx] of [["C1-cron", agent("C1-cron", "webchat", { trigger: "cron" })], ["C2-none", agent("C2-none", undefined)]]) {
+    p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, ctx);
+    assert.ok(p.call("before_tool_call", note, tool(id, HUD)).requireApproval, id);
+  }
+
+  // Telegram: Adam's words count again after outside text, but only with the owner flag on the event.
+  const tg = loadPlugin();
+  tg.call("before_agent_run", { prompt: ask, senderId: "owner-id", senderIsOwner: true }, agent("T1", "telegram"));
+  tg.call("before_tool_call", { toolName: "web_search", params: { query: "q" } }, tool("T1", TG));
+  assert.equal(tg.call("before_tool_call", memory, tool("T1", TG)), undefined, "own words after outside text");
+  const other = loadPlugin();
+  other.call("before_agent_run", { prompt: ask, senderId: "owner-id" }, agent("T2", "telegram"));
+  other.call("before_tool_call", { toolName: "web_search", params: { query: "q" } }, tool("T2", TG));
+  assert.ok(other.call("before_tool_call", memory, tool("T2", TG)).requireApproval, "no owner flag, no words");
+});
+
 test("hudTypingIsAdam: false gives every HUD turn its card again (ADR 0011 undo)", () => {
   const p = loadPlugin(undefined, { hudTypingIsAdam: false });
   const typed = { agentId: "main", sessionKey: "agent:main:main", sessionId: "k1", runId: "hud-k1", requester: { channel: "webchat", senderIsOwner: true } };

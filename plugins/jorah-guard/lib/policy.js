@@ -69,6 +69,20 @@ export function hudKind(runId, heads, trigger) {
   return "typed";
 }
 
+// Who asked for an agent run, as before_agent_run sees it. OpenClaw 2026.11.6 (live 2026-11-22)
+// no longer puts the requester on that hook's context, only on tool hooks: the channel and the
+// trigger are on the context, the sender on the event (runBeforeAgentRunGate). This rebuilds the
+// same shape from those. A run with no channel stays without a requester (never typing), and a
+// run started by a heartbeat, cron job or event gets none either.
+export function agentRunRequester(event, ctx) {
+  if (ctx?.requester) return ctx.requester;
+  if (typeof ctx?.trigger === "string" && ctx.trigger !== "user") return undefined;
+  const channel = typeof ctx?.channel === "string" && ctx.channel.length > 0 ? ctx.channel : undefined;
+  if (!channel) return undefined;
+  const id = [event?.senderId, ctx?.senderId].find((v) => typeof v === "string" && v.length > 0);
+  return { channel, ...(id ? { senderId: id } : {}), senderIsOwner: event?.senderIsOwner === true };
+}
+
 // A plugin command typed in Adam's paired Mac HUD or Control UI (2026-11-26, ADR 0012). OpenClaw
 // counts a command's sender as owner only with operator.admin or commands.ownerAllowFrom, and the
 // HUD pairs with operator.read, .write and .approvals, so senderIsOwner is false there. A chat.send

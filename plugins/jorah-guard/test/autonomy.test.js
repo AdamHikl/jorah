@@ -114,7 +114,8 @@ test("careful mode: every write main would make alone becomes a card, with the e
   }
   assert.match(run("write", { path: "notes/a.md", content: "hello" }).description, /content: hello/);
   assert.equal(run("sessions_spawn", { agentId: "background", task: "tidy" }).taint, "worker result");
-  assert.ok(Date.parse(until) > Date.now() - 1);
+  // 24 hours after the test clock, not the real one (comparing with Date.now() broke a day later).
+  assert.equal(until, "2026-11-26T10:00:00.000Z");
 });
 
 test("careful mode: reading, searching, read actions and asking deep stay free; blocks stay blocks", () => {

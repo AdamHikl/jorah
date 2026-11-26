@@ -36,10 +36,18 @@ get a visible marker and keep their cards."
 - Neither `[Spoken turn.` nor `[Typed by Claude Code` is in the first 200 characters of the prompt or
   of the typed text (OpenClaw may put a timestamp or a metadata block first).
 - The plugin setting `hudTypingIsAdam` isn't `false` (default: on).
+- The run is in the main agent's `agent:main:main` (`cleanSessionKeys`). A "+" chat in the HUD, or
+  a run OpenClaw starts itself on `webchat` (a skill review), isn't Adam's typing, not even for
+  memory notes in their words (fix of 2026-11-26, after the first live test).
+- The session isn't a child: not an OpenClaw subagent (`…:subagent:…`) and not one the guard saw
+  spawned. OpenClaw copies the parent's owner flag and channel onto a subagent run, so without this
+  a brief Jorah wrote would count as Adam's words. This holds for Telegram too.
 
-The turn is then clean only in `agent:main:main` (`cleanSessionKeys`), exactly like Telegram: a "+"
-chat in the HUD keeps its cards, and the chat is no longer clean once it reads outside text. The
-guard's log shows these turns as `from: "hud-typed"`. Plugin commands are unchanged (ADR 0012):
+The chat is no longer clean once it reads outside text, exactly like Telegram. The guard's log
+shows these turns as `from: "hud-typed"`. OpenClaw 2026.11.6 puts no requester on
+`before_agent_run` and none on most tool calls (only `tool_search` had one in the live log), so the
+guard rebuilds the run's requester from the context's channel and the event's sender and hands it
+to that run's tool calls by run id (`agentRunRequester`, `rememberRun`). Plugin commands are unchanged (ADR 0012):
 `/jorah-careful off` and `/jorah-freeze` still answer only on Telegram.
 
 **Drive mode** (ADR 0012) puts `[Typed by Claude Code in HUD drive mode.]` in front of every line it

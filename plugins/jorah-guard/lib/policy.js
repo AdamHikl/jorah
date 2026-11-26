@@ -46,13 +46,29 @@ export function classify(matrix, tool) {
 // turns get voice checks and wording (run.voice or run.hud === "spoken"); drive turns keep every
 // card; other webchat turns keep them too (WEBCHAT). Any other channel is not Adam's own chat.
 // settings.hudTypingIsAdam === false turns the HUD rule off (cards for all webchat, as before).
+// HUD typing counts only in the main agent's clean chat (settings.cleanSessionKeys, run.sessionKey
+// and run.agentId), where Adam types; OpenClaw's own webchat runs elsewhere (a HUD "+" chat, a
+// skill review) don't count. A child session (run.child: a subagent, or a session the guard saw
+// spawned) is never typing on any channel: its prompt is a brief another run wrote, and OpenClaw
+// copies the parent's owner flag and channel onto it (subagent-spawn, 2026.11.6).
 export const HTTP_RUN_ID = /^(chatcmpl|resp)_/;
 
 export function typedByOwner(r, run = {}, settings = {}) {
   if (r?.senderIsOwner !== true) return false;
+  if (run?.child === true) return false;
   if (r.channel === "telegram") return typeof r.senderId === "string" && r.senderId.length > 0;
-  if (r.channel === "webchat") return settings?.hudTypingIsAdam !== false && run?.hud === "typed";
+  if (r.channel === "webchat") {
+    const keys = settings?.cleanSessionKeys ?? ["agent:main:main"];
+    return settings?.hudTypingIsAdam !== false && run?.hud === "typed"
+      && keys.includes(run?.sessionKey) && (run?.agentId ?? "main") === "main";
+  }
   return r.channel === undefined && r.senderId === undefined;
+}
+
+// A session another run started: an OpenClaw subagent key, or one the guard recorded as spawned.
+export function childSession(key, parentOf = () => null) {
+  const k = String(key ?? "");
+  return /:subagent:/.test(k) || !!parentOf(k);
 }
 
 // How before_agent_run sorts a webchat turn (ADR 0011): by the Gateway-set run id, the run's
@@ -104,7 +120,7 @@ export function speaker(ctx = {}, settings = {}, run = {}) {
   const webchat = webchatRaw && !voice;
   const drive = webchat && run?.hud === "drive";
   const owner = r?.senderIsOwner === true;
-  const typed = !voice && !drive && typedByOwner(r, run, settings);
+  const typed = !voice && !drive && typedByOwner(r, { ...run, sessionKey: ctx.sessionKey, agentId: ctx.agentId }, settings);
   const cleanKeys = settings.cleanSessionKeys ?? ["agent:main:main"];
   const cleanEligible = typed && cleanKeys.includes(ctx.sessionKey) && (ctx.agentId ?? "main") === "main";
   return { voice, webchat, drive, owner, cleanEligible, typedByOwner: typed };

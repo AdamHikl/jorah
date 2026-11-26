@@ -612,6 +612,54 @@ test("OpenClaw 2026.11.6: before_agent_run has no requester, so it is rebuilt fr
   assert.ok(other.call("before_tool_call", memory, tool("T2", TG)).requireApproval, "no owner flag, no words");
 });
 
+test("OpenClaw 2026.11.6: tool calls without a requester take the run's, and only the main chat counts as HUD typing", () => {
+  // Live 2026-11-26: read and write reached before_tool_call with no requester (only tool_search
+  // had one), so a drive run without tool_search was logged "none". Subagent runs carry the
+  // parent's owner flag and channel (subagent-spawn), so they must never count as typing.
+  const p = loadPlugin();
+  const base = { agentId: "main", sessionKey: "agent:main:main", sessionId: "b1" };
+  const agent = (runId, extra = {}) => ({ ...base, runId, trigger: "user", channel: "webchat", messageProvider: "webchat", ...extra });
+  const bare = (runId, extra = {}) => ({ ...base, runId, ...extra });
+  const note = { toolName: "project_note", params: { project: "garden", note: "watered" } };
+  const ask = "Remember: the plant needs water on Fridays";
+  const memory = { toolName: "edit", params: { path: "MEMORY.md", edits: [{ newText: "the plant needs water on Fridays" }] } };
+  const search = { toolName: "web_search", params: { query: "q" } };
+  const log = () => readFileSync(join(p.dir, "decisions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+  p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, agent("R1-typed"));
+  assert.equal(p.call("before_tool_call", note, bare("R1-typed")), undefined, "Adam's HUD typing, bare tool call");
+  assert.equal(log().at(-1).from, "hud-typed");
+  assert.equal(log().at(-1).channel, "webchat");
+
+  p.call("before_agent_run", { prompt: "[Typed by Claude Code in HUD drive mode.]\n\n" + ask, senderIsOwner: true }, agent("R2-drive"));
+  assert.ok(p.call("before_tool_call", { toolName: "read", params: { path: "notes.md" } }, bare("R2-drive")) === undefined);
+  assert.equal(log().at(-1).from, "drive");
+  assert.ok(p.call("before_tool_call", memory, bare("R2-drive")).requireApproval, "drive keeps its card");
+
+  // The same run id seen again for a cron run: the typed requester is gone.
+  p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, agent("R1-typed", { trigger: "cron" }));
+  assert.ok(p.call("before_tool_call", note, bare("R1-typed")).requireApproval, "a reused run id keeps no requester");
+  assert.equal(log().at(-1).from, "none");
+
+  // A HUD "+" chat or an OpenClaw review run is webchat with the owner flag, but not the main chat.
+  const plus = { sessionKey: "agent:main:dashboard:7f3a", sessionId: "d1" };
+  p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, agent("R3-plus", plus));
+  assert.ok(p.call("before_tool_call", note, bare("R3-plus", plus)).requireApproval, "not the main chat");
+  assert.equal(log().at(-1).from, "webchat");
+
+  // A subagent's brief, written by a run that read outside text, is never Adam's words.
+  const child = { agentId: "deep", sessionKey: "agent:deep:subagent:4bdb2c9f", sessionId: "s1" };
+  p.call("before_agent_run", { prompt: ask, senderIsOwner: true }, agent("R4-child", child));
+  p.call("before_tool_call", search, bare("R4-child", { ...child, requester: { channel: "webchat", senderIsOwner: true } }));
+  assert.ok(p.call("before_tool_call", { toolName: "agentmemory__memory_save", params: { content: "the plant needs water on Fridays" } },
+    bare("R4-child", { ...child, requester: { channel: "webchat", senderIsOwner: true } })).requireApproval, "subagent, webchat");
+  const tgChild = { agentId: "main", sessionKey: "agent:main:subagent:9e1c", sessionId: "s2" };
+  const tg = { channel: "telegram", senderId: "owner-id", senderIsOwner: true };
+  p.call("before_agent_run", { prompt: ask, senderId: "owner-id", senderIsOwner: true }, agent("R5-child", { ...tgChild, channel: "telegram", messageProvider: "telegram" }));
+  p.call("before_tool_call", search, bare("R5-child", { ...tgChild, requester: tg }));
+  assert.ok(p.call("before_tool_call", memory, bare("R5-child", { ...tgChild, requester: tg })).requireApproval, "subagent, telegram");
+});
+
 test("hudTypingIsAdam: false gives every HUD turn its card again (ADR 0011 undo)", () => {
   const p = loadPlugin(undefined, { hudTypingIsAdam: false });
   const typed = { agentId: "main", sessionKey: "agent:main:main", sessionId: "k1", runId: "hud-k1", requester: { channel: "webchat", senderIsOwner: true } };

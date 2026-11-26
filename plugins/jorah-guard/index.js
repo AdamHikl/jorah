@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { summarizeDay, readTail } from "./lib/today.js";
-import { agentRunRequester, decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
+import { agentRunRequester, childSession, decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
@@ -99,6 +99,19 @@ export default {
     };
     const withRequester = (ctx) =>
       ctx && !ctx.requester && ctx.runId && runs.has(ctx.runId) ? { ...ctx, requester: runs.get(ctx.runId) } : ctx;
+    // OpenClaw 2026.11.6 (live 2026-11-22) puts a requester on tool_search calls but not on most
+    // others (read, write, project tools; guard log 2026-11-22 to 11-26), so a run that never used
+    // tool_search was sorted as "none". before_agent_run rebuilds the run's requester
+    // (agentRunRequester) and its tool calls take it by run id. Each run start sets or clears the
+    // entry, so a run id seen again never keeps an older run's requester.
+    const rememberRun = (runId, requester) => {
+      if (typeof runId !== "string" || !runId) return;
+      runs.delete(runId);
+      if (!requester) return;
+      runs.set(runId, requester);
+      if (runs.size > 500) runs.delete(runs.keys().next().value);
+    };
+    const isChild = (key) => childSession(key, (k) => state.parentOf(k));
 
     // The run's trigger ("user", "heartbeat", "cron", ...) reaches before_agent_run but not
     // before_tool_call (OpenClaw 2026.10.9), so it is kept per run id, which the Gateway sets.
@@ -173,7 +186,7 @@ export default {
       try {
         state.enter(ctx?.sessionKey, ctx?.sessionId);
         if (!matrix) matrix = loadMatrix(matrixFile);
-        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx), hud: (ctx?.runId && hudRuns.get(ctx.runId)) || null };
+        const run = { trigger: (ctx?.runId && triggers.get(ctx.runId)) || null, voice: isSpokenRun(ctx), hud: (ctx?.runId && hudRuns.get(ctx.runId)) || null, child: isChild(ctx?.sessionKey) };
         const before = sessionState(view, ctx ?? {}, settings, run, matrix ?? {});
         const taintedBefore = before.tainted;
         const d = decide({ tool, params: event?.params ?? {}, ctx: ctx ?? {}, derivedPaths: event?.derivedPaths, matrix, view, settings, run });
@@ -278,10 +291,10 @@ export default {
     api.on("before_agent_run", (event, ctx) => {
       try {
         const key = ctx?.sessionKey ?? event?.sessionKey;
-        remember(ctx);
         rememberTrigger(ctx);
-        state.enter(key, ctx?.sessionId ?? event?.sessionId);
         const r = agentRunRequester(event, ctx);
+        rememberRun(ctx?.runId, r);
+        state.enter(key, ctx?.sessionId ?? event?.sessionId);
         const rawPrompt = promptText(event?.prompt);
         // Only the text Adam typed: quoted messages and the chat window OpenClaw adds can hold
         // Jorah's own earlier words.
@@ -293,7 +306,7 @@ export default {
         rememberSpoken(ctx, key, hud === "spoken");
         // Only Adam's own typed turns count (Telegram, the CLI, the HUD); voice, drive mode,
         // children and unknown senders don't.
-        if (!typedByOwner(r, { hud }, settings)) { state.setWords(key, ""); return undefined; }
+        if (!typedByOwner(r, { hud, sessionKey: key, agentId: ctx?.agentId, child: isChild(key) }, settings)) { state.setWords(key, ""); return undefined; }
         state.setWords(key, prompt);
         state.addTyped(key, prompt);
         state.addSeen(key, findUrls(prompt).flatMap(seenForms), "adam");

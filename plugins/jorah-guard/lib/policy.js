@@ -287,8 +287,11 @@ function paramLines(params = {}) {
   return Object.keys(params).sort().map((k) => `${short(k, 20)}: ${short(textOf(params[k]), 160)}`);
 }
 
+// A drive turn says so even in a chat that has read outside text (fix of 2026-11-27): the card
+// used to name only the outside text, so Adam couldn't tell Claude Code had typed the line.
 const why = (s) => (s.voice ? "Asked by voice: confirm only if this was you."
-  : s.source === DRIVE ? "Typed by Claude Code in HUD drive mode, not by Adam: only Adam allows, in the HUD or Telegram."
+  : s.drive ? "Typed by Claude Code in HUD drive mode, not by Adam: only Adam allows, in the HUD or Telegram."
+    + (s.source && s.source !== DRIVE ? ` This chat has also read outside text (${short(s.source, 80)}).` : "")
   : s.source === WEBCHAT ? "From the HUD or the web chat, but not known to be Adam's typing: confirm only if this was you."
     : `This chat has read outside text (${short(s.source, 80)}).`);
 

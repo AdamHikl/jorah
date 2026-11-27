@@ -163,7 +163,10 @@ the HUD typing test on 27 November passed." Guard log:
   time, with the date when it isn't today.
 - ADR 0012 said Jorah sees drive-mode turns as Adam's. That holds for tool hooks, not for plugin
   commands. Corrected.
-- Not fixed yet: in a chat that has read outside text, a drive turn's card names the outside text
+- In a chat that has read outside text, a drive turn's card named only the outside text
   ("This chat has read outside text (sessions_history).") instead of saying Claude Code typed it
-  (`why()` in `lib/policy.js` checks the taint before drive). The verdict is the same: a drive
-  turn never counts as Adam's typing.
+  (`why()` in `lib/policy.js` checked the taint before drive). The verdict was the same: a drive
+  turn never counts as Adam's typing. Fixed in source on 27 November (Adam: "Yes, fix it here"):
+  the card now starts "Typed by Claude Code in HUD drive mode, not by Adam: …" and adds "This chat
+  has also read outside text (…)". A guard test covers it and fails without the fix. Not deployed
+  yet.

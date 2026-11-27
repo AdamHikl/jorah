@@ -145,7 +145,8 @@ test("every call to the tools waits for Adam; searches and wrappers don't prompt
   const hooks = {}, tools = {};
   plugin.register({ pluginConfig: { repos: { proj: "AdamHikl/proj" } }, logger: { info() {}, warn() {} }, on: (n, f) => (hooks[n] = f), registerTool: (t) => (tools[t.name] = t) });
   const hook = (e) => hooks.before_tool_call(e);
-  assert.deepEqual(Object.keys(tools).sort(), ["github_clone", "github_list_repos", "github_open_pr", "github_push_branch", "github_sync"]);
+  assert.deepEqual(Object.keys(tools).sort(), ["github_branch_report", "github_clone", "github_list_repos", "github_open_pr", "github_push_branch", "github_sync"]);
+  assert.equal(await hook({ toolName: "github_branch_report", params: { project: "proj", branch: "jorah/x" } }), undefined, "the report only reads: no prompt");
   assert.equal(await hook({ toolName: "github_clone", params: { repo: "proj" } }), undefined, "clone only reads: no prompt");
   assert.equal(await hook({ toolName: "github_sync", params: { project: "proj" } }), undefined, "sync is read-only: no prompt");
   for (const t of Object.values(tools)) assert.equal(t.catalogMode, "direct-only", `${t.name} must be visible directly (2026-11-11)`);

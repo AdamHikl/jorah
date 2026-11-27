@@ -2,7 +2,8 @@
 // clone only read. Plain object entry, the same shape definePluginEntry returns, so it needs no
 // build or install.
 
-import { changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, logProjectPush, prFlow, projectPushBlock, pushFlow, settings, standingGrant, syncFlow } from "./github.js";
+import { branchReport, changedFiles, check, cloneFlow, describe, describeWithFiles, listRepos, logProjectPush, prFlow, projectPushBlock, pushFlow, settings, standingGrant, syncFlow } from "./github.js";
+import { cloneResult, errorResult, reportResult, syncResult } from "./shape.js";
 
 const TOOLS = new Set(["github_push_branch", "github_open_pr"]);
 const text = (t, details = {}) => ({ content: [{ type: "text", text: t }], details });
@@ -140,15 +141,12 @@ export default {
         try {
           const { target, synced, cloned } = await cloneFlow(config(), p?.repo);
           api.logger.info(`jorah-github: cloned ${target.repo} into ~/work/${target.project}`);
-          return text(
-            `Cloned ${target.repo} into ~/work/${target.project}, on ${cloned.branch} at ${cloned.head}. ` +
-              `Remote \`github\` reads Jorah's mirror (${synced.branches.length} branches). ` +
-              `Claude Code works there on a new jorah/<task> branch from github/${cloned.branch}.`,
-            { ok: true, path: cloned.path, branch: cloned.branch, branches: synced.branches },
-          );
+          const r = cloneResult(target, synced, cloned);
+          return text(r.text, r.details);
         } catch (error) {
           api.logger.warn(`jorah-github: clone refused or failed: ${firstLine(error)}`);
-          return text(`Clone didn't happen: ${firstLine(error)}`, { ok: false });
+          const r = errorResult("Clone didn't happen", error);
+          return text(r.text, r.details);
         }
       },
     });
@@ -201,9 +199,31 @@ export default {
         try {
           const { target, synced } = await syncFlow(config(), p?.project);
           api.logger.info(`jorah-github: synced ${target.repo} (${synced.branches.length} branches)`);
-          return text(`Synced ${target.repo} into the mirror. Branches:\n${synced.branches.join("\n")}\nIn ~/work/${target.project}, run \`git fetch github\` to get them.`, { ok: true, ...synced });
+          const r = syncResult(target, synced);
+          return text(r.text, r.details);
         } catch (error) {
-          return text(`Sync didn't happen: ${firstLine(error)}`, { ok: false });
+          api.logger.warn(`jorah-github: sync refused or failed: ${firstLine(error)}`);
+          const r = errorResult("Sync didn't happen", error);
+          return text(r.text, r.details);
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "github_branch_report",
+      // Visible to the model directly, like the other GitHub tools. Needs main's allow list entry.
+      catalogMode: "direct-only",
+      description: "Facts about a jorah/<task> branch in ~/work/<project>, without reading its files: head, last commit time, commits ahead of and behind GitHub's default branch (as of the last github_sync), the changed file paths, and whether it's pushed. Read-only, no approval. Use it to check what a Claude Code job left, instead of retelling its report.",
+      parameters: params,
+      async execute(_id, p) {
+        try {
+          const facts = await branchReport(config(), p);
+          const r = reportResult(facts);
+          return text(r.text, r.details);
+        } catch (error) {
+          api.logger.warn(`jorah-github: branch report refused or failed: ${firstLine(error)}`);
+          const r = errorResult("No branch report", error);
+          return text(r.text, r.details);
         }
       },
     });

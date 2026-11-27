@@ -28,7 +28,7 @@ export const isHelperAgent = (matrix, agentId) => isConsultAgent(matrix, agentId
 const actsAsMain = (matrix, agent) => agent === "main" || isExtensionAgent(matrix, agent);
 
 export function classify(matrix, tool) {
-  for (const cls of ["read", "taintRead", "viewRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
+  for (const cls of ["read", "taintRead", "viewRead", "shapedRead", "search", "url", "fileWrite", "memoryWrite", "skill", "schedule", "spawn",
     "github", "message", "sandboxShell", "blocked", "proactiveSend", "localWrite", "ownWordsWrite", "confirmAlways", "cronOnly"]) {
     if ((matrix[cls] ?? []).includes(tool)) return cls;
   }
@@ -179,6 +179,18 @@ export function viewBackstop({ tool, params, result, error, matrix }) {
   const d = result?.details;
   if (error == null && d && typeof d === "object" && (d.view === "installed" || (d.status === "unavailable" && Object.keys(d).length <= 2))) return null;
   return `${tool} (its result wasn't the clean view)`;
+}
+
+// shapedRead (2026-11-27, docs/plan/13-autonomy.md 6.3a): the plugin promises a strictly shaped
+// result (plugins/jorah-github/shape.js), so the call is decided as a read before it runs. If the
+// result doesn't carry the plugin's mark after all (an older plugin, a thrown error, no result),
+// mark the chat now. Like viewBackstop, it only ever adds a mark.
+export const SHAPED_MARK = "jorah-github/1";
+export function shapedBackstop({ tool, result, error, matrix }) {
+  if (classify(matrix, tool) !== "shapedRead") return null;
+  const d = result?.details;
+  if (error == null && d && typeof d === "object" && d.shape === (matrix.shapedReadMark ?? SHAPED_MARK)) return null;
+  return `${tool} (its result wasn't the shaped form)`;
 }
 
 const isCronSession = (key) => sessionRest(key).startsWith("cron:");
@@ -464,9 +476,34 @@ export function localTime(iso, timeZone = "Europe/Bratislava") {
   return d.toLocaleString("en-GB", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
+// The second check (lib/second.js, docs/plan/13-autonomy.md 6.3a): a card that only outside text
+// caused may be checked by a separate model before Adam sees it. Only a chat-tainted card from
+// Adam's own typed turn is marked; index.js decides the rest (lib/second.js eligible()).
+const SECOND_TOOL_DEFAULTS = { memoryTools: ["agentmemory__memory_save"], records: ["supply_save", "project_answer", "project_task_result"] };
+const secondTools = (matrix, which) => {
+  const v = matrix?.secondCheck?.[which];
+  return Array.isArray(v) ? v : SECOND_TOOL_DEFAULTS[which];
+};
+function withSecond(c, state, kind, fields, text, cwd) {
+  if (!state.tainted || !state.cleanEligible || state.voice || state.drive) return c;
+  return { ...c, second: { kind, fields, text, cwd } };
+}
+
+// A card with the second check's reason in front, still within the card's size.
+export function withNote(d, line) {
+  const { second, ...rest } = d;
+  let description = [line, d.description].filter(Boolean).join("\n");
+  if (description.length > CARD_MAX) description = `${description.slice(0, CARD_MAX - 1)}…`;
+  return { ...rest, description };
+}
+
 export function decide(args) {
   const d = decideBase(args);
-  if (d.verdict !== "allow") return d;
+  if (d.verdict !== "allow") {
+    // Careful mode: every card stays a card (the second check never runs).
+    if (d.second && args.view?.careful?.()) { const { second, ...rest } = d; return rest; }
+    return d;
+  }
   const { tool, params = {}, ctx = {}, matrix, view, settings = {}, run = {} } = args;
   const until = view?.careful?.() ?? null;
   if (!until || !actsAsMain(matrix, ctx.agentId ?? "unknown")) return d;
@@ -513,14 +550,15 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
   }
 
   const named = classify(matrix, tool);
-  const cls = named === "viewRead" ? (cleanView(params) ? "read" : "taintRead") : named;
+  const cls = named === "viewRead" ? (cleanView(params) ? "read" : "taintRead") : named === "shapedRead" ? "read" : named;
   const state = sessionState(view, ctx, settings, run, matrix);
   const key = ctx.sessionKey;
   const agent = ctx.agentId ?? "unknown";
   const action = typeof params.action === "string" ? params.action : "";
   const readAction = (matrix.readActions ?? []).includes(action);
 
-  if (view.frozen() && cls !== "read") return { verdict: "block", reason: "Jorah is frozen (/jorah-freeze). Adam clears it at a terminal." };
+  // A shaped GitHub read is decided as a read, but it fetches and writes ~/work, so a freeze stops it.
+  if (view.frozen() && (cls !== "read" || named === "shapedRead")) return { verdict: "block", reason: "Jorah is frozen (/jorah-freeze). Adam clears it at a terminal." };
 
   // A consult agent (`deep`) only thinks, reads and searches the web. That is what lets main ask it
   // without a card (case "spawn"). The config takes its shell, writes and sessions tools away
@@ -565,8 +603,12 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
   const cardOpts = { voice: state.voice, severity: cardSeverity(cls, params) };
 
   switch (cls) {
-    case "read":
-      return { verdict: "allow" };
+    case "read": {
+      // A shaped GitHub read leaves the chat clean, but the repo still counts as read here, so a
+      // later push to another repo from this chat, once marked, is refused as before.
+      const repo = named === "shapedRead" ? (params.repo ?? params.project) : undefined;
+      return typeof repo === "string" && repo ? { verdict: "allow", readRepo: repo } : { verdict: "allow" };
+    }
 
     case "taintRead": {
       // The transcript of a clean extension child (deep asked from Adam's clean chat) that has read
@@ -621,7 +663,8 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
       }
       if (kinds.includes("memory")) {
         if (state.typedByOwner && (coveredByWords(added, view.wordsOf(key)) || ownChatWords(added, view.typedOf?.(key)))) return { verdict: "allow", reason: "Adam's own words" };
-        return card("Jorah wants to save to memory", [why(state), `File: ${short(paths.join(", "), 80)}`, `Text: ${short(added, 320)}`], cardOpts);
+        return withSecond(card("Jorah wants to save to memory", [why(state), `File: ${short(paths.join(", "), 80)}`, `Text: ${short(added, 320)}`], cardOpts),
+          state, "memory save", { File: paths.join(", "), Text: added }, added);
       }
       return { verdict: "allow" };
     }
@@ -630,7 +673,8 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
       if (!state.tainted || readAction) return { verdict: "allow" };
       const added = addedText(tool, params);
       if (state.typedByOwner && (coveredByWords(added, view.wordsOf(key)) || ownChatWords(added, view.typedOf?.(key)))) return { verdict: "allow", reason: "Adam's own words" };
-      return card("Jorah wants to save to memory", [why(state), `Tool: ${tool}`, `Text: ${short(added, 320)}`], cardOpts);
+      const c = card("Jorah wants to save to memory", [why(state), `Tool: ${tool}`, `Text: ${short(added, 320)}`], cardOpts);
+      return secondTools(matrix, "memoryTools").includes(tool) ? withSecond(c, state, "memory save", { Text: added }, added) : c;
     }
 
     case "skill": {
@@ -656,8 +700,13 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
       if (bad) return { verdict: "block", reason: `Brief refused: ${bad}.` };
       const acp = params.runtime === "acp";
       const who = acp ? `Claude Code in ${short(params.cwd ?? "?", 60)}` : `the ${short(params.agentId ?? "?", 20)} agent`;
-      if (acp && (state.tainted || view.countAcp(key) > (matrix.acpSpawnsPerHourWithoutConfirm ?? 3))) {
-        return { ...card("Jorah wants to start a coding job", [state.tainted ? why(state) : "More than 3 jobs this hour.", `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
+      if (acp) {
+        const over = view.countAcp(key) > (matrix.acpSpawnsPerHourWithoutConfirm ?? 3);
+        if (state.tainted || over) {
+          const c = { ...card("Jorah wants to start a coding job", [over ? "More than 3 jobs this hour." : "", state.tainted ? why(state) : "", `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
+          // The hourly limit is a cost brake: past it the card stays a card.
+          return over ? c : withSecond(c, state, "coding job", { Folder: params.cwd, Agent: params.agentId, Brief: textOf(params.task ?? "") }, textOf(params.task ?? ""), params.cwd);
+        }
       }
       // Asking `deep` (Opus) never needs a card (Adam, 2026-11-21: "it doesn't need to ask my
       // permission, just make it work"). It has no shell and no writes (above), so its only ways out
@@ -673,7 +722,11 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
       if (!acp && isHelperAgent(matrix, params.agentId)) return { verdict: "allow", taint: "worker result" };
       // background has a sandboxed shell with internet access, so a brief written after outside
       // text could carry data out past the URL rule. Show it to Adam first.
-      if (!acp && state.tainted) return { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
+      if (!acp && state.tainted) {
+        const c = { ...card("Jorah wants to start a job", [why(state), `Who: ${who}`, `Brief: ${short(params.task, 330)}`], cardOpts), taint: "worker result" };
+        return params.agentId === (matrix.secondCheck?.backgroundAgent ?? "background")
+          ? withSecond(c, state, "background job", { Agent: params.agentId, Folder: params.cwd, Brief: textOf(params.task ?? "") }, textOf(params.task ?? ""), params.cwd) : c;
+      }
       return { verdict: "allow", taint: "worker result" };
     }
 
@@ -711,8 +764,13 @@ function decideBase({ tool, params = {}, ctx = {}, derivedPaths, matrix, view, s
       return { verdict: "allow" };
 
     // The plugin's own small records (closing a loop): free in a clean chat, a card after outside text.
-    case "localWrite":
-      return state.tainted ? card(cardTitle(matrix, tool), [why(state), ...paramLines(params)], cardOpts) : { verdict: "allow" };
+    case "localWrite": {
+      if (!state.tainted) return { verdict: "allow" };
+      const c = card(cardTitle(matrix, tool), [why(state), ...paramLines(params)], cardOpts);
+      if (!secondTools(matrix, "records").includes(tool)) return c;
+      const fields = Object.fromEntries(Object.keys(params).sort().map((k) => [k, textOf(params[k])]));
+      return withSecond(c, state, "record", fields, Object.values(fields).join("\n"));
+    }
 
     // An open loop (docs/plan/13-autonomy.md 4.4): saved alone only in Adam's own clean chat when
     // every sentence of who and what comes from a message he typed there; otherwise the card shows

@@ -9,11 +9,26 @@ import { homedir } from "node:os";
 import { GuardState } from "./lib/state.js";
 import { AuditLog, argsHash } from "./lib/audit.js";
 import { summarizeDay, readTail } from "./lib/today.js";
-import { agentRunRequester, childSession, decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, viewBackstop } from "./lib/policy.js";
+import { agentRunRequester, childSession, decide, hudKind, localTime, isExtensionAgent, isHelperAgent, proactiveRun, resultSeeds, sessionState, speaker, typedByOwner, typedInOwnApp, shapedBackstop, viewBackstop, withNote } from "./lib/policy.js";
+import { eligible, runSecondCheck, secondSettings } from "./lib/second.js";
 import { findUrls, linkHygiene, normalise, onSiteAllowlist, ownTypedText, seenForms, strings, withoutTracking, writtenTokens } from "./lib/urls.js";
 import { loadSites } from "./lib/sites.js";
 
 const PRIORITY = 1000;
+// The hook's own budget (OpenClaw's default is 15 s, and a timeout blocks the call): the second
+// check gives up after its own timeout (20 s by default) and shows the card, well inside this.
+const HOOK_TIMEOUT_MS = 40000;
+
+const toApproval = (d) => ({
+  requireApproval: {
+    title: d.title,
+    description: d.description,
+    severity: d.severity ?? "critical",
+    allowedDecisions: ["allow-once", "deny"],
+    timeoutMs: 5 * 60 * 1000,
+    pluginId: "jorah-guard",
+  },
+});
 
 // Hygiene for a link going up from a consult child: verified finds may be long (search-result shop
 // links carry parameters), never carry a credential-like parameter or token.
@@ -229,24 +244,47 @@ export default {
         const who = speaker(ctx ?? {}, settings, run);
         const from = who.voice ? "voice" : who.drive ? "drive" : who.webchat ? (who.typedByOwner ? "hud-typed" : "webchat")
           : who.typedByOwner ? "adam-typed" : ctx?.requester ? "other" : "none";
-        log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params), readAction: (matrix?.readActions ?? []).includes(event?.params?.action) || undefined });
+        const entry = { session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, from, channel: ctx?.requester?.channel ?? null, trigger: run.trigger, tool, verdict: d.verdict, reason: d.reason ?? d.title ?? null, args: argsHash(event?.params), readAction: (matrix?.readActions ?? []).includes(event?.params?.action) || undefined };
+        // The second check (lib/second.js): a card that only outside text caused, in Adam's own
+        // typed turn, goes to a separate model first. Pass: the call runs and the log says so.
+        // Anything else: the same card, with the reason in front.
+        const sc = secondSettings(matrix);
+        const key = ctx?.sessionKey;
+        if (d.second && eligible({
+          d, before, settings: sc,
+          proactive: proactiveRun({ ctx: ctx ?? {}, run, matrix: matrix ?? {}, parentOf: (k) => state.parentOf(k) }),
+          careful: state.careful(), frozen: state.frozen(), typed: state.typedOf(key),
+          hasModel: typeof api.runtime?.llm?.complete === "function",
+        })) {
+          const s2 = d.second;
+          return (async () => {
+            try {
+              const r = await runSecondCheck({
+                complete: (req) => api.runtime.llm.complete(req), kind: s2.kind, tool, fields: s2.fields, text: s2.text, cwd: s2.cwd,
+                typed: state.typedOf(key), typedSeen: (u) => state.typedSeen(key, u), settings: sc,
+                selfRepos: matrix?.selfRepos ?? [], workspace: settings.workspace,
+              });
+              if (r.pass) {
+                log({ ...entry, verdict: "allow", reason: `second check passed (${s2.kind}): ${r.reason}`, second: "pass", secondBy: r.owner ?? undefined, secondModel: r.model ?? undefined });
+                return undefined;
+              }
+              log({ ...entry, reason: `${d.title} (second check ${r.stage}: ${r.reason})`, second: r.stage });
+              return toApproval(withNote(d, `Second check didn't pass: ${r.reason}.`));
+            } catch (e) {
+              log({ ...entry, reason: `${d.title} (second check error: ${e?.message ?? e})`, second: "error" });
+              return toApproval(withNote(d, "Second check didn't run."));
+            }
+          })();
+        }
+        log(entry);
         if (d.verdict === "allow") return undefined;
         if (d.verdict === "block") return { block: true, blockReason: `jorah-guard: ${d.reason}` };
-        return {
-          requireApproval: {
-            title: d.title,
-            description: d.description,
-            severity: d.severity ?? "critical",
-            allowedDecisions: ["allow-once", "deny"],
-            timeoutMs: 5 * 60 * 1000,
-            pluginId: "jorah-guard",
-          },
-        };
+        return toApproval(d);
       } catch (error) {
         log({ session: ctx?.sessionKey ?? null, agent: ctx?.agentId ?? null, call: ctx?.toolCallId ?? null, tool, verdict: "block", reason: `guard error: ${error?.message ?? error}` });
         return { block: true, blockReason: "jorah-guard: the guard couldn't check this call, so it is blocked." };
       }
-    }, { priority: PRIORITY });
+    }, { priority: PRIORITY, timeoutMs: cfg.hookTimeoutMs ?? HOOK_TIMEOUT_MS });
 
     // Collect URLs from outside readers' results (G-S2, policy.resultSeeds) and link spawned
     // children to their parent session.
@@ -259,7 +297,9 @@ export default {
         if (!matrix) matrix = loadMatrix(matrixFile);
         // Review fix 6: a clean-view toolbox_list was decided before it ran (policy.cleanView). If
         // its result isn't the clean view after all, mark the chat now. Only ever adds a mark.
-        const late = matrix && viewBackstop({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, error: event?.error, matrix });
+        // The same for a shaped GitHub read (policy.shapedBackstop, 2026-11-27).
+        const late = matrix && (viewBackstop({ tool: event?.toolName, params: event?.params ?? {}, result: event?.result, error: event?.error, matrix }) ??
+          shapedBackstop({ tool: event?.toolName, result: event?.result, error: event?.error, matrix }));
         if (late) {
           state.markTainted(key, late);
           log({ session: key ?? null, agent: ctx?.agentId ?? null, call: callId ?? null, tool: event?.toolName, verdict: "late-mark", reason: late });

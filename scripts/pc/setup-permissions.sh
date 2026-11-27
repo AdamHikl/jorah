@@ -50,6 +50,32 @@ done
 MIRRORS="$HOME/.jorah-github/mirrors"
 mkdir -p "$MIRRORS" && chmod 700 "$HOME/.jorah-github" "$MIRRORS"
 
+# A job can't answer a permission prompt: acpx answers each one with "deny". Claude Code asks
+# about some sandboxed commands anyway, mostly compound ones such as `ls; echo "exit=$?"` (it
+# checks each part, and autoAllowBashIfSandboxed doesn't cover every part). These name the
+# everyday parts of a coding job so such a command runs without a prompt (tested on the PC
+# 2026-11-27: refused without them, "subcommandResults" accept with them). They only skip the
+# prompt: every command still runs in the sandbox, and the deny rules below still win.
+JOB_ALLOWS=(
+  "cd *" "echo *" "printf *" "pwd" "true" "test *"
+  "ls *" "cat *" "head *" "tail *" "wc *" "sort *" "uniq *" "diff *" "grep *" "rg *" "sed *"
+  "mkdir *" "touch *" "cp *" "mv *"
+  "git status *" "git diff *" "git log *" "git show *" "git grep *" "git ls-files *"
+  "git rev-parse *" "git branch *" "git fetch github *" "git switch *" "git checkout -b jorah/*"
+  "git add *" "git commit *" "git rm *" "git mv *"
+  "npm ci *" "npm run *" "npm test *"
+  "npx tsc *" "npx eslint *" "npx prettier *" "npx jest *" "npx vitest *" "npx expo lint *"
+  "pytest *" "python3 -m pytest *" "pip install -r *" "python3 -m pip install -r *"
+)
+job_allows=""
+for rule in "${JOB_ALLOWS[@]}"; do
+  job_allows+="${job_allows:+,$'\n'}      \"Bash($rule)\""
+done
+
+# Rules for the jobs themselves, loaded as user memory from CLAUDE_CONFIG_DIR. Jorah's own rules
+# are in workspace/AGENTS.md; this is what Claude Code reads.
+JOB_RULES="$CONFIG_DIR/CLAUDE.md"
+
 if [ "${JORAH_PACKAGE_NETWORK:-1}" = "1" ]; then
   allowed_domains='"registry.npmjs.org", "pypi.org", "files.pythonhosted.org"'
   cache_env=",
@@ -86,7 +112,8 @@ cat > "$SETTINGS" <<EOF
       "Edit(/$SANDBOX/**)",
       "Edit(/$PROJECTS/**)",
       "Bash(rm *)",
-      "Bash(rmdir *)"
+      "Bash(rmdir *)",
+$job_allows
     ],
     "deny": [
       "Read(/$WORKSPACE/**)",
@@ -154,3 +181,16 @@ $read_denies      "Bash(git push *)",
 }
 EOF
 chmod 600 "$SETTINGS"
+
+cat > "$JOB_RULES" <<'EOF'
+# Rules for Jorah's coding jobs
+
+You run unattended for Jorah, Adam's assistant. Nobody can answer a permission prompt: a command that asks is refused, and asking again gets the same answer.
+
+- Keep Bash commands plain: one job per call, no `; echo "exit=$?"` (the exit code comes back anyway), no `git -c` (git's name and email are already set), and no nested or escaped quotes when a simpler form works.
+- Use the Read, Grep, Glob and Edit tools for files rather than `cat`, `grep` or `sed` in Bash.
+- Commit with a plain `git commit -m "..."`; a second `-m` for the body is fine.
+- If a command is refused, don't try variants of it to get around the refusal. Say in your report which command was refused and what it was for.
+- Pushing, network beyond the npm and PyPI registries, and reading outside the project are blocked on purpose. Report what you would need instead.
+EOF
+chmod 600 "$JOB_RULES"

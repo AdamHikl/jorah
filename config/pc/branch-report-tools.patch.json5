@@ -1,0 +1,39 @@
+// DRAFT. Not applied. Lets main call github_branch_report (plugins/jorah-github, 2026-11-27),
+// which reports what a Claude Code job left on a jorah/<task> branch: head, ahead/behind, files,
+// pushed or not. OpenClaw offers a plugin's tool only when main's explicit allow list names it.
+// The guard keeps it a taintRead (config/permission-matrix.json): file paths are chosen by whoever
+// wrote the branch, so the chat is marked before it runs. It needs no card.
+//
+// Merge patch: the array is the WHOLE list. It is main's live list, read on the PC on 2026-11-27
+// with `openclaw --profile jorah config get agents.entries.main.tools.sandbox.tools.alsoAllow`
+// (41 entries), plus github_branch_report. The other *-tools patches in this folder are older
+// drafts whose lists differ from what's live; don't apply those after this one without comparing.
+// Before applying, read the live list again and add anything applied since; leaving an entry out
+// removes that tool from main.
+//
+// Dry run on the PC:
+//   openclaw --profile jorah config patch --file /opt/jorah/config/pc/branch-report-tools.patch.json5 --dry-run
+// Expected: "Dry run successful" with one update, agents.entries.main.tools.sandbox.tools.alsoAllow.
+// Undo: the same patch without "github_branch_report".
+{
+  agents: {
+    entries: {
+      main: {
+        tools: { sandbox: { tools: { alsoAllow: [
+          "group:memory", "group:web", "browser", "message",
+          "heartbeat_respond", "cron", "automations", "skill_workshop", "agents_list",
+          "github_push_branch", "github_open_pr", "github_sync", "github_clone", "github_list_repos",
+          "github_branch_report",
+          "agentmemory__*",
+          "project_list", "project_status", "project_digest", "project_answer", "project_task_result",
+          "project_run_now", "project_pause", "project_resume", "project_set_limits",
+          "project_start", "project_connect", "project_set_level",
+          "reminder_job", "price_compare",
+          "supply_list", "supply_plan", "supply_save", "supply_forget",
+          "toolbox_list", "toolbox_propose", "toolbox_install", "toolbox_remove",
+          "project_set_capabilities", "project_preview", "picture_save", "project_note",
+        ] } } },
+      },
+    },
+  },
+}

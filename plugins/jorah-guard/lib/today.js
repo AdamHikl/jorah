@@ -73,6 +73,10 @@ export function summarizeDay(tail, { matrix, now = Date.now(), timeZone = "Europ
     lines.push(`- ${label}: ${mine.length} (${listed(countBy(mine, (e) => e.tool))})`);
   }
   if (!any) lines.push("- no writes");
+  const second = alone.filter((e) => e.second === "pass");
+  if (second.length) lines.push(`- of these, allowed by the second check: ${second.length} (${listed(countBy(second, (e) => e.tool))})`);
+  const secondNo = entries.filter((e) => e.verdict === "confirm" && typeof e.second === "string" && e.second !== "pass");
+  if (secondNo.length) lines.push(`- second check said ask Adam: ${secondNo.length} (${listed(countBy(secondNo, (e) => e.second))})`);
   lines.push(`Reads and searches: ${allowed.length - alone.length}.`);
   const cards = entries.filter((e) => e.verdict === "confirm");
   lines.push(cards.length ? `Cards shown: ${cards.length} (${listed(countBy(cards, (e) => e.tool))}).` : "Cards shown: 0.");

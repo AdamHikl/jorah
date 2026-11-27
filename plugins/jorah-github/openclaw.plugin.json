@@ -11,7 +11,8 @@
       "github_open_pr",
       "github_sync",
       "github_clone",
-      "github_list_repos"
+      "github_list_repos",
+      "github_branch_report"
     ]
   },
   "activation": {

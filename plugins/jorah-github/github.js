@@ -19,6 +19,7 @@ import { createSign } from "node:crypto";
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { shapeFiles } from "./shape.js";
 
 const run = promisify(execFile);
 
@@ -385,7 +386,8 @@ export async function cloneFromMirror(config, { project, repo }, { mirror, branc
     rmSync(dest, { recursive: true, force: true });
     throw error;
   }
-  const head = await gitImpl(["-C", dest, "log", "--format=%h %s", "-n", "1", "HEAD"]);
+  // The hash only: a commit subject is text someone else wrote (github_clone's result is shaped).
+  const head = await gitImpl(["-C", dest, "rev-parse", "--short=7", "HEAD"]);
   return { path: dest, branch, head };
 }
 
@@ -561,6 +563,49 @@ export async function prFlow(config, p, { fetchImpl = fetch } = {}) {
   const token = await repoToken(config, target.repo, { fetchImpl });
   await checkRules(target.repo, token, { fetchImpl });
   return { target, pr: await openPullRequest(config, target, p, token, fetchImpl) };
+}
+
+/**
+ * github_branch_report: facts about a jorah/<task> branch, computed in the plugin's own mirror.
+ * The branch is copied from the untrusted work repo with the same safe fetch a push uses, into
+ * refs/jorah-report/* (never the push staging refs), compared with the mirror's copy of GitHub's
+ * default branch from the last sync, then the copy is deleted. Nothing runs in the work repo, and
+ * no commit subject or file text is read: hashes, counts, a date and file paths only.
+ */
+export async function branchReport(config, p, { gitImpl = git } = {}) {
+  const { repo } = checkProject(config, p?.project);
+  if (typeof p?.branch !== "string" || !BRANCH.test(p.branch) || p.branch.includes("..") || p.branch.endsWith(".lock")) {
+    throw new Error("only branches named jorah/<task> can be reported");
+  }
+  if (!lexists(join(config.workDir, p.project))) throw new Error(`~/work/${p.project} doesn't exist; github_clone it first`);
+  const target = check(config, p);
+  const mirror = join(config.mirrorDir, `${target.project}.git`);
+  if (!existsSync(join(mirror, "HEAD"))) throw new Error(`no mirror of ${repo} yet; github_sync first`);
+  const facts = { project: target.project, branch: target.branch, exists: false };
+  const listed = await gitImpl(["--git-dir", mirror, "ls-remote", "--heads", target.source, `refs/heads/${target.branch}`]);
+  if (!String(listed ?? "").trim()) return facts;
+  const ref = `refs/jorah-report/${target.branch}`;
+  await gitImpl(["--git-dir", mirror, "fetch", "--no-tags", "--quiet", target.source, `+refs/heads/${target.branch}:${ref}`]);
+  try {
+    facts.exists = true;
+    const full = await gitImpl(["--git-dir", mirror, "rev-parse", "--verify", ref]);
+    facts.head = full.slice(0, 7);
+    facts.date = await gitImpl(["--git-dir", mirror, "log", "-1", "--format=%cI", ref]);
+    const base = await gitImpl(["--git-dir", mirror, "config", "--get", "jorah.defaultBranch"]).catch(() => "");
+    const baseRef = base ? `refs/remotes/github/${base}` : "";
+    const hasBase = baseRef && (await gitImpl(["--git-dir", mirror, "rev-parse", "--verify", "-q", baseRef]).catch(() => ""));
+    if (hasBase) {
+      facts.base = base;
+      const counts = String(await gitImpl(["--git-dir", mirror, "rev-list", "--left-right", "--count", `${baseRef}...${ref}`])).match(/^(\d+)\s+(\d+)$/);
+      if (counts) { facts.behind = Number(counts[1]); facts.ahead = Number(counts[2]); }
+      facts.files = shapeFiles(await gitImpl(["--git-dir", mirror, "diff", "--name-status", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", `${baseRef}...${ref}`]));
+    }
+    const pushed = await gitImpl(["--git-dir", mirror, "rev-parse", "--verify", "-q", `refs/remotes/github/${target.branch}`]).catch(() => "");
+    facts.onGitHub = pushed ? (pushed === full ? "same" : "different") : "absent";
+    return facts;
+  } finally {
+    await gitImpl(["--git-dir", mirror, "update-ref", "-d", ref]).catch(() => {});
+  }
 }
 
 /** github_sync: read-only token, every branch into the mirror. */

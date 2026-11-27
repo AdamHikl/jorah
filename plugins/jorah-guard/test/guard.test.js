@@ -170,7 +170,10 @@ test("a brief with a URL nobody gave is refused after outside text", () => {
 test("GitHub: Jorah's own repo and cross-repo pushes are refused after outside text (P5-N1, N6)", () => {
   const { run } = fresh();
   assert.equal(run("github_push_branch", { project: "jorah", branch: "jorah/x" }).verdict, "allow");
+  // A shaped clone (2026-11-27) leaves the chat clean but still counts mizyun as read here.
   run("github_clone", { repo: "mizyun" });
+  assert.equal(run("github_push_branch", { project: "jorah", branch: "jorah/x" }).verdict, "allow");
+  run("web_search", { query: "x" });
   assert.equal(run("github_push_branch", { project: "jorah", branch: "jorah/x" }).verdict, "block");
   assert.equal(run("github_push_branch", { project: "threadfolio", branch: "jorah/x" }).verdict, "block");
   assert.equal(run("github_push_branch", { project: "mizyun", branch: "jorah/x" }).verdict, "allow");

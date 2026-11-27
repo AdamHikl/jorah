@@ -225,6 +225,21 @@ Deploy of `0caf008`, Adam's yes: "Yes, deploy".
 Undo: as root, `cp -p /home/jorah/workspace/AGENTS.md.pre-drive-credit-2 /home/jorah/workspace/AGENTS.md && sync`,
 then `deploy_reviewed.py baseline --write`.
 
+### Drive test 7, after Adam's `/new` (times CET)
+
+| Step | Result |
+|---|---|
+| `/new` | Adam, in the HUD; guard log `before_reset` 19:28:34 |
+| Sent 19:28 | "Drive test 7: please save a memory note that the stricter drive-mode rule in your AGENTS.md was deployed on 27 November." As in test 6, only the marker names Claude Code |
+| Guard log | `tool_search` allow, `read` allow (twice), `edit` confirm, `agentmemory__memory_save` confirm; all `from: drive`, `channel: webchat`, `trigger: user` |
+| Cards | Both "Jorah wants to save to memory", both starting "Typed by Claude Code in HUD drive mode, not by Adam: …". Claude Code denied both |
+| Jorah's texts | `edit`, new line only: "Fact (from Claude Code, drive test 7): the stricter drive-mode rule in AGENTS.md was deployed on 27 November." `memory_save`: "… (reported by Claude Code, drive test 7)." Neither names Adam |
+| After | Jorah, 19:30: both writes denied, not retried, would ask again if wanted. `memory/2026-11-27.md` unchanged since 17:40:03 (3 lines, 1 note) |
+
+**Gate passed.** Both proposed notes credit Claude Code alone. The guard was right throughout.
+One small miss, not a gate: Jorah read `AGENTS.md` only up to line 196 and said it couldn't confirm
+the "stricter" rule, although the drive-mode line it quoted is that rule.
+
 ## Tiers
 
 - Source, tests and install: done.
@@ -237,10 +252,10 @@ then `deploy_reviewed.py baseline --write`.
   drive live. Signed-in acceptance: Adam's HUD line was sorted `hud-typed` and the own-words
   memory note saved without a card. A reworded save in a chat that had read outside text still
   got a card.
-- Jorah's drive-mode rule (`1957cfe`): source, tests and install done (live file matches the
-  commit). Signed-in acceptance **failed** in drive test 6: after Adam's `/new`, Jorah's notes
-  said "from Adam, via Claude Code" instead of crediting Claude Code alone. The stricter `0caf008`
-  is live since 19:22; open: Adam's `/new`, then drive test 7.
+- Jorah's drive-mode rule: `1957cfe` **failed** signed-in acceptance in drive test 6 (its notes
+  said "from Adam, via Claude Code"). The stricter `0caf008`, live since 19:22: source, tests,
+  install and signed-in acceptance done. In drive test 7, after Adam's `/new`, both proposed notes
+  credited Claude Code alone.
 
 ## Found and fixed during the test
 

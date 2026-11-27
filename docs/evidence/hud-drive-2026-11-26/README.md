@@ -170,10 +170,27 @@ Jorah's proposed texts credited the drive line to Adam ("Fact (from Adam, HUD dr
 "reported by Adam via HUD drive test 5"). The guard's cards were right; Jorah's own wording wasn't.
 Adam chose to fix it in Jorah's rules ("Yes, fix it here"): `workspace/AGENTS.md`, Memory, "Drive
 mode". To stay under the 36000-char bootstrap budget, two descriptive parentheticals were trimmed
-(the list of agentmemory tool names, and "create `memory/` if needed"). Not live yet.
+(the list of agentmemory tool names, and "create `memory/` if needed"). Deployed the same day,
+see the next section.
 
 Undo: as root, `tar -xzf /root/opt-jorah-pre-drive-wording-2026-11-27.tgz -C /opt/jorah && sync`,
 `systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.
+
+## Drive-mode rule in Jorah's rules, `1957cfe`, 27 November (times CET)
+
+Adam's yes: "Yes, deploy".
+
+| Step | Result |
+|---|---|
+| Preflight | live `workspace/AGENTS.md` matched `4838684` (sha256 `b941186d…`), so Jorah hadn't edited it; `memory/` exists, so dropping "create `memory/` if needed" is safe |
+| Backup | `/home/jorah/workspace/AGENTS.md.pre-drive-credit` (`cp -p`, jorah:jorah 644, 35985 bytes) |
+| File | `git show origin/main:workspace/AGENTS.md` piped to `tee` as root at 18:25:01, then `sync`; live sha256 `c7c01957…`, matching `1957cfe`; still jorah:jorah 644 (36011 bytes); `deploy_reviewed.py record-live`: recorded from `1957cfe` |
+| Restart | none: a rules file needs no Gateway restart |
+| Takes effect | from the next `/new`. OpenClaw pins workspace instructions for a session on some model routes (`concepts/system-prompt.md`, "the embedded session pins both sides of this boundary"; a reset starts a new series), so the chat open during the deploy may still run on the old rules. Drive mode can't send `/new` (`Drive.wireText` passes only the listed commands), so Adam sends it |
+
+Undo: as root, `cp -p /home/jorah/workspace/AGENTS.md.pre-drive-credit /home/jorah/workspace/AGENTS.md && sync`,
+then `deploy_reviewed.py baseline --write` (it records the file against `4838684`, the commit it
+matches; `record-live` would refuse, since it records only files that match main).
 
 ## Tiers
 
@@ -187,6 +204,8 @@ Undo: as root, `tar -xzf /root/opt-jorah-pre-drive-wording-2026-11-27.tgz -C /op
   drive live. Signed-in acceptance: Adam's HUD line was sorted `hud-typed` and the own-words
   memory note saved without a card. A reworded save in a chat that had read outside text still
   got a card.
+- Jorah's drive-mode rule (`1957cfe`): source, tests and install done (live file matches the
+  commit). Open: Adam's `/new`, then a drive line whose proposed note credits Claude Code.
 
 ## Found and fixed during the test
 

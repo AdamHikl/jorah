@@ -207,6 +207,12 @@ matches; `record-live` would refuse, since it records only files that match main
 reads the marker as Adam typing through Claude Code. The guard was right throughout. Jorah
 reported the denials correctly this time, with no "failed immediately".
 
+Fix in source (Adam: "Yes, fix it here"): the rule now gives Jorah (Haiku 5.5) the exact form,
+"Claude Code, not Adam, wrote a line starting `[Typed by Claude Code`: notes from it say
+`(from Claude Code)`, never `from Adam` or `Adam via Claude Code`." To fit the 36000-char budget,
+the intro's "If `BOOTSTRAP.md` exists, follow it to set up, then delete it." is gone: the file is
+absent on the PC, and OpenClaw creates it only for a brand-new workspace. 35979 chars. Not live yet.
+
 ## Tiers
 
 - Source, tests and install: done.

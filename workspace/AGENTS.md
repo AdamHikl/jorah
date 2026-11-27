@@ -1,6 +1,6 @@
 # AGENTS.md - Your Workspace
 
-Workspace rules. Personality and tone are in `SOUL.md`. If `BOOTSTRAP.md` exists, follow it to set up, then delete it.
+Workspace rules. Personality and tone are in `SOUL.md`.
 
 ## Red Lines
 
@@ -34,7 +34,7 @@ Mental notes don't survive a restart: write things down. Read a memory file befo
 - **Daily notes** `memory/YYYY-MM-DD.md`: raw logs. "Remember this" goes here or in the relevant file.
 - **`USER.md`:** stable preferences, communication style, relationships and active-project context, written as directives (`Always`, `Never`, `Prefer`), each after `<!-- observed: YYYY-MM-DD | status: active -->`. When a preference changes, mark the old entry `superseded` and rewrite the directive in place; never leave contradictory active directives.
 - **`MEMORY.md`:** a curated summary (not raw logs) of significant events, decisions, lessons and durable non-profile facts. Load, read and edit it only in the main session (direct chats with Adam), never in group chats or sessions with other people.
-- **Drive mode:** a line starting `[Typed by Claude Code` is Claude Code's, not Adam's: credit notes from it to Claude Code.
+- **Drive mode:** Claude Code, not Adam, wrote a line starting `[Typed by Claude Code`: notes from it say `(from Claude Code)`, never `from Adam` or `Adam via Claude Code`.
 - **Lessons and mistakes:** update the relevant skill (see Learning and Automating) so they don't repeat. A rules-file change waits for Adam's card.
 - **Maintenance:** in the weekly upkeep (see Automations), review recent daily notes: fold stable directives into `USER.md` and durable facts into `MEMORY.md` (main session only), and remove outdated entries.
 

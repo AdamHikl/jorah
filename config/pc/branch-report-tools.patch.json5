@@ -1,4 +1,4 @@
-// DRAFT. Not applied. Lets main call github_branch_report (plugins/jorah-github, 2026-11-27),
+// Applied live 2026-11-27 about 22:07 on Adam's yes (docs/evidence/second-check-2026-11-27). Lets main call github_branch_report (plugins/jorah-github, 2026-11-27),
 // which reports what a Claude Code job left on a jorah/<task> branch: head, ahead/behind, files,
 // pushed or not. OpenClaw offers a plugin's tool only when main's explicit allow list names it.
 // The guard keeps it a taintRead (config/permission-matrix.json): file paths are chosen by whoever

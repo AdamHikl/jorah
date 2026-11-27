@@ -1,4 +1,4 @@
-// DRAFT. Not applied. Lets jorah-guard's second check (plugins/jorah-guard/lib/second.js) call
+// Applied live 2026-11-27 about 22:07 on Adam's yes (docs/evidence/second-check-2026-11-27). Lets jorah-guard's second check (plugins/jorah-guard/lib/second.js) call
 // Sonnet through api.runtime.llm.complete. OpenClaw refuses a plugin that picks its own model
 // unless the plugin's entry trusts it; without this every check fails closed with
 // LLM_COMPLETION_NOT_AUTHORIZED and Adam sees the card as before.

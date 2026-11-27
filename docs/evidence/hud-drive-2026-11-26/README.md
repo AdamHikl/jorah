@@ -124,8 +124,25 @@ Undo: as root, `tar -xzf /root/opt-jorah-pre-sent-line-2026-11-27.tgz -C /opt/jo
 puts back `3a263e4`, which has the gap above; to turn HUD typing off instead, set the guard's
 `hudTypingIsAdam` to `false` (ADR 0011, Undo).
 
-Open: Adam's own typing test in the HUD (expected `from: hud-typed`, a memory note in his words
-saved without a card).
+### Adam's own HUD typing test, 27 November (times UTC)
+
+Adam typed in the HUD, with drive mode still on (Adam's own lines carry no drive marker): "Remember:
+the HUD typing test on 27 November passed." Guard log:
+
+| Time | Tool | Verdict | `from` | Reason |
+|---|---|---|---|---|
+| 16:39:59 | `tool_search` | allow | `hud-typed` | |
+| 16:39:59 | `read` | allow | `hud-typed` | |
+| 16:40:00 | `read` | allow | `hud-typed` | |
+| 16:40:03 | `write` | allow | `hud-typed` | Adam's own words |
+| 16:40:03 | `agentmemory__memory_save` | confirm | `hud-typed` | Jorah wants to save to memory |
+
+- The note in `memory/2026-11-27.md` saved without a card; the file has one matching line.
+- The second save got a card, as designed. The card said "This chat has read outside text
+  (sessions_history)": Jorah had read its own session history earlier in this chat. In such a
+  chat a memory save skips the card only when it is at least 80% Adam's words. Jorah's text,
+  "HUD typing test on 27 November 2026 passed (reported by Adam).", added "2026" and "reported",
+  so 5 of its 7 content words came from Adam (71%). The card was left to Adam.
 
 ## Tiers
 
@@ -136,7 +153,9 @@ saved without a card).
   Careful mode on from the HUD is still open.
 - Not checked: `/jorah-careful`, `/jorah-today` and `/jorah-careful off` on Telegram.
 - HUD typing (ADR 0011): source, tests and install of `a241cc8` done; drive lines are sorted as
-  drive live. Adam's signed-in HUD typing test is open.
+  drive live. Signed-in acceptance: Adam's HUD line was sorted `hud-typed` and the own-words
+  memory note saved without a card. A reworded save in a chat that had read outside text still
+  got a card.
 
 ## Found and fixed during the test
 

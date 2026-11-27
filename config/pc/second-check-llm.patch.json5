@@ -1,0 +1,26 @@
+// DRAFT. Not applied. Lets jorah-guard's second check (plugins/jorah-guard/lib/second.js) call
+// Sonnet through api.runtime.llm.complete. OpenClaw refuses a plugin that picks its own model
+// unless the plugin's entry trusts it; without this every check fails closed with
+// LLM_COMPLETION_NOT_AUTHORIZED and Adam sees the card as before.
+//
+// Measured on jorah-dev, 2026-11-27, with exactly these two keys on a probe plugin: a brief that
+// matched Adam's words passed in 2-5 s, a brief for other work failed with the right reason, and
+// the call ran on the claude-cli runtime (Max plan). Naming the target agent was refused even with
+// these keys, so the guard names none (allowAgentIdOverride stays off).
+//
+// Dry run on the PC:
+//   openclaw --profile jorah config patch --file /opt/jorah/config/pc/second-check-llm.patch.json5 --dry-run
+// Expected: "Dry run successful" with updates under plugins.entries.jorah-guard.llm only.
+// Undo: { plugins: { entries: { "jorah-guard": { llm: null } } } }
+{
+  plugins: {
+    entries: {
+      "jorah-guard": {
+        llm: {
+          allowModelOverride: true,
+          allowedModels: ["anthropic/claude-sonnet-5-5"],
+        },
+      },
+    },
+  },
+}

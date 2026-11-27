@@ -71,6 +71,7 @@ test("a coding job Adam asked for, after outside text: the second check passes i
   assert.equal(req.purpose, "jorah-guard.second-check");
   assert.equal(req.execution.mode, "isolated-agent-runtime");
   assert.equal(req.model, "anthropic/claude-sonnet-5-5");
+  assert.equal(req.agentId, undefined, "OpenClaw refuses a plugin that names the target agent");
   assert.ok(req.signal instanceof AbortSignal);
   // It sees Adam's words and the action, nothing else of the chat.
   assert.match(req.messages[0].content, /fix the failing login test in the auth module, and add a dark mode/);

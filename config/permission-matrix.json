@@ -100,7 +100,6 @@
     "enabled": true,
     "model": "anthropic/claude-sonnet-5-5",
     "reasoning": "low",
-    "agentId": "main",
     "timeoutMs": 20000,
     "minQuoteWords": 3,
     "maxMessages": 12,

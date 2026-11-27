@@ -25,7 +25,9 @@ export const SECOND_DEFAULTS = Object.freeze({
   maxMessages: 12,
   maxActionChars: 8000,
   reasoning: "low",
-  agentId: "main",
+  // No agentId: OpenClaw refuses a plugin that names the target agent (LLM_COMPLETION_NOT_AUTHORIZED,
+  // measured on jorah-dev 2026-11-27) unless llm.allowAgentIdOverride is set, and the default is right.
+  agentId: null,
   kinds: ["coding job", "background job", "memory save", "record"],
   memoryTools: ["agentmemory__memory_save"],
   records: ["supply_save", "project_answer", "project_task_result"],

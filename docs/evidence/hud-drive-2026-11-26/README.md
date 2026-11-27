@@ -159,11 +159,17 @@ Adam's yes: "Yes, deploy".
 | Cards | Both "Jorah wants to save to memory", both starting "Typed by Claude Code in HUD drive mode, not by Adam: only Adam allows, in the HUD or Telegram. This chat has also read outside text (sessions_history)." Claude Code denied both |
 | After | Jorah: both writes denied, not retried. `memory/2026-11-27.md` unchanged since 16:40:03 |
 
-The `agentmemory__memory_save` card reached the HUD this time. Drive test 4's "Plugin approval
-unavailable (no approval route)" for the same tool didn't come back.
+"Plugin approval unavailable (no approval route)" is not a missing route. In drive test 4
+(card 10:17 CET, Jorah's reply 10:22) and Adam's typing test (card 17:40, reply 17:45) the
+agentmemory card waited its 5 minutes unanswered and expired; OpenClaw words an expired card that
+way (Jorah's `AGENTS.md`, "A card nobody answered"). In drive test 5 both cards were denied at
+once, so none expired. Jorah still told Adam the save "failed immediately" and might need the route
+fixed, against that rule.
 
 Jorah's proposed texts credited the drive line to Adam ("Fact (from Adam, HUD drive test 5)",
 "reported by Adam via HUD drive test 5"). The guard's cards were right; Jorah's own wording wasn't.
+Adam chose to fix it in Jorah's rules ("Yes, fix it here"): `workspace/AGENTS.md`, Memory, "Who
+said it". Not live yet.
 
 Undo: as root, `tar -xzf /root/opt-jorah-pre-drive-wording-2026-11-27.tgz -C /opt/jorah && sync`,
 `systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.

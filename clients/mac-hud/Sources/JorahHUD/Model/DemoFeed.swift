@@ -66,6 +66,11 @@ enum DemoFeed {
         model.pcStatsAsOf = Date()
         model.lines = [
             ChatLine(id: "d-u1", role: .user, text: "Demo message: what changed in the repo today?", at: Date().addingTimeInterval(-60)),
+            ChatLine(id: "d-a1", role: .assistant, text: "Demo reply with two made-up files.", at: Date().addingTimeInterval(-50),
+                     files: [
+                        SentFile(artifactId: "demo-md", kind: .document, name: "demo-notes.md", mimeType: "text/markdown", sizeBytes: 812),
+                        SentFile(artifactId: "demo-pdf", kind: .document, name: "demo-report.pdf", mimeType: "application/pdf", sizeBytes: nil),
+                     ]),
         ]
         model.historyAsOf = Date()
         // A made-up approval card, to see its layout. Its buttons stay off in the demo.

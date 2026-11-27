@@ -168,6 +168,10 @@ extension HUDModel {
         [
             "role": driveLine(line).role.rawValue, "text": line.text, "at": line.at.map(iso) ?? NSNull(),
             "streaming": line.streaming, "viaDrive": line.viaDrive, "pictures": line.images.count,
+            // Names only: drive mode can see that a file came, not download it.
+            "files": line.files.map { file -> [String: Any] in
+                ["name": file.name, "mimeType": file.mimeType as Any? ?? NSNull(), "sizeBytes": file.sizeBytes as Any? ?? NSNull()]
+            },
         ]
     }
 

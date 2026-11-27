@@ -438,7 +438,8 @@ struct ConversationView: View {
                 .accessibilityLabel("Attach pictures")
                 TextField(placeholder, text: $model.draft, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .lineLimit(1...4)
+                    .lineLimit(1...6)
+                    .help("Return sends. Shift-Return starts a new line.")
                     .font(.system(size: 13))
                     .focused($focused)
                     .disabled(!canSend)
@@ -570,8 +571,10 @@ struct PendingImagesRow: View {
     }
 }
 
-/// ⌘V in the composer with a picture on the clipboard attaches it; anything else pastes as usual.
-/// A local key monitor, because the text field's own paste ignores images.
+/// Keys in the composer that the text field doesn't handle the HUD's way, through a local key monitor:
+/// - ⌘V with a picture on the clipboard attaches it (the field's own paste ignores images); anything
+///   else pastes as usual.
+/// - Shift-Return (or Shift-Enter on a keypad) starts a new line. Return and ⌘Return still send.
 @MainActor
 enum PasteMonitor {
     private static var monitor: Any?
@@ -580,6 +583,11 @@ enum PasteMonitor {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == .shift, event.keyCode == 36 || event.keyCode == 76, model.composerFocused,
+               let editor = event.window?.firstResponder as? NSTextView, !editor.hasMarkedText() {
+                editor.insertNewlineIgnoringFieldEditor(nil)
+                return nil
+            }
             guard flags == .command, event.charactersIgnoringModifiers?.lowercased() == "v",
                   model.composerFocused else { return event }
             return model.attachFromPasteboard() ? nil : event
@@ -744,12 +752,18 @@ struct ChatLineView: View {
                     }
                 }
             }
-            if !line.text.isEmpty || line.images.isEmpty {
+            if !line.text.isEmpty || (line.images.isEmpty && line.files.isEmpty) {
                 Text(line.text.isEmpty ? "…" : line.text)
                     .font(.system(size: 13))
                     .foregroundStyle(line.role == .notice ? Theme.dim : Theme.text)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !line.files.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(line.files) { SentFileCard(file: $0) }
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.leading, 8)
@@ -768,6 +782,9 @@ struct ChatLineView: View {
             if !line.images.isEmpty {
                 let pictures = line.images.count == 1 ? "[1 picture]" : "[\(line.images.count) pictures]"
                 body = body.isEmpty ? pictures : pictures + "\n" + body
+            }
+            for file in line.files {
+                body += (body.isEmpty ? "" : "\n") + "[file: \(file.name)]"
             }
             return header + "\n" + body
         }

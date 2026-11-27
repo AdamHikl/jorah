@@ -22,6 +22,17 @@ struct JorahHUDApp: App {
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.disabled)
 
+        // A file Jorah sent, opened from its card in the conversation.
+        WindowGroup("Jorah file", id: "file", for: FileRef.self) { $ref in
+            if let ref {
+                FileViewer(ref: ref)
+                    .environment(model)
+            }
+        }
+        .defaultSize(width: 900, height: 700)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         MenuBarExtra {
             Text(menuStatus)
             Divider()

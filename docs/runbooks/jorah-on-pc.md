@@ -1239,6 +1239,12 @@ Adam: "switch jorah to api now, also make it possible for me to switch between t
 - **HUD switch:** a `BILLS` button in the top bar runs `scripts/pc/jorah-brain.sh`, which runs `/opt/jorah/scripts/pc/brain-lane.sh` over the setup key. The same works from a Mac Terminal: `scripts/pc/jorah-brain.sh status`, `api`, `max`, or `status --probe`.
 - **Not checked yet:** the HUD's buttons, and `max` through the script, are Adam's test. The main chat may keep Max until `/new`.
 
+## Files from Jorah in the Mac HUD, 2026-11-27
+
+Jorah sends a workspace file with a standalone `MEDIA:<path>` line (rule "Sending Adam Files" in `workspace/AGENTS.md`). OpenClaw 2026.11.6 keeps it as a managed artifact of the conversation and puts a display block in the reply's `content`. Direct HUD chats use automatic visible replies (`messages.visibleReplies` unset), so the line works there. Only files Jorah's file-read policy allows can go, which means his workspace; SVG is refused.
+
+The HUD shows each file as a card under the reply, with a thumbnail for pictures. Clicking it opens a viewer window: pictures zoom, PDFs use PDFKit, Markdown is drawn as a document, text and HTML show as text (HTML is never rendered), and anything else uses Quick Look. Save to Downloads and Save As… put a copy on the Mac with the quarantine mark. The HUD fetches the bytes with `artifacts.download`; a download link is followed only on the Gateway's own origin, and copies for viewing live in `$TMPDIR/JorahHUD-files`, emptied once per run. Shift-Return in the composer now starts a new line.
+
 ## Still open
 
 - Boot with nobody signed in: `openclaw-gateway.service` is enabled and the Windows task "Jorah WSL" keeps the distro up. A BIOS restart on 2026-11-07 brought the Gateway and voice back on their own [measured]; the full reboot test with the Mac closed is still owed.

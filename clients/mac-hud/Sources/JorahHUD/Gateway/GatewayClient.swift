@@ -64,6 +64,20 @@ final class GatewayClient {
     private var requestedScopes: [String] = []
     private var identity: DeviceIdentity?
 
+    /// The Gateway's HTTP origin (wss → https, ws → http), for the media links `artifacts.download` returns.
+    var httpOrigin: URL? {
+        guard let url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        switch parts.scheme {
+        case "wss": parts.scheme = "https"
+        case "ws": parts.scheme = "http"
+        default: return nil
+        }
+        parts.path = ""
+        parts.query = nil
+        parts.fragment = nil
+        return parts.url
+    }
+
     static var hasStoredDeviceToken: Bool { Keychain.read(tokenAccount) != nil }
 
     static var storedScopes: [String] {

@@ -15,6 +15,8 @@ struct ChatLine: Identifiable, Equatable {
     var images: [LineImage] = []
     /// Typed by Claude Code through drive mode (ADR 0012), not by Adam's hands: shown with ⌨.
     var viaDrive = false
+    /// Files Jorah sent with this reply (a `MEDIA:` line in his answer), shown as cards.
+    var files: [SentFile] = []
 }
 
 /// A thumbnail on a transcript line. Equal by id, so a redraw doesn't compare pixels.
@@ -358,6 +360,12 @@ final class HUDModel {
     /// Texts sent through drive mode, newest last, so a history reload keeps their ⌨ mark.
     @ObservationIgnored var driveSent: [String] = []
     @ObservationIgnored var driveServer: DriveServer?
+
+    // Files Jorah sent (HUDModel+Files.swift): local copies for this run of the app, and thumbnails.
+    @ObservationIgnored var fileCopies: [String: URL] = [:]
+    @ObservationIgnored var fileDownloads: [String: Task<URL, Error>] = [:]
+    @ObservationIgnored var filesFolderCleared = false
+    var fileThumbnails: [String: NSImage] = [:]
 
     let client = GatewayClient()
     private var cronRefresh: Task<Void, Never>?
@@ -1582,8 +1590,11 @@ final class HUDModel {
             }
         case "final":
             activeRuns.remove(runId)
+            let files = SentFiles.parse(content: payload["message"]["content"].any)
             if let text = Self.text(of: payload["message"]) {
-                upsertAssistant(runId: runId, text: text, streaming: false)
+                upsertAssistant(runId: runId, text: text, streaming: false, files: files)
+            } else if !files.isEmpty {
+                upsertAssistant(runId: runId, text: assistantIndex(runId).map { lines[$0].text } ?? "", streaming: false, files: files)
             } else {
                 finishAssistant(runId: runId)
             }
@@ -1692,12 +1703,13 @@ final class HUDModel {
         lines.lastIndex(where: { $0.id == "a-\(runId)" })
     }
 
-    private func upsertAssistant(runId: String, text: String, streaming: Bool) {
+    private func upsertAssistant(runId: String, text: String, streaming: Bool, files: [SentFile] = []) {
         if let index = assistantIndex(runId) {
             lines[index].text = text
             lines[index].streaming = streaming
+            if !files.isEmpty { lines[index].files = files }
         } else {
-            lines.append(ChatLine(id: "a-\(runId)", role: .assistant, text: text, at: Date(), streaming: streaming))
+            lines.append(ChatLine(id: "a-\(runId)", role: .assistant, text: text, at: Date(), streaming: streaming, files: files))
         }
     }
 
@@ -1722,6 +1734,7 @@ final class HUDModel {
         default: return nil
         }
         var text = text(of: message) ?? ""
+        let files = role == .assistant ? SentFiles.parse(content: message["content"].any) : []
         var pictures = imageBlocks(in: message)
         var viaDrive = false
         if role == .user {
@@ -1732,9 +1745,9 @@ final class HUDModel {
             pictures += stripped.count
         }
         if pictures > 0 { text = text.isEmpty ? HistoryPictures.label(pictures) : "\(HistoryPictures.label(pictures))\n\(text)" }
-        guard !text.isEmpty else { return nil }
+        guard !text.isEmpty || !files.isEmpty else { return nil }
         let id = message["__openclaw"]["id"].string.map { "\($0)-\(fallbackId)" } ?? fallbackId
-        return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs, viaDrive: viaDrive)
+        return ChatLine(id: id, role: role, text: text, at: message["timestamp"].dateFromMs, viaDrive: viaDrive, files: files)
     }
 
     /// jorah-voice puts a bracketed "[Spoken turn. …]" instruction (its TURN_NOTE) in front of
@@ -1749,9 +1762,12 @@ final class HUDModel {
         return "🎙 " + words
     }
 
-    /// Image blocks in a message's content array.
+    /// Image blocks in a message's content array. A picture Jorah sent as a file (it has an
+    /// `artifactId`) is a file card instead, so it isn't counted here.
     static func imageBlocks(in message: JSONValue) -> Int {
-        (message["content"].array ?? []).filter { ["image", "image_url", "input_image"].contains($0["type"].string ?? "") }.count
+        (message["content"].array ?? []).filter {
+            ["image", "image_url", "input_image"].contains($0["type"].string ?? "") && $0["artifactId"].string == nil
+        }.count
     }
 
     /// Visible text of a chat message: a string, or the text blocks of a content array.

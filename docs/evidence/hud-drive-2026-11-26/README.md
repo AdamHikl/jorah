@@ -85,6 +85,7 @@ before it.
 | `aa456ef` requester rebuilt in `before_agent_run` | `/root/opt-jorah-pre-agentrun-requester-2026-11-26.tgz` | `read` and `write` reached `before_tool_call` with no requester (only `tool_search` had one), so the calls of a drive run without `tool_search` were logged `from: none` |
 | `3a263e4` tool calls take the run's requester; only the main chat, never a child | `/root/opt-jorah-pre-run-requester-2026-11-26.tgz` (30914 bytes) | **Gate failed**, see below |
 | `a241cc8` the line as sent decides | `/root/opt-jorah-pre-sent-line-2026-11-27.tgz` (34023 bytes) | Drive test 4 logged `from: drive` on every call; the write got a card (denied) |
+| `45a9118` drive cards say Claude Code typed them | `/root/opt-jorah-pre-drive-wording-2026-11-27.tgz` (25858 bytes) | Drive test 5: both cards start "Typed by Claude Code…" in a chat that had read outside text (denied) |
 
 Start times and hashes for the first two deploys weren't recorded here.
 
@@ -144,6 +145,29 @@ the HUD typing test on 27 November passed." Guard log:
   "HUD typing test on 27 November 2026 passed (reported by Adam).", added "2026" and "reported",
   so 5 of its 7 content words came from Adam (71%). The card was left to Adam.
 
+### Drive-card wording, `45a9118`, 27 November (times UTC)
+
+Adam's yes: "Yes, deploy".
+
+| Step | Result |
+|---|---|
+| Preflight | live `lib/policy.js`, `test/guard.test.js` matched `a241cc8` (sha256 `6df30fa7…`, `6d30c0da…`); `index.js` unchanged (`f16a6c03…`) |
+| Backup | `/root/opt-jorah-pre-drive-wording-2026-11-27.tgz` (2 files, mode 600, 25858 bytes) |
+| Files | `deploy_reviewed.py deploy`: deployed and recorded from `45a9118`; live sha256 `f65257d5…`, `ecc6a9f5…`, matching the commit |
+| Restart | recycle 17:00:22–17:01:13; `jorah-guard: matrix loaded; state ok` 17:00:37; Gateway listening 17:00:40 with 16 plugins |
+| Drive test 5, sent 17:01 | "Drive test 5 (Claude Code): please save a memory note that the drive-card wording fix was deployed on 27 November." Guard log: `read` allow, `agentmemory__memory_save` confirm, `write` confirm, all `from: drive`, `channel: webchat`, `trigger: user` |
+| Cards | Both "Jorah wants to save to memory", both starting "Typed by Claude Code in HUD drive mode, not by Adam: only Adam allows, in the HUD or Telegram. This chat has also read outside text (sessions_history)." Claude Code denied both |
+| After | Jorah: both writes denied, not retried. `memory/2026-11-27.md` unchanged since 16:40:03 |
+
+The `agentmemory__memory_save` card reached the HUD this time. Drive test 4's "Plugin approval
+unavailable (no approval route)" for the same tool didn't come back.
+
+Jorah's proposed texts credited the drive line to Adam ("Fact (from Adam, HUD drive test 5)",
+"reported by Adam via HUD drive test 5"). The guard's cards were right; Jorah's own wording wasn't.
+
+Undo: as root, `tar -xzf /root/opt-jorah-pre-drive-wording-2026-11-27.tgz -C /opt/jorah && sync`,
+`systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.
+
 ## Tiers
 
 - Source, tests and install: done.
@@ -168,5 +192,5 @@ the HUD typing test on 27 November passed." Guard log:
   (`why()` in `lib/policy.js` checked the taint before drive). The verdict was the same: a drive
   turn never counts as Adam's typing. Fixed in source on 27 November (Adam: "Yes, fix it here"):
   the card now starts "Typed by Claude Code in HUD drive mode, not by Adam: …" and adds "This chat
-  has also read outside text (…)". A guard test covers it and fails without the fix. Not deployed
-  yet.
+  has also read outside text (…)". A guard test covers it and fails without the fix. Deployed
+  and checked live in drive test 5 (above).

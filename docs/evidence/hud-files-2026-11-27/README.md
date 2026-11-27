@@ -25,8 +25,14 @@ window and save to the Mac; Shift-Return in the composer inserts a line; Jorah's
 Undo: as root, `cp -p /home/jorah/workspace/AGENTS.md.pre-hud-files /home/jorah/workspace/AGENTS.md && sync`,
 then `deploy_reviewed.py baseline --write`.
 
+## HUD install and launch
+
+After Adam said his coding job had finished: `just mac-hud-install` from `1173692` (release build,
+signed with the Apple Development certificate, `codesign -v` passes); the old HUD (PID 6060) quit
+through AppleScript, the new one opened as PID 6695 and holds TCP links to the PC on `:443` (Serve,
+the Gateway) and `:43231` (PC stats). That shows launch, not that the cards work.
+
 ## Open
 
-- HUD install and launch: waits for Adam's coding job in the running HUD to finish (`just mac-hud-install`).
 - Signed-in acceptance: after `/new`, Jorah sends a PDF, a Markdown file and a picture; each shows as a
   card, opens in the viewer and saves to Downloads. Shift-Return adds a line.

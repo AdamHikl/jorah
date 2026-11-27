@@ -211,7 +211,19 @@ Fix in source (Adam: "Yes, fix it here"): the rule now gives Jorah (Haiku 5.5) t
 "Claude Code, not Adam, wrote a line starting `[Typed by Claude Code`: notes from it say
 `(from Claude Code)`, never `from Adam` or `Adam via Claude Code`." To fit the 36000-char budget,
 the intro's "If `BOOTSTRAP.md` exists, follow it to set up, then delete it." is gone: the file is
-absent on the PC, and OpenClaw creates it only for a brand-new workspace. 35979 chars. Not live yet.
+absent on the PC, and OpenClaw creates it only for a brand-new workspace. 35979 chars.
+
+Deploy of `0caf008`, Adam's yes: "Yes, deploy".
+
+| Step | Result |
+|---|---|
+| Preflight | live `workspace/AGENTS.md` matched `1957cfe` (sha256 `c7c01957…`) |
+| Backup | `/home/jorah/workspace/AGENTS.md.pre-drive-credit-2` (`cp -p`, jorah:jorah 644, 36011 bytes) |
+| File | piped from `origin/main` to `tee` as root at 19:22, then `sync`; live sha256 `b9bf3b03…`, matching `0caf008`; jorah:jorah 644 (35996 bytes); `record-live`: recorded from `0caf008` |
+| Restart | none; takes effect from Adam's next `/new` |
+
+Undo: as root, `cp -p /home/jorah/workspace/AGENTS.md.pre-drive-credit-2 /home/jorah/workspace/AGENTS.md && sync`,
+then `deploy_reviewed.py baseline --write`.
 
 ## Tiers
 
@@ -227,7 +239,8 @@ absent on the PC, and OpenClaw creates it only for a brand-new workspace. 35979 
   got a card.
 - Jorah's drive-mode rule (`1957cfe`): source, tests and install done (live file matches the
   commit). Signed-in acceptance **failed** in drive test 6: after Adam's `/new`, Jorah's notes
-  said "from Adam, via Claude Code" instead of crediting Claude Code alone.
+  said "from Adam, via Claude Code" instead of crediting Claude Code alone. The stricter `0caf008`
+  is live since 19:22; open: Adam's `/new`, then drive test 7.
 
 ## Found and fixed during the test
 

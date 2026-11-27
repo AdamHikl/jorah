@@ -72,6 +72,61 @@ terminal clears it. Both are covered by the guard's unit tests.
 Undo: as root, `tar -xzf /root/opt-jorah-pre-hud-commands-2026-11-26.tgz -C /opt/jorah && sync`,
 `systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.
 
+## HUD typing counts as Adam's (ADR 0011), 26–27 November
+
+Adam's choice: "HUD counts as me", then "Same as Telegram (Recommended)". Each deploy below used
+`deploy_reviewed.py deploy` from the main checkout, a root backup of the files it replaced (mode
+600) and `jorah-gateway-recycle.service`. Every fix came from a live drive-mode test of the deploy
+before it.
+
+| Commit | Backup | What the live drive test showed |
+|---|---|---|
+| `3570267` HUD typing rule and drive marker | `/root/opt-jorah-pre-hud-typed-2026-11-26.tgz` (30279 bytes) | `before_agent_run` gets no requester on OpenClaw 2026.11.6, so no HUD run was sorted as typing |
+| `aa456ef` requester rebuilt in `before_agent_run` | `/root/opt-jorah-pre-agentrun-requester-2026-11-26.tgz` | `read` and `write` reached `before_tool_call` with no requester (only `tool_search` had one), so the calls of a drive run without `tool_search` were logged `from: none` |
+| `3a263e4` tool calls take the run's requester; only the main chat, never a child | `/root/opt-jorah-pre-run-requester-2026-11-26.tgz` (30914 bytes) | **Gate failed**, see below |
+| `a241cc8` the line as sent decides | `/root/opt-jorah-pre-sent-line-2026-11-27.tgz` (34023 bytes) | Drive test 4 logged `from: drive` on every call; the write got a card (denied) |
+
+Start times and hashes for the first two deploys weren't recorded here.
+
+### 3a263e4, 26 November (times UTC)
+
+- Recycle 20:21:30–20:22:22; `jorah-guard: matrix loaded; state ok` at 20:21:45.
+- 20:22:30: the first drive send after the restart hit an OAuth refresh race. The errors stopped
+  for 75 s, then the line was sent again once. Sign-in wasn't touched.
+- Drive test 3, sent 20:24:17: "Drive test 3 (Claude Code): please save a memory note that the
+  run-requester fix was deployed on 26 November." The write at 20:24:20 was **logged
+  `from: hud-typed`**, verdict `confirm`. The card showed only because the chat had read outside
+  text; Claude Code denied it and sent no more drive lines.
+- Cause: for Claude CLI runs OpenClaw 2026.11.6 hands `before_agent_run` the prompt built for the
+  hooks, `${prependContext}\n\n${prompt}\n\n${appendContext}` (`promptForHooks`). Standing intents
+  and active memory came first, so the drive marker sat past the 200 characters the guard checks.
+  The text after the line (runtime context, part of the system prompt) also counted as Adam's
+  words for memory saves.
+
+### a241cc8, 27 November (times UTC)
+
+The guard keeps the line as sent from `before_prompt_build` by run id and uses it for the markers
+and for Adam's words. A `webchat` run without that line keeps its cards. A regression test rebuilds
+the live prompt; two mutations of the fix each fail it. Guard tests 179/179, `just check` passed.
+
+Adam's yes: "Yes, deploy".
+
+| Step | Result |
+|---|---|
+| Preflight | live `index.js`, `lib/policy.js`, `test/guard.test.js`, `test/voice-confirm.test.js` matched `3a263e4` (sha256 `6251ad2b…`, `940b4d91…`, `c0f93eb8…`, `fd913bbf…`) |
+| Backup | `/root/opt-jorah-pre-sent-line-2026-11-27.tgz` (4 files, mode 600, 34023 bytes) |
+| Files | deployed and recorded from `a241cc8`; live sha256 `f16a6c03…`, `6df30fa7…`, `6d30c0da…`, `3105b08c…`, matching the commit |
+| Restart | recycle 09:13:43–09:14:35; `jorah-guard: matrix loaded; state ok` 09:13:58; Gateway listening 09:14:01 with 16 plugins; no OAuth errors after it |
+| Drive test 4, sent 09:15:03 | "Drive test 4 (Claude Code): please save a memory note that the sent-line fix was deployed on 27 November." Guard log: `tool_search` allow, `read` allow, `write` confirm, all `from: drive`, `channel: webchat`, `trigger: user`. Card "Jorah wants to save to memory" for `memory/2026-11-27.md`, denied by Claude Code |
+
+Undo: as root, `tar -xzf /root/opt-jorah-pre-sent-line-2026-11-27.tgz -C /opt/jorah && sync`,
+`systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`. That
+puts back `3a263e4`, which has the gap above; to turn HUD typing off instead, set the guard's
+`hudTypingIsAdam` to `false` (ADR 0011, Undo).
+
+Open: Adam's own typing test in the HUD (expected `from: hud-typed`, a memory note in his words
+saved without a card).
+
 ## Tiers
 
 - Source, tests and install: done.
@@ -80,6 +135,8 @@ Undo: as root, `tar -xzf /root/opt-jorah-pre-hud-commands-2026-11-26.tgz -C /opt
   `0040435`, `/jorah-today` answers in the HUD and `/jorah-careful off` is refused there.
   Careful mode on from the HUD is still open.
 - Not checked: `/jorah-careful`, `/jorah-today` and `/jorah-careful off` on Telegram.
+- HUD typing (ADR 0011): source, tests and install of `a241cc8` done; drive lines are sorted as
+  drive live. Adam's signed-in HUD typing test is open.
 
 ## Found and fixed during the test
 
@@ -87,3 +144,7 @@ Undo: as root, `tar -xzf /root/opt-jorah-pre-hud-commands-2026-11-26.tgz -C /opt
   time, with the date when it isn't today.
 - ADR 0012 said Jorah sees drive-mode turns as Adam's. That holds for tool hooks, not for plugin
   commands. Corrected.
+- Not fixed yet: in a chat that has read outside text, a drive turn's card names the outside text
+  ("This chat has read outside text (sessions_history).") instead of saying Claude Code typed it
+  (`why()` in `lib/policy.js` checks the taint before drive). The verdict is the same: a drive
+  turn never counts as Adam's typing.

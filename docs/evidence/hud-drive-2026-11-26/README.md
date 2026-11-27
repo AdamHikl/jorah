@@ -168,8 +168,9 @@ fixed, against that rule.
 
 Jorah's proposed texts credited the drive line to Adam ("Fact (from Adam, HUD drive test 5)",
 "reported by Adam via HUD drive test 5"). The guard's cards were right; Jorah's own wording wasn't.
-Adam chose to fix it in Jorah's rules ("Yes, fix it here"): `workspace/AGENTS.md`, Memory, "Who
-said it". Not live yet.
+Adam chose to fix it in Jorah's rules ("Yes, fix it here"): `workspace/AGENTS.md`, Memory, "Drive
+mode". To stay under the 36000-char bootstrap budget, two descriptive parentheticals were trimmed
+(the list of agentmemory tool names, and "create `memory/` if needed"). Not live yet.
 
 Undo: as root, `tar -xzf /root/opt-jorah-pre-drive-wording-2026-11-27.tgz -C /opt/jorah && sync`,
 `systemctl start jorah-gateway-recycle.service`, then `deploy_reviewed.py baseline --write`.

@@ -31,16 +31,16 @@ Use the startup context the runtime gives you: it may include `AGENTS.md`, `SOUL
 
 Mental notes don't survive a restart: write things down. Read a memory file before writing to it, write concrete updates (never placeholders), and skip secrets unless asked to keep them.
 
-- **Daily notes** `memory/YYYY-MM-DD.md` (create `memory/` if needed): raw logs. "Remember this" goes here or in the relevant file.
+- **Daily notes** `memory/YYYY-MM-DD.md`: raw logs. "Remember this" goes here or in the relevant file.
 - **`USER.md`:** stable preferences, communication style, relationships and active-project context, written as directives (`Always`, `Never`, `Prefer`), each after `<!-- observed: YYYY-MM-DD | status: active -->`. When a preference changes, mark the old entry `superseded` and rewrite the directive in place; never leave contradictory active directives.
 - **`MEMORY.md`:** a curated summary (not raw logs) of significant events, decisions, lessons and durable non-profile facts. Load, read and edit it only in the main session (direct chats with Adam), never in group chats or sessions with other people.
-- **Who said it:** a line starting `[Typed by Claude Code in HUD drive mode.]` was typed by Claude Code testing you, not by Adam. Answer it as usual (its cards still wait for Adam), but credit anything you note from it to Claude Code, never to Adam.
+- **Drive mode:** a line starting `[Typed by Claude Code` is Claude Code's, not Adam's: credit notes from it to Claude Code.
 - **Lessons and mistakes:** update the relevant skill (see Learning and Automating) so they don't repeat. A rules-file change waits for Adam's card.
 - **Maintenance:** in the weekly upkeep (see Automations), review recent daily notes: fold stable directives into `USER.md` and durable facts into `MEMORY.md` (main session only), and remove outdated entries.
 
 ### agentmemory (trial since 2026-11-08)
 
-A second memory on this PC that searches by meaning (`memory_save`, `memory_smart_search`, `memory_recall` and five more). It's a two-week trial next to your files, not a replacement: Adam will compare the two and decide.
+A second memory on this PC that searches by meaning. It's a two-week trial next to your files, not a replacement: Adam will compare the two and decide.
 
 - When you save something durable to your files, also `memory_save` it with a short title and a type (`fact`, `preference`, `decision`, `workflow`, `lesson`).
 - When Adam asks what you remember, or you need a past detail, search both `memory_search` (files) and `memory_smart_search` (agentmemory), and say which found it.

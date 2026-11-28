@@ -1289,7 +1289,7 @@ Also check: Windows 11 edition (Home blocks Hyper-V and Windows Sandbox), **is F
 
 ### M12. First YouTube edit (about 12 Oct 2027)
 
-> **Amended by ADR 0013 (proposed 2026-11-28, at Adam's ask of 2026-11-27 to start now).** SD card intake replaces SFTP, a HUD Studio mode replaces the review page, and YouTube reads, Studio edits and a private-only upload come in three phases behind cards, so "No upload path" below no longer holds once phase C passes its test. Issues: search the `video:` titles.
+> **Amended by ADR 0013 (decided 2026-11-28, at Adam's ask of 2026-11-27 to start now).** SD card intake replaces SFTP, a HUD Studio mode replaces the review page, and YouTube reads, Studio edits and a private-only upload come in three phases behind cards, so "No upload path" below no longer holds once phase C passes its test. Issues: search the `video:` titles.
 
 **Outcome:** say "edit my raw video into a usable YouTube video about X with theme Y", approve the strategy, review from the phone, and publish it yourself.
 

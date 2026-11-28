@@ -1,6 +1,6 @@
 # ADR 0013: Video studio in the HUD, and Jorah on YouTube
 
-**Status:** proposed on 2026-11-28. Waiting for Adam's yes on each choice marked **(yes needed)**.
+**Status:** decided on 2026-11-28. Adam: "you have my yes", which covers every choice marked **(yes needed)** below as design. Each install, service, config change, schedule and sign-in is still previewed for its own yes when it is built.
 
 The inputs are Adam's own asks:
 
@@ -11,8 +11,9 @@ The inputs are Adam's own asks:
   - A UI mode in the HUD instead of a separate studio page.
   - Recording with the Blackmagic Camera app on iPhone.
   - Jorah manages YouTube Studio and analyzes each video's analytics.
+- **2026-11-28, later:** "HEVC, apple log, 30fps, the sound will be recorded on mac, I will connect an external mic to it, you can make integration into hud so that it works together with the teleprompter".
 
-A silent 2-minute 4K mock was rendered on the PC the same day. It used h264_nvenc and took 95 s for 3,600 frames. It is waiting for Adam's quality verdict.
+A silent 2-minute 4K mock was rendered on the PC the same day. It used h264_nvenc and took 95 s for 3,600 frames. Adam's verdict on its quality: "it's good".
 
 **Question:** M12 and `05` section 8 planned an edit pipeline with an SFTP inbox, a review web page and no upload path. Adam now wants:
 
@@ -61,10 +62,23 @@ This ADR answers:
    - Ingest refuses a take when free disk space is below three times the take's size.
 
 2. **Blackmagic media.**
-   - Ingest accepts what the Blackmagic Camera app writes: HEVC or ProRes in `.mov`, in Rec.709 or Apple Log.
-   - Apple Log is converted with Apple's published LUT through ffmpeg `lut3d`. Adam downloads the LUT.
-   - Separate sound (WAV/BWF) is synced to the iPhone's scratch audio by cross-correlation. This is our own numpy code, about 100 lines, with `bbc/audio-offset-finder` (Apache-2.0) as the reference.
-   - A sync with low confidence stops and asks Adam.
+   - **Adam's format:** HEVC in `.mov`, Apple Log, 30 fps. Ingest also accepts ProRes and Rec.709, but they are not the planned path.
+   - Apple Log is converted with Apple's published LUT through ffmpeg `lut3d`. Adam downloads the LUT, and its SHA-256 goes in the tool lock. A take tagged Apple Log with no LUT in place stops and says so.
+   - When the clip's metadata doesn't say Apple Log or Rec.709, ingest uses Adam's stated default (Apple Log) and marks the color as assumed, not read.
+   - **Sound comes from the Mac,** from an external mic, not from the card (point 2a).
+   - The Mac WAV is synced to the iPhone's scratch audio by cross-correlation. This is our own numpy code, about 100 lines, with `bbc/audio-offset-finder` (Apache-2.0) as the reference.
+   - A take is paired with its WAV by start time first, then by the correlation peak. A sync with low confidence, or a clip with no WAV, stops and asks Adam.
+
+2a. **A teleprompter in the HUD records the sound.**
+   - Studio mode has a teleprompter: the script scrolls at Adam's speed on the Mac, near the iPhone's lens.
+   - While it runs, the HUD records the external mic to a 48 kHz WAV. The Mac's microphone permission already exists for voice.
+   - The HUD saves the WAV with a sidecar that says:
+     - the start time;
+     - the mic's name;
+     - which script line was on screen at each moment.
+     The rough cut can use those line times, alongside the transcript.
+   - The HUD sends the WAV and sidecar to the PC's intake over the tailnet, on the same tailnet-only endpoint as the proxies (point 4). This needs no copy to the card. Until that endpoint exists, Adam copies the WAV into the take folder by hand.
+   - Adam presses record on the iPhone. The HUD doesn't control the Blackmagic app.
 
 3. **4K output.**
    - 3840x2160 at 30 fps, unless the source says otherwise.
@@ -210,7 +224,8 @@ Every install follows the tool lock:
 
 ## Risks left
 
-- **Disk.** 4K ProRes from the Blackmagic app is large, around 5 GB a minute for ProRes 422 HQ [inference, from Apple's published data rates]. The free-space check at ingest limits the damage.
+- **Disk.** 4K HEVC takes are far smaller than ProRes, which runs around 5 GB a minute for ProRes 422 HQ [inference, from Apple's published data rates]. The free-space check at ingest limits the damage either way.
+- **Clocks.** Pairing a take with its WAV by start time assumes the iPhone's and the Mac's clocks agree within a minute. Both set their time from the network. The correlation peak decides the exact offset.
 - **GPU transcription.** faster-whisper runs on CTranslate2, which is untested in WSL on an RTX 50-series card. The fallback is CPU, which is slower.
 - **Fillers.** Whisper may drop fillers that need cutting (`05` §8.6 point 4). This gets tested on Adam's first real take.
 - **HyperFrames moves fast.** The 7-day rule and a pinned version hold it still.

@@ -138,7 +138,8 @@ This ADR answers:
    - **Phase C, upload (yes needed).**
      - **Scope added:** `youtube.upload`.
      - **The uploader** hardcodes `private` and `notifySubscribers=false`, and refuses any other value (tested), as in `05` §8.9.
-     - **A test comes first.** Before the uploader is built, Adam uploads a 30 s test to a test channel. The question it answers: are uploads from an unaudited API project locked to private?
+     - **Each upload is a card,** at least until a later ADR says otherwise.
+     - **A test comes first.** Before Jorah gets the upload tool, Adam runs the private-only uploader once, with a 30 s test to a test channel, then tries to set that video to unlisted in Studio. The question it answers: are uploads from an unaudited API project locked to private?
        - Google's own pages disagree [verified: the videos.insert reference pages, 2026-11-28].
        - Issue #86 on `porjo/youtubeuploader` reports such a lock.
      - **If uploads are locked,** Adam either applies for the YouTube API audit or keeps uploading by hand. Jorah never works around the lock.

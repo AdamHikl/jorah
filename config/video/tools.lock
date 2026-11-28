@@ -1,0 +1,8 @@
+# Video tool lock (docs/plan/05-growth-and-skills.md 8.3, ADR 0013). One line for each tool or file
+# the video pipeline runs or reads: name, version, SHA-256 (or how it is verified), source, the date
+# it was recorded, and who approved it. Tab-separated. "pending" means it isn't on the PC yet.
+# scripts/pc/install-ingestd.sh --pin-lut refuses a LUT whose hash differs from a recorded one.
+name	version	sha256	source	recorded	approver
+ffmpeg	6.1.1	apt (signed Ubuntu archive)	Ubuntu 24.04 package ffmpeg, already on the PC	2026-11-28	Adam (ADR 0013)
+python3-numpy	1.26.4	apt (signed Ubuntu archive)	Ubuntu 24.04 package python3-numpy, already on the PC	2026-11-28	Adam (ADR 0013)
+apple-log-lut	pending	pending	Apple's Apple Log LUT download: the Apple Log to Rec.709 .cube	pending	Adam

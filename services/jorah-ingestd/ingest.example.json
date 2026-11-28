@@ -1,0 +1,12 @@
+{
+ "root": "/srv/jorah-media",
+ "settle_s": 30,
+ "poll_s": 10,
+ "space_factor": 3.0,
+ "default_color": "apple_log",
+ "lut_path": "/srv/jorah-media/luts/apple-log-to-rec709.cube",
+ "lut_sha256": null,
+ "local_tz": "Europe/Bratislava",
+ "proxy_height": 1080,
+ "proxy_encoder": "h264_nvenc"
+}

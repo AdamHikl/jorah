@@ -1,0 +1,63 @@
+# Jorah's media intake (ADR 0013, issue #25; docs/runbooks/video-intake.md). Each take Adam copies
+# into /srv/jorah-media/incoming goes into a hashed, read-only spool, is paired with the Mac's WAV,
+# and gets 1080p proxies. Installed by scripts/pc/install-ingestd.sh on Adam's yes.
+#
+# User jorah-media (uid 1104): no root, no login, no home, and no network at all. It reads
+# incoming/ through an ACL and writes only under /srv/jorah-media. The GPU (/dev/dxg) is the one
+# device it gets, for NVENC. Jorah's home is out of reach.
+[Unit]
+Description=Jorah: media intake (SD-card takes to the spool, proxies)
+After=local-fs.target
+ConditionPathIsDirectory=/srv/jorah-media/incoming
+
+[Service]
+Type=simple
+User=jorah-media
+Group=jorah-media
+UMask=0022
+WorkingDirectory=/srv/jorah-media/state
+Environment=HOME=/nonexistent
+Environment=PATH=/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -I /opt/jorah/services/jorah-ingestd/bin/jorah-ingestd --config /etc/jorah-media/ingest.json run
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+# A 4K HEVC take is copied, hashed and decoded once; the PC stays usable meanwhile.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryMax=4G
+TasksMax=128
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/jorah-media
+ProtectHome=yes
+InaccessiblePaths=/run/WSL
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+# NVENC through WSL's GPU device. Only the standard pseudo devices besides it.
+PrivateDevices=no
+DevicePolicy=closed
+DeviceAllow=/dev/dxg rw
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+# MemoryDenyWriteExecute is left off: the CUDA driver may need writable code pages. Whether NVENC
+# works with it on is a test item (docs/runbooks/video-intake.md); if it does, it goes on.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

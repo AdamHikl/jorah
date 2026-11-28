@@ -1,0 +1,19 @@
+[project]
+name = "jorah-ingestd"
+version = "0.1.0"
+description = "Jorah's media intake: SD-card takes into a hashed, read-only spool with sound sync and proxies"
+requires-python = ">=3.12"
+# The PC runs it with the system python3 -I and Ubuntu's python3-numpy (1.26.4, noble), checked by
+# scripts/pc/install-ingestd.sh. ffmpeg and ffprobe come from Ubuntu's ffmpeg package. This pin is
+# for a uv environment (released 2024-02-05).
+dependencies = ["numpy==1.26.4"]
+
+[project.scripts]
+jorah-ingestd = "jorah_ingestd.cli:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["jorah_ingestd"]

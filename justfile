@@ -33,6 +33,7 @@ unit:
     python3 -m unittest discover -s packages/contracts/project/tests
     python3 -m unittest discover -s packages/contracts/toolbox/tests
     python3 -m unittest discover -s services/jorah-toolbox/tests
+    python3 -m unittest discover -s services/jorah-ingestd/tests
     python3 -m unittest discover -s services/jorah-watchdog/tests
     python3 -m unittest discover -s scripts/pc/tests
     node --test plugins/jorah-voice-provider/test/ plugins/jorah-github/test/ plugins/jorah-ios/test/ plugins/jorah-guard-spike/test/ plugins/jorah-guard/test/ plugins/jorah-sites/test/ plugins/jorah-phone/test/ plugins/jorah-google/test/ plugins/jorah-proactive/test/ services/jorah-site-proxy/test/
